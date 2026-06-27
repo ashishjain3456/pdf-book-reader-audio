@@ -1,12 +1,25 @@
 {
   "name": "pdf-book-reader",
-  "version": "0.1.0",
+  "version": "0.1.29",
   "description": "PDF book reader core + React bindings with deep-link page state and per-page audio mapping.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "react": [
+        "dist/react.d.ts"
+      ],
+      "react/web": [
+        "dist/react-web.d.ts"
+      ],
+      "react/native": [
+        "dist/react-native.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,10 +30,32 @@
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js",
       "require": "./dist/react.cjs"
+    },
+    "./react/web": {
+      "types": "./react/web.d.ts",
+      "browser": "./react/web.js",
+      "import": "./react/web.js",
+      "require": "./dist/react-web.cjs"
+    },
+    "./react/web.js": {
+      "types": "./react/web.d.ts",
+      "default": "./react/web.js"
+    },
+    "./react/native": {
+      "types": "./react/native.d.ts",
+      "react-native": "./react/native.js",
+      "import": "./react/native.js",
+      "require": "./dist/react-native.cjs"
+    },
+    "./react/native.js": {
+      "types": "./react/native.d.ts",
+      "react-native": "./react/native.js",
+      "default": "./react/native.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "react"
   ],
   "scripts": {
     "build": "tsup",
@@ -36,7 +71,37 @@
     "react"
   ],
   "peerDependencies": {
-    "react": ">=18"
+    "expo-file-system": ">=17",
+    "expo-secure-store": ">=12",
+    "expo-sharing": ">=11",
+    "pdfjs-dist": ">=4",
+    "react": ">=18",
+    "react-native": ">=0.72",
+    "react-native-static-server": ">=0.5",
+    "react-native-webview": ">=13"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    },
+    "react-native-webview": {
+      "optional": true
+    },
+    "expo-file-system": {
+      "optional": true
+    },
+    "expo-secure-store": {
+      "optional": true
+    },
+    "expo-sharing": {
+      "optional": true
+    },
+    "react-native-static-server": {
+      "optional": true
+    },
+    "pdfjs-dist": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/react": "^19.2.14",

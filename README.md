@@ -1,4 +1,4 @@
-# @jinvandan/pdf-book-reader
+# pdf-book-reader
 
 Publishable PDF reader plugin scaffold with:
 - Deep-link page support (`?page=12`)
@@ -9,7 +9,7 @@ Publishable PDF reader plugin scaffold with:
 ## Install (local while developing)
 
 ```bash
-cd plugins/pdf-book-reader
+cd plugins/pdf-book-reader-audio
 npm install
 npm run build
 ```
@@ -17,7 +17,7 @@ npm run build
 In consuming app (`web` for example):
 
 ```bash
-npm install ../plugins/pdf-book-reader
+npm install ../plugins/pdf-book-reader-audio
 ```
 
 ## API Surface (current scaffold)
