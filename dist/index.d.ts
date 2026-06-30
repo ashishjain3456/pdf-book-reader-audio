@@ -1,5 +1,5 @@
-import { P as PageAudioMapping } from './contracts-BHa3akjz.js';
-export { R as ReaderPersistAdapter, a as ReaderPlatform, b as ReaderState } from './contracts-BHa3akjz.js';
+import { P as PageAudioMapping } from './contracts-UxLvblLy.js';
+export { R as ReaderPersistAdapter, a as ReaderPlatform, b as ReaderState, V as VerseAudioMapping } from './contracts-UxLvblLy.js';
 
 declare function parsePageFromUrl(input: string, fallback?: number): number;
 declare function buildPageUrl(baseUrl: string, pageNumber: number): string;

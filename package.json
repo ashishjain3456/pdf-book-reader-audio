@@ -1,6 +1,6 @@
 {
   "name": "pdf-book-reader",
-  "version": "0.1.29",
+  "version": "0.1.75",
   "description": "PDF book reader core + React bindings with deep-link page state and per-page audio mapping.",
   "license": "MIT",
   "type": "module",
@@ -57,6 +57,9 @@
     "dist",
     "react"
   ],
+  "dependencies": {
+    "expo-linking": "~8.0.8"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -71,6 +74,9 @@
     "react"
   ],
   "peerDependencies": {
+    "@expo/vector-icons": ">=14",
+    "expo-audio": ">=1",
+    "expo-linking": ">=7",
     "expo-file-system": ">=17",
     "expo-secure-store": ">=12",
     "expo-sharing": ">=11",
@@ -81,6 +87,15 @@
     "react-native-webview": ">=13"
   },
   "peerDependenciesMeta": {
+    "@expo/vector-icons": {
+      "optional": true
+    },
+    "expo-linking": {
+      "optional": true
+    },
+    "expo-audio": {
+      "optional": true
+    },
     "react-native": {
       "optional": true
     },
@@ -104,6 +119,7 @@
     }
   },
   "devDependencies": {
+    "@expo/vector-icons": "~15.0.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "tsup": "^8.2.4",

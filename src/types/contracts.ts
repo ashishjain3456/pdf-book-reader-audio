@@ -11,6 +11,17 @@ export type PageAudioMapping = {
   sortOrder?: number;
 };
 
+export type VerseAudioMapping = {
+  id: string;
+  verseId: string | number;
+  groupId?: string | number | null;
+  audioAssetUrl: string;
+  label?: string | null;
+  segmentStartMs: number;
+  segmentEndMs: number;
+  sortOrder?: number;
+};
+
 export type ReaderState = {
   documentId: string;
   pageNumber: number;

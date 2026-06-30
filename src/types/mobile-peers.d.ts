@@ -31,6 +31,27 @@ declare module 'expo-sharing' {
   ): Promise<void>;
 }
 
+declare module 'expo-audio' {
+  export type AudioStatus = {
+    isLoaded: boolean;
+    playing: boolean;
+    currentTime: number;
+  };
+
+  export type AudioPlayer = {
+    pause: () => void;
+    play: () => void;
+    replace: (source: string | null) => void;
+    seekTo: (seconds: number) => Promise<void>;
+  };
+
+  export function useAudioPlayer(
+    source: string | null,
+    options?: { updateInterval?: number }
+  ): AudioPlayer;
+  export function useAudioPlayerStatus(player: AudioPlayer): AudioStatus;
+}
+
 declare module 'react-native-webview' {
   import * as React from 'react';
 

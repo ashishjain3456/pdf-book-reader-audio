@@ -1,4 +1,4 @@
-import { R as ReaderPersistAdapter } from './contracts-BHa3akjz.cjs';
+import { R as ReaderPersistAdapter } from './contracts-UxLvblLy.cjs';
 
 type Options = {
     documentId: string;
