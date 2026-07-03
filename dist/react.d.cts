@@ -9,6 +9,7 @@ type Options = {
 declare function useReaderPageState({ documentId, initialUrl, initialPage, persistAdapter, }: Options): {
     pageNumber: number;
     setPageNumber: (nextPage: number) => Promise<void>;
+    isHydrated: boolean;
 };
 
 export { useReaderPageState };

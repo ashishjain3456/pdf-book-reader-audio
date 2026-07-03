@@ -33,9 +33,11 @@ function useReaderPageState({
   persistAdapter
 }) {
   const [pageNumber, setPageNumber] = react.useState(initialPage);
+  const [hydrated, setHydrated] = react.useState(false);
   const storageKey = react.useMemo(() => createStorageKey(documentId), [documentId]);
   react.useEffect(() => {
     let active = true;
+    setHydrated(false);
     const hydrate = async () => {
       const fromUrl = initialUrl ? parsePageFromUrl(initialUrl, initialPage) : initialPage;
       const persisted = await persistAdapter.get(storageKey);
@@ -43,6 +45,7 @@ function useReaderPageState({
       const fromStorage = Number.isInteger(persistedPage) && persistedPage > 0 ? persistedPage : null;
       if (!active) return;
       setPageNumber(fromStorage ?? fromUrl);
+      setHydrated(true);
     };
     void hydrate();
     return () => {
@@ -53,13 +56,16 @@ function useReaderPageState({
     async (nextPage) => {
       const safePage = Math.max(1, Math.trunc(nextPage));
       setPageNumber(safePage);
-      await persistAdapter.set(storageKey, String(safePage));
+      if (hydrated) {
+        await persistAdapter.set(storageKey, String(safePage));
+      }
     },
-    [persistAdapter, storageKey]
+    [hydrated, persistAdapter, storageKey]
   );
   return {
     pageNumber,
-    setPageNumber: updatePage
+    setPageNumber: updatePage,
+    isHydrated: hydrated
   };
 }
 
