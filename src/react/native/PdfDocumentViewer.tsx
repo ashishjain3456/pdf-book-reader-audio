@@ -216,6 +216,8 @@ const buildPdfHtml = (
       #pages {
         flex: 1;
         overflow: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
       }
       .status {
         padding: 24px 16px;
@@ -225,12 +227,15 @@ const buildPdfHtml = (
         display: none;
       }
       .page {
+        width: max-content;
+        min-width: 100%;
         margin: 0 0 12px;
         border: 1px solid #e5e7eb;
         border-radius: 12px;
         overflow: hidden;
         background: #fff;
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        box-sizing: border-box;
       }
       .page.active {
         border-color: transparent;
@@ -321,16 +326,19 @@ const buildPdfHtml = (
           // post scroll. For book mode: lock overflow so vertical pan stays put.
           document.documentElement.style.overflowY = isCompleteMode ? 'auto' : 'hidden';
           document.body.style.overflowY = isCompleteMode ? 'auto' : 'hidden';
+          document.documentElement.style.overflowX = isCompleteMode ? 'auto' : 'hidden';
+          document.body.style.overflowX = isCompleteMode ? 'auto' : 'hidden';
           document.documentElement.style.height = isCompleteMode ? 'auto' : '100%';
           document.body.style.height = isCompleteMode ? 'auto' : '100%';
           if (appNode) {
             appNode.style.height = isCompleteMode ? 'auto' : '100%';
           }
           document.body.style.overscrollBehavior = 'contain';
-          pagesNode.style.touchAction = isCompleteMode ? 'auto' : 'pan-x';
+          pagesNode.style.touchAction = isCompleteMode ? 'auto' : 'pan-x pan-y';
           pagesNode.style.flex = isCompleteMode ? 'none' : '1';
           pagesNode.style.height = isCompleteMode ? 'auto' : '100%';
-          pagesNode.style.overflow = isCompleteMode ? 'visible' : 'hidden';
+          pagesNode.style.overflowX = 'auto';
+          pagesNode.style.overflowY = isCompleteMode ? 'visible' : 'auto';
         };
 
         let lastInteractionAt = 0;
@@ -862,9 +870,9 @@ const buildVerseHtml = (
       }
       .page {
         margin: 0;
-        border: 1px solid #e5e7eb;
+        border: 0;
         border-radius: 12px;
-        background: #fff;
+        background: #fffbeb;
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         box-sizing: border-box;
       }
@@ -896,8 +904,8 @@ const buildVerseHtml = (
         margin: 0;
         height: 100%;
         border-radius: 8px;
-        border: 1px solid #e5e7eb;
-        background: #fff;
+        border: 0;
+        background: #fffbeb;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         position: relative;
         flex-shrink: 0;
@@ -933,11 +941,11 @@ const buildVerseHtml = (
       .verse-page-content {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 0;
       }
       .verse-block {
-        border: 1px solid #f1f5f9;
-        border-radius: 10px;
+        border: 0;
+        border-radius: 0;
         padding: 10px 12px;
         background: #fffbeb;
         position: relative;
@@ -946,26 +954,6 @@ const buildVerseHtml = (
         border-color: #f97316;
         box-shadow:
           inset 0 0 0 2px #f97316;
-      }
-      .verse-play-button {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        width: 32px;
-        height: 32px;
-        border: 1px solid rgba(15, 118, 110, 0.34);
-        border-radius: 999px;
-        background: rgba(240, 253, 250, 0.96);
-        color: #0f766e;
-        font-size: 15px;
-        font-weight: 800;
-        line-height: 30px;
-        text-align: center;
-        box-shadow: 0 4px 14px rgba(15, 118, 110, 0.16);
-      }
-      .verse-block.active-verse .verse-play-button {
-        background: #0f766e;
-        color: #fff;
       }
       .verse-label {
         margin: 0 0 4px;
@@ -1284,23 +1272,6 @@ const buildVerseHtml = (
           if (verse.groupId !== null && verse.groupId !== undefined) {
             block.setAttribute('data-group-id', String(verse.groupId));
           }
-          if (mappedVerseIds.has(String(verse.id))) {
-            const playButton = document.createElement('button');
-            playButton.type = 'button';
-            playButton.className = 'verse-play-button';
-            playButton.textContent = '▶';
-            playButton.setAttribute('aria-label', 'Play verse audio');
-            playButton.addEventListener('click', (event) => {
-              event.stopPropagation();
-              postMessage({
-                type: 'verse-audio-toggle',
-                verseId: String(verse.id),
-                groupId: verse.groupId === null || verse.groupId === undefined ? null : String(verse.groupId),
-              });
-            });
-            block.appendChild(playButton);
-          }
-
           const styleClass = verse.styleKey ? 'style-' + String(verse.styleKey).replace(/[^a-zA-Z0-9_-]/g, '') : '';
 
           if (verse.groupLabel) {
@@ -1334,7 +1305,10 @@ const buildVerseHtml = (
             280,
             Math.min(layout.viewportWidthPx - 24, 900)
           );
-          const pagePadding = Math.max(8, Number(layout.pagePaddingPx) || 18);
+          const configuredPagePadding = Number(layout.pagePaddingPx);
+          const pagePadding = Number.isFinite(configuredPagePadding)
+            ? Math.max(0, configuredPagePadding)
+            : 18;
           const maxVersesPerPage =
             Number.isFinite(Number(layout.maxVersesPerPage)) &&
             Number(layout.maxVersesPerPage) > 0
@@ -1417,7 +1391,10 @@ const buildVerseHtml = (
 
         const buildPageNode = (pageNumber, active) => {
           const pageData = versePages[pageNumber - 1] || [];
-          const pagePadding = Math.max(8, Number(layout.pagePaddingPx) || 18);
+          const configuredPagePadding = Number(layout.pagePaddingPx);
+          const pagePadding = Number.isFinite(configuredPagePadding)
+            ? Math.max(0, configuredPagePadding)
+            : 18;
           const wrapper = document.createElement('div');
           wrapper.className = active ? 'page active' : 'page';
           wrapper.id = 'pdf-page-' + pageNumber;
@@ -1711,11 +1688,6 @@ const buildVerseHtml = (
             for (const node of Array.from(document.querySelectorAll('[data-verse-id]'))) {
               const isActive = safeVerseId && node.getAttribute('data-verse-id') === safeVerseId;
               node.classList.toggle('active-verse', Boolean(isActive));
-              const button = node.querySelector('.verse-play-button');
-              if (button) {
-                button.textContent = isActive && isPlaying ? 'Ⅱ' : '▶';
-                button.setAttribute('aria-label', isActive && isPlaying ? 'Pause verse audio' : 'Play verse audio');
-              }
               if (isActive && shouldScroll && currentViewMode === 'continuous') {
                 node.scrollIntoView({ block: 'center', behavior: 'smooth' });
               }
@@ -2881,7 +2853,7 @@ export default function PdfDocumentViewer({
   }, [activeVerseAudio, playableVerseMappings, verseAudioStatus]);
   const verseAudioTimeText = activeVerseAudio
     ? `${formatTime(Math.max(0, verseAudioCurrentSeconds))} / ${formatTime(Math.max(0, activeTrackDurationSeconds))}`
-    : `${playableVerseMappings.length} mapped`;
+    : '';
   const activeVerseAudioDurationSeconds = Math.max(0, activeTrackDurationSeconds);
   const activeVerseAudioElapsedSeconds = activeVerseAudio
     ? Math.max(
@@ -3047,7 +3019,11 @@ export default function PdfDocumentViewer({
               }
             : undefined
         }
-        {...(viewMode === 'book' ? panResponder.panHandlers : {})}
+        {...(
+          viewMode === 'book' && contentMode === 'verse'
+            ? panResponder.panHandlers
+            : {}
+        )}
       >
         {loadingPdf ? (
           <View style={styles.loadingWrap}>
@@ -3076,15 +3052,6 @@ export default function PdfDocumentViewer({
                 const textStyle =
                   COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
                   COMPLETE_VERSE_STYLE_MAP.classic;
-                const playableIndex = playableVerseMappings.findIndex(
-                  (item) => String(item.verseId) === verse.id
-                );
-                const isPlayable = playableIndex >= 0;
-                const isAudioPlaying =
-                  isPlayable &&
-                  activeVerseAudioIndex === playableIndex &&
-                  verseAudioStatus.playing;
-
                 return (
                   <Pressable
                     key={verse.id}
@@ -3105,39 +3072,6 @@ export default function PdfDocumentViewer({
                       isActive ? styles.completeVerseBlockActive : null,
                     ]}
                   >
-                    {isPlayable ? (
-                      <Pressable
-                        onPress={(event: { stopPropagation: () => void }) => {
-                          event.stopPropagation();
-                          if (isAudioPlaying) {
-                            try {
-                              verseAudioPlayer.pause();
-                            } catch {
-                              // ignore player lifecycle errors
-                            }
-                            syncActiveVerseToWebView(verse.id, false, false);
-                          } else {
-                            activateVerseAudioIndex(playableIndex);
-                          }
-                          setReaderVerseId(verse.id);
-                          showOverlay();
-                        }}
-                        style={[
-                          styles.completeVersePlayButton,
-                          isAudioPlaying ? styles.completeVersePlayButtonActive : null,
-                        ]}
-                        accessibilityLabel={isAudioPlaying ? 'Pause verse audio' : 'Play verse audio'}
-                      >
-                        <Text
-                          style={[
-                            styles.completeVersePlayButtonText,
-                            isAudioPlaying ? styles.completeVersePlayButtonTextActive : null,
-                          ]}
-                        >
-                          {isAudioPlaying ? 'Ⅱ' : '▶'}
-                        </Text>
-                      </Pressable>
-                    ) : null}
                     <Text
                       style={[
                         styles.completeVerseText,
@@ -3231,30 +3165,6 @@ export default function PdfDocumentViewer({
                   return;
                 }
                 if (payload?.type === 'interaction') {
-                  showOverlay();
-                  return;
-                }
-                if (payload?.type === 'verse-audio-toggle') {
-                  if (contentMode !== 'verse') return;
-                  const pressedVerseId = String(payload.verseId || '');
-                  if (!pressedVerseId) return;
-                  const targetIndex = playableVerseMappings.findIndex(
-                    (item) => String(item.verseId) === pressedVerseId
-                  );
-                  if (targetIndex < 0) return;
-                  if (
-                    activeVerseAudioIndex === targetIndex &&
-                    verseAudioStatus.playing
-                  ) {
-                    try {
-                      verseAudioPlayer.pause();
-                    } catch {
-                      // ignore player lifecycle errors
-                    }
-                    syncActiveVerseToWebView(pressedVerseId, false, false);
-                  } else {
-                    activateVerseAudioIndex(targetIndex);
-                  }
                   showOverlay();
                   return;
                 }
@@ -3484,7 +3394,9 @@ export default function PdfDocumentViewer({
                         />
                       </View>
                     </Pressable>
-                    <Text style={styles.overlayAudioTime}>{verseAudioTimeText}</Text>
+                    {verseAudioTimeText ? (
+                      <Text style={styles.overlayAudioTime}>{verseAudioTimeText}</Text>
+                    ) : null}
                   </View>
                 </View>
               ) : null}
@@ -3784,36 +3696,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     textAlign: 'center',
-  },
-  completeVersePlay: {
-    color: '#0f766e',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  completeVersePlayButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(249, 115, 22, 0.35)',
-    backgroundColor: '#fff7ed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  completeVersePlayButtonActive: {
-    borderColor: '#f97316',
-    backgroundColor: '#f97316',
-  },
-  completeVersePlayButtonText: {
-    color: '#c2410c',
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  completeVersePlayButtonTextActive: {
-    color: '#fff',
   },
   completeVerseText: {
     color: '#111827',
