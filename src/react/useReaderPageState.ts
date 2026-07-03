@@ -16,10 +16,12 @@ export function useReaderPageState({
   persistAdapter,
 }: Options) {
   const [pageNumber, setPageNumber] = useState(initialPage);
+  const [hydrated, setHydrated] = useState(false);
   const storageKey = useMemo(() => createStorageKey(documentId), [documentId]);
 
   useEffect(() => {
     let active = true;
+    setHydrated(false);
 
     const hydrate = async () => {
       const fromUrl = initialUrl ? parsePageFromUrl(initialUrl, initialPage) : initialPage;
@@ -29,6 +31,7 @@ export function useReaderPageState({
 
       if (!active) return;
       setPageNumber(fromStorage ?? fromUrl);
+      setHydrated(true);
     };
 
     void hydrate();
@@ -42,13 +45,16 @@ export function useReaderPageState({
     async (nextPage: number) => {
       const safePage = Math.max(1, Math.trunc(nextPage));
       setPageNumber(safePage);
-      await persistAdapter.set(storageKey, String(safePage));
+      if (hydrated) {
+        await persistAdapter.set(storageKey, String(safePage));
+      }
     },
-    [persistAdapter, storageKey]
+    [hydrated, persistAdapter, storageKey]
   );
 
   return {
     pageNumber,
     setPageNumber: updatePage,
+    isHydrated: hydrated,
   };
 }
