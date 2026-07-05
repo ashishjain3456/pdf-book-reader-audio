@@ -186,7 +186,8 @@ const buildPdfHtml = (
   targetPage: number,
   viewMode: ReaderViewMode,
   zoomLevel: number,
-  neighborPageCount: number
+  neighborPageCount: number,
+  maxBookHeight: number
 ) => `
 <!DOCTYPE html>
 <html>
@@ -218,6 +219,9 @@ const buildPdfHtml = (
         overflow: hidden;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
       }
       .status {
         padding: 24px 16px;
@@ -228,8 +232,8 @@ const buildPdfHtml = (
       }
       .page {
         width: max-content;
-        min-width: 100%;
-        margin: 0 0 12px;
+        margin: auto;
+        flex: 0 0 auto;
         border: 1px solid #e5e7eb;
         border-radius: 12px;
         overflow: hidden;
@@ -240,6 +244,9 @@ const buildPdfHtml = (
       .page.active {
         border-color: transparent;
         box-shadow: inset 0 0 0 3px #f97316;
+      }
+      #pages.continuous .page {
+        margin: 0 auto 12px;
       }
       canvas {
         display: block;
@@ -258,6 +265,7 @@ const buildPdfHtml = (
       (function() {
         const title = '${escapeJsString(escapeHtml(title))}';
         const pdfUrl = '${escapeJsString(pdfUrl)}';
+        const maxBookHeight = ${Math.max(320, Math.floor(maxBookHeight))};
         const initialPage = Math.max(1, ${Math.max(1, Math.trunc(targetPage))});
         const initialViewMode = '${viewMode}';
         let currentZoom = ${Math.max(0.5, Math.min(3, zoomLevel))};
@@ -322,23 +330,26 @@ const buildPdfHtml = (
 
         const applyViewModeLayout = (mode) => {
           const isCompleteMode = mode === 'continuous';
-          // For complete mode: let the full-height WebView participate in the native
-          // post scroll. For book mode: lock overflow so vertical pan stays put.
-          document.documentElement.style.overflowY = isCompleteMode ? 'auto' : 'hidden';
-          document.body.style.overflowY = isCompleteMode ? 'auto' : 'hidden';
-          document.documentElement.style.overflowX = isCompleteMode ? 'auto' : 'hidden';
-          document.body.style.overflowX = isCompleteMode ? 'auto' : 'hidden';
-          document.documentElement.style.height = isCompleteMode ? 'auto' : '100%';
-          document.body.style.height = isCompleteMode ? 'auto' : '100%';
+          // Keep both axes on one scroll owner. Splitting horizontal overflow onto
+          // #pages and vertical overflow onto the WebView drops Y movement after a
+          // gesture begins on a zoomed, horizontally overflowing PDF page.
+          document.documentElement.style.overflow = 'hidden';
+          document.body.style.overflow = 'hidden';
+          document.documentElement.style.height = '100%';
+          document.body.style.height = '100%';
           if (appNode) {
-            appNode.style.height = isCompleteMode ? 'auto' : '100%';
+            appNode.style.height = '100%';
           }
           document.body.style.overscrollBehavior = 'contain';
           pagesNode.style.touchAction = isCompleteMode ? 'auto' : 'pan-x pan-y';
-          pagesNode.style.flex = isCompleteMode ? 'none' : '1';
-          pagesNode.style.height = isCompleteMode ? 'auto' : '100%';
+          pagesNode.style.flex = '1';
+          pagesNode.style.height = '100%';
+          pagesNode.classList.toggle('continuous', isCompleteMode);
+          pagesNode.style.display = isCompleteMode ? 'block' : 'flex';
+          pagesNode.style.alignItems = isCompleteMode ? 'stretch' : 'center';
+          pagesNode.style.justifyContent = 'flex-start';
           pagesNode.style.overflowX = 'auto';
-          pagesNode.style.overflowY = isCompleteMode ? 'visible' : 'auto';
+          pagesNode.style.overflowY = 'auto';
         };
 
         let lastInteractionAt = 0;
@@ -373,7 +384,13 @@ const buildPdfHtml = (
             const page = await pdf.getPage(safePage);
             const unscaledViewport = page.getViewport({ scale: 1 });
             const targetWidth = Math.max(280, Math.min(window.innerWidth - 24, 900)) * currentZoom;
-            const scale = targetWidth / unscaledViewport.width;
+            const widthScale = targetWidth / unscaledViewport.width;
+            const heightScale =
+              Math.max(280, maxBookHeight - 26) / unscaledViewport.height;
+            const scale =
+              currentViewMode === 'book'
+                ? Math.min(widthScale, heightScale * currentZoom)
+                : widthScale;
             const renderPixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
             const viewport = page.getViewport({ scale: scale * renderPixelRatio });
             const cssViewport = page.getViewport({ scale });
@@ -459,6 +476,10 @@ const buildPdfHtml = (
             pruneBookCache(targetPage);
             preRenderNeighborPages(targetPage);
 
+            postMessage({
+              type: 'book-page-size',
+              height: Math.min(maxBookHeight, Math.ceil(wrapper.getBoundingClientRect().height + 24)),
+            });
             postMessage({ type: 'page-change', pageNumber: targetPage });
             if (announceReady) {
               postMessage({ type: 'ready' });
@@ -722,8 +743,44 @@ const buildPdfHtml = (
           }, 120);
         };
 
+        pagesNode.addEventListener('scroll', handleCompleteModeScroll, { passive: true });
         window.addEventListener('scroll', handleCompleteModeScroll, { passive: true });
         document.addEventListener('touchstart', notifyInteraction, { passive: true });
+        let bookDragStart = null;
+        pagesNode.addEventListener('pointerdown', (event) => {
+          if (currentViewMode !== 'book' || event.isPrimary === false) return;
+          bookDragStart = {
+            x: event.clientX,
+            y: event.clientY,
+            pointerId: event.pointerId,
+          };
+          notifyInteraction();
+        }, { passive: true });
+        pagesNode.addEventListener('pointerup', (event) => {
+          const start = bookDragStart;
+          bookDragStart = null;
+          if (
+            !start ||
+            start.pointerId !== event.pointerId ||
+            currentViewMode !== 'book' ||
+            currentZoom > 1.05
+          ) {
+            return;
+          }
+          const deltaX = event.clientX - start.x;
+          const deltaY = event.clientY - start.y;
+          if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.5) {
+            return;
+          }
+          if (deltaX < 0) {
+            void renderPage(currentPage + 1);
+          } else {
+            void renderPage(currentPage - 1);
+          }
+        }, { passive: true });
+        pagesNode.addEventListener('pointercancel', () => {
+          bookDragStart = null;
+        }, { passive: true });
 
         const renderDocument = async () => {
           try {
@@ -797,8 +854,13 @@ const buildVerseHtml = (
     Math.min(typography?.fontSizePx || defaultFontSizePx, maxFontSizePx)
   );
   const safeLineHeightEm = 1.45;
+  const configuredMaxVersesPerPage = Number(layout?.maxVersesPerPage);
   const layoutConfig = {
-    maxVersesPerPage: Math.max(1, Math.trunc(layout?.maxVersesPerPage || 4)),
+    maxVersesPerPage:
+      Number.isFinite(configuredMaxVersesPerPage) &&
+      configuredMaxVersesPerPage > 0
+        ? Math.max(1, Math.trunc(configuredMaxVersesPerPage))
+        : Number.MAX_SAFE_INTEGER,
     pagePaddingPx: Math.max(8, Math.trunc(layout?.pagePaddingPx || 18)),
     maxViewportUsage: Math.max(
       0.45,
@@ -1075,7 +1137,7 @@ const buildVerseHtml = (
 
         const applyViewModeLayout = (mode) => {
           const isCompleteMode = mode === 'continuous';
-          
+
           document.documentElement.style.overflowY = isCompleteMode ? 'auto' : 'hidden';
           document.body.style.overflowY = isCompleteMode ? 'auto' : 'hidden';
           document.documentElement.style.height = isCompleteMode ? 'auto' : '100%';
@@ -1301,10 +1363,15 @@ const buildVerseHtml = (
             return;
           }
 
-          const targetWidth = Math.max(
+          const availablePageWidth = Math.max(
             280,
-            Math.min(layout.viewportWidthPx - 24, 900)
+            layout.viewportWidthPx - 12
           );
+          const targetWidth =
+            layout.bookSpreadMode === 'double' &&
+            layout.showSecondPage !== false
+              ? Math.max(280, (availablePageWidth - 14) / 2)
+              : availablePageWidth;
           const configuredPagePadding = Number(layout.pagePaddingPx);
           const pagePadding = Number.isFinite(configuredPagePadding)
             ? Math.max(0, configuredPagePadding)
@@ -1320,10 +1387,7 @@ const buildVerseHtml = (
               Number(layout.readerHeightPx) || Number(layout.viewportHeightPx) || 640
             )
           );
-          const usableHeight = Math.max(
-            220,
-            Math.floor(referenceHeight * (Number(layout.maxViewportUsage) || 0.8)) - 24
-          );
+          const usableHeight = Math.max(220, referenceHeight - 12);
           const maxContentHeight = Math.max(120, usableHeight - pagePadding * 2);
 
           const measureHost = document.createElement('div');
@@ -1844,6 +1908,7 @@ export default function PdfDocumentViewer({
   const [verseIdsByPage, setVerseIdsByPage] = useState<Record<number, string[]>>({});
   const [audioSliderWidth, setAudioSliderWidth] = useState(1);
   const [viewerWrapHeight, setViewerWrapHeight] = useState(0);
+  const [pdfBookViewerHeight, setPdfBookViewerHeight] = useState(480);
   const effectiveVerseLayout = useMemo<VerseLayoutConfig | undefined>(() => {
     if (!verseLayout) {
       return isVerseFullScreen ? { fullScreen: true } : undefined;
@@ -1875,6 +1940,10 @@ export default function PdfDocumentViewer({
       : Math.floor(effectiveVerseLayout?.readerHeightPx || 480)
   );
   const bookViewerHeight = verseViewerHeight;
+  const maxPdfBookViewerHeight = Math.max(
+    320,
+    Math.floor(visibleViewportHeight * 0.8)
+  );
   const completeViewerHeight = isVerseFullScreen
     ? visibleViewportHeight
     : verseViewerHeight;
@@ -1894,6 +1963,10 @@ export default function PdfDocumentViewer({
   const hasVerseContent = Boolean(verses?.length);
   const contentMode: ReaderContentMode =
     mode === 'verse' ? 'verse' : mode === 'pdf' ? 'pdf' : hasVerseContent ? 'verse' : 'pdf';
+  const viewerHeight =
+    contentMode === 'pdf' && viewMode === 'book'
+      ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight)
+      : completeViewerHeight;
   const useNativeCompleteVerseView = false;
   const playableVerseMappings = useMemo(
     () =>
@@ -2218,7 +2291,8 @@ export default function PdfDocumentViewer({
             externalInitialPageNumber || 1,
             initialViewModeRef.current,
             initialZoomLevelRef.current,
-            neighborPageCount
+            neighborPageCount,
+            maxPdfBookViewerHeight
           ),
     [
       contentMode,
@@ -2229,6 +2303,7 @@ export default function PdfDocumentViewer({
       verses,
       viewerReloadKey,
       neighborPageCount,
+      maxPdfBookViewerHeight,
       verseZoomConfig.max,
       verseZoomConfig.min,
       verseZoomConfig.defaultSize,
@@ -2830,7 +2905,10 @@ export default function PdfDocumentViewer({
     contentMode === 'verse'
       ? verseFontSizePx >= verseZoomConfig.max
       : zoomLevel >= 3;
-  const pageBadgeText = `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`;
+  const pageBadgeText =
+    contentMode === 'verse' && viewMode === 'continuous'
+      ? 'Page 1 / 1'
+      : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`;
   const activeVerseAudio =
     activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
   const verseAudioCurrentSeconds = Math.max(0, verseAudioStatus.currentTime || 0);
@@ -3007,7 +3085,7 @@ export default function PdfDocumentViewer({
           styles.viewerWrap,
           isVerseFullScreen
             ? styles.viewerWrapFullScreen
-            : { height: completeViewerHeight },
+            : { height: viewerHeight },
         ]}
         onLayout={
           contentMode === 'verse'
@@ -3169,7 +3247,7 @@ export default function PdfDocumentViewer({
                   return;
                 }
         if (payload?.type === 'ready') {
-          // Sync state to WebView immediately after it says its ready, 
+          // Sync state to WebView immediately after it says its ready,
           // especially important for view mode switches and reloads.
           if (contentMode === 'verse' && isPageHydrated) {
             syncViewerStateToWebView(viewMode, pageNumber);
@@ -3186,6 +3264,17 @@ export default function PdfDocumentViewer({
                   return;
                 }
                 if (payload?.type === 'content-height') {
+                  return;
+                }
+                if (payload?.type === 'book-page-size') {
+                  if (contentMode !== 'pdf') return;
+                  const nextHeight = Math.min(
+                    maxPdfBookViewerHeight,
+                    Math.max(320, Math.ceil(Number(payload.height) || 0))
+                  );
+                  setPdfBookViewerHeight((current) =>
+                    current === nextHeight ? current : nextHeight
+                  );
                   return;
                 }
                 if (payload?.type === 'error') {
