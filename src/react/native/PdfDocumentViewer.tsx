@@ -2292,6 +2292,7 @@ export default function PdfDocumentViewer({
   }, [label]);
 
   const effectivePdfUrl = localPdfUrl || pdfUrl;
+  const usesLocalFileFallback = Boolean(localPdfUrl?.startsWith('file://'));
   const verseLayoutSignature = JSON.stringify(effectiveVerseLayout || null);
 
   const pdfHtml = useMemo(
@@ -3053,17 +3054,17 @@ export default function PdfDocumentViewer({
         <View style={styles.nativeFullScreenRoot}>
           <WebView
             ref={fullScreenWebViewRef}
-            originWhitelist={['*']}
+            originWhitelist={['about:blank']}
             source={fullScreenWebViewSource}
             style={styles.nativeFullScreenWebView}
             javaScriptEnabled
             domStorageEnabled
             startInLoadingState={false}
             setSupportMultipleWindows={false}
-            mixedContentMode="always"
-            allowFileAccess
-            allowFileAccessFromFileURLs
-            allowUniversalAccessFromFileURLs
+            mixedContentMode="never"
+            allowFileAccess={false}
+            allowFileAccessFromFileURLs={false}
+            allowUniversalAccessFromFileURLs={false}
             scrollEnabled={viewMode === 'continuous'}
             nestedScrollEnabled
             bounces={false}
@@ -3419,7 +3420,7 @@ export default function PdfDocumentViewer({
           <WebView
             ref={webViewRef}
             key={`${viewerReloadKey}`}
-            originWhitelist={['*']}
+            originWhitelist={['about:blank']}
             source={webViewSource}
             style={[
               styles.webview,
@@ -3441,10 +3442,10 @@ export default function PdfDocumentViewer({
               }
             }}
             setSupportMultipleWindows={false}
-            mixedContentMode="always"
-            allowFileAccess
-            allowFileAccessFromFileURLs
-            allowUniversalAccessFromFileURLs
+            mixedContentMode="never"
+            allowFileAccess={usesLocalFileFallback}
+            allowFileAccessFromFileURLs={usesLocalFileFallback}
+            allowUniversalAccessFromFileURLs={usesLocalFileFallback}
             scrollEnabled={contentMode === 'pdf'}
             nestedScrollEnabled={viewMode === 'book' || viewMode === 'continuous'}
             bounces={false}
