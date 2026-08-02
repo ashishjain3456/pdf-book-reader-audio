@@ -41,6 +41,25 @@ export type ReaderActionsContext = {
   showOverlay: () => void;
 };
 
+export type ReaderTheme = {
+  background?: string;
+  surface?: string;
+  page?: string;
+  border?: string;
+  text?: string;
+  mutedText?: string;
+  accent?: string;
+  accentSurface?: string;
+  buttonSurface?: string;
+  shadow?: string;
+  overlayText?: string;
+  accentBlue?: string;
+  accentRed?: string;
+  accentGreen?: string;
+  accentIndigo?: string;
+  preserveInlineColors?: boolean;
+};
+
 export type PdfDocumentViewerProps = {
   pdfUrl?: string;
   downloadUrl?: string;
@@ -62,6 +81,7 @@ export type PdfDocumentViewerProps = {
   verseLayout?: VerseLayoutConfig;
   renderRightActions?: (context: ReaderActionsContext) => React.ReactNode;
   onFullScreenChange?: (isFullScreen: boolean) => void;
+  readerTheme?: ReaderTheme;
 };
 
 export type ReaderVerse = {
@@ -116,6 +136,32 @@ type SwipeGestureState = {
 };
 
 type CompleteVerseTextStyle = Record<string, unknown>;
+
+const DEFAULT_READER_THEME: Required<ReaderTheme> = {
+  background: '#f5f5f4',
+  surface: '#fafaf9',
+  page: '#fffbea',
+  border: '#e4e4e7',
+  text: '#111827',
+  mutedText: '#6b7280',
+  accent: '#f97316',
+  accentSurface: '#fff7ed',
+  buttonSurface: '#fff',
+  shadow: '#111827',
+  overlayText: '#27272a',
+  accentBlue: '#1d4ed8',
+  accentRed: '#7f1d1d',
+  accentGreen: '#166534',
+  accentIndigo: '#3730a3',
+  preserveInlineColors: true,
+};
+
+function resolveReaderTheme(theme?: ReaderTheme): Required<ReaderTheme> {
+  return {
+    ...DEFAULT_READER_THEME,
+    ...(theme || {}),
+  };
+}
 
 const COMPLETE_VERSE_STYLE_MAP: Record<string, CompleteVerseTextStyle> = {
   classic: { color: '#111827', fontWeight: '500' },
@@ -832,8 +878,11 @@ const buildVerseHtml = (
   typography?: VerseTypographyConfig,
   mappedVerseIds: string[] = [],
   spreadMode?: 'single' | 'double',
-  showSecondPage?: boolean
+  showSecondPage?: boolean,
+  readerTheme?: ReaderTheme
 ) => {
+  const theme = resolveReaderTheme(readerTheme);
+  const preserveInlineColors = theme.preserveInlineColors === true;
   const isFullScreen = layout?.fullScreen === true;
   const minFontSizePx = Math.max(
     1,
@@ -911,7 +960,7 @@ const buildVerseHtml = (
         margin: 0;
         padding: 0;
         background: transparent;
-        color: #111827;
+        color: ${theme.text};
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         overflow: hidden;
       }
@@ -935,13 +984,13 @@ const buildVerseHtml = (
         margin: 0;
         border: 0;
         border-radius: 12px;
-        background: #fffbeb;
+        background: ${theme.page};
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         box-sizing: border-box;
       }
       .page.active {
         border-color: transparent;
-        box-shadow: inset 0 0 0 3px #f97316;
+        box-shadow: inset 0 0 0 3px ${theme.accent};
       }
       .book-spread {
         width: 100%;
@@ -968,7 +1017,7 @@ const buildVerseHtml = (
         height: 100%;
         border-radius: 8px;
         border: 0;
-        background: #fffbeb;
+        background: ${theme.page};
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         position: relative;
         flex-shrink: 0;
@@ -981,7 +1030,7 @@ const buildVerseHtml = (
         box-shadow:
           0 1px 2px rgba(15, 23, 42, 0.09),
           0 10px 24px rgba(120, 53, 15, 0.08),
-          inset 0 0 0 3px #f97316;
+          inset 0 0 0 3px ${theme.accent};
       }
       .page.book-sheet::before {
         content: '';
@@ -1010,26 +1059,26 @@ const buildVerseHtml = (
         border: 0;
         border-radius: 0;
         padding: 10px 12px;
-        background: #fffbeb;
+        background: ${theme.page};
         position: relative;
       }
       .verse-block.active-verse {
-        border-color: #f97316;
+        border-color: ${theme.accent};
         box-shadow:
-          inset 0 0 0 2px #f97316;
+          inset 0 0 0 2px ${theme.accent};
       }
       .verse-label {
         margin: 0 0 4px;
         font-size: var(--verse-label-font-size, 12px);
         font-weight: 700;
-        color: #9a3412;
+        color: ${theme.accent};
         text-align: center;
       }
       .verse-group {
         margin: 0 0 4px;
         font-size: var(--verse-group-font-size, 11px);
         font-weight: 600;
-        color: #6b7280;
+        color: ${theme.mutedText};
         text-transform: uppercase;
         letter-spacing: 0.03em;
         text-align: center;
@@ -1038,54 +1087,62 @@ const buildVerseHtml = (
         margin: 0;
         font-size: var(--verse-font-size, 22px);
         line-height: var(--verse-line-height, 1.45);
-        color: #111827;
+        color: ${theme.text};
         white-space: pre-wrap;
         text-align: center;
       }
+      ${
+        preserveInlineColors
+          ? ''
+          : `.verse-content *,
+      .verse-label * {
+        color: inherit !important;
+      }`
+      }
       .verse-content.style-aarti,
       .verse-label.style-aarti {
-        color: #9a3412;
+        color: ${theme.accent};
         font-weight: 700;
       }
       .verse-content.style-sutra,
       .verse-label.style-sutra {
-        color: #374151;
+        color: ${theme.mutedText};
         font-weight: 700;
         text-transform: uppercase;
       }
       .verse-content.style-soft,
       .verse-label.style-soft {
-        color: #92400e;
+        color: ${theme.mutedText};
         font-style: italic;
       }
       .verse-content.style-shastra,
       .verse-label.style-shastra {
-        color: #0f172a;
+        color: ${theme.text};
         font-weight: 800;
       }
       .verse-content.style-midnight,
       .verse-label.style-midnight {
-        color: #1d4ed8;
+        color: ${theme.accentBlue};
         font-weight: 800;
       }
       .verse-content.style-maroon,
       .verse-label.style-maroon {
-        color: #7f1d1d;
+        color: ${theme.accentRed};
         font-weight: 800;
       }
       .verse-content.style-forest,
       .verse-label.style-forest {
-        color: #166534;
+        color: ${theme.accentGreen};
         font-weight: 700;
       }
       .verse-content.style-indigo,
       .verse-label.style-indigo {
-        color: #3730a3;
+        color: ${theme.accentIndigo};
         font-weight: 700;
       }
       .verse-content.style-graphite,
       .verse-label.style-graphite {
-        color: #3f3f46;
+        color: ${theme.mutedText};
         font-weight: 600;
       }
     </style>
@@ -1281,7 +1338,7 @@ const buildVerseHtml = (
           const fontStyle = probe.style.fontStyle;
           const textDecoration = probe.style.textDecorationLine || probe.style.textDecoration;
 
-          if (color) {
+          if (${preserveInlineColors ? 'true' : 'false'} && color) {
             parts.push('color: ' + color);
           }
 
@@ -1877,7 +1934,12 @@ export default function PdfDocumentViewer({
   verseLayout,
   renderRightActions,
   onFullScreenChange,
+  readerTheme,
 }: PdfDocumentViewerProps) {
+  const resolvedReaderTheme = useMemo(
+    () => resolveReaderTheme(readerTheme),
+    [readerTheme]
+  );
   const verseZoomConfig = useMemo(() => {
     const min = Math.max(1, Math.round(Number(verseLayout?.minFontSizePx) || 18));
     const max = Math.max(min, Math.round(Number(verseLayout?.maxFontSizePx) || 36));
@@ -2356,7 +2418,8 @@ export default function PdfDocumentViewer({
             },
             mappedVerseIds,
             'single',
-            false
+            false,
+            resolvedReaderTheme
           )
         : buildPdfHtml(
             effectivePdfUrl || '',
@@ -2381,6 +2444,7 @@ export default function PdfDocumentViewer({
       verseZoomConfig.min,
       verseZoomConfig.defaultSize,
       verseLayoutSignature,
+      resolvedReaderTheme,
     ]
   );
 
@@ -2409,7 +2473,8 @@ export default function PdfDocumentViewer({
             },
             mappedVerseIds,
             'single',
-            false
+            false,
+            resolvedReaderTheme
           )
         : '',
     [
@@ -2424,6 +2489,7 @@ export default function PdfDocumentViewer({
       verseZoomConfig.min,
       verses,
       visibleViewportHeight,
+      resolvedReaderTheme,
     ]
   );
 
@@ -3122,7 +3188,12 @@ export default function PdfDocumentViewer({
         statusBarTranslucent
         onRequestClose={exitVerseFullScreen}
       >
-        <View style={styles.nativeFullScreenRoot}>
+        <View
+          style={[
+            styles.nativeFullScreenRoot,
+            { backgroundColor: resolvedReaderTheme.background },
+          ]}
+        >
           <WebView
             ref={fullScreenWebViewRef}
             originWhitelist={['about:blank']}
@@ -3294,7 +3365,10 @@ export default function PdfDocumentViewer({
         inlineFullScreenActive
           ? [
               styles.containerFullScreen,
-              { height: visibleViewportHeight },
+              {
+                height: visibleViewportHeight,
+                backgroundColor: resolvedReaderTheme.background,
+              },
             ]
           : null,
       ]}
@@ -3331,10 +3405,32 @@ export default function PdfDocumentViewer({
                   onPress={() => {
                     switchReaderMode('continuous');
                   }}
-                  style={[styles.modeButton, viewMode === 'continuous' ? styles.modeButtonActive : null]}
+                  style={[
+                    styles.modeButton,
+                    {
+                      borderColor:
+                        viewMode === 'continuous'
+                          ? resolvedReaderTheme.accent
+                          : resolvedReaderTheme.border,
+                      backgroundColor:
+                        viewMode === 'continuous'
+                          ? resolvedReaderTheme.accentSurface
+                          : resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   accessibilityLabel="Complete PDF mode"
                 >
-                  <Text style={[styles.modeIcon, viewMode === 'continuous' ? styles.modeIconActive : null]}>
+                  <Text
+                    style={[
+                      styles.modeIcon,
+                      {
+                        color:
+                          viewMode === 'continuous'
+                            ? resolvedReaderTheme.accent
+                            : resolvedReaderTheme.mutedText,
+                      },
+                    ]}
+                  >
                     📄
                   </Text>
                 </Pressable>
@@ -3342,10 +3438,32 @@ export default function PdfDocumentViewer({
                   onPress={() => {
                     switchReaderMode('book');
                   }}
-                  style={[styles.modeButton, viewMode === 'book' ? styles.modeButtonActive : null]}
+                  style={[
+                    styles.modeButton,
+                    {
+                      borderColor:
+                        viewMode === 'book'
+                          ? resolvedReaderTheme.accent
+                          : resolvedReaderTheme.border,
+                      backgroundColor:
+                        viewMode === 'book'
+                          ? resolvedReaderTheme.accentSurface
+                          : resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   accessibilityLabel="Paginated book mode"
                 >
-                  <Text style={[styles.modeIcon, viewMode === 'book' ? styles.modeIconActive : null]}>
+                  <Text
+                    style={[
+                      styles.modeIcon,
+                      {
+                        color:
+                          viewMode === 'book'
+                            ? resolvedReaderTheme.accent
+                            : resolvedReaderTheme.mutedText,
+                      },
+                    ]}
+                  >
                     📖
                   </Text>
                 </Pressable>
@@ -3354,47 +3472,105 @@ export default function PdfDocumentViewer({
                     setShowShareOverlay((value) => !value);
                     showOverlay();
                   }}
-                  style={[styles.modeButton, showShareOverlay ? styles.modeButtonActive : null]}
+                  style={[
+                    styles.modeButton,
+                    {
+                      borderColor: showShareOverlay
+                        ? resolvedReaderTheme.accent
+                        : resolvedReaderTheme.border,
+                      backgroundColor: showShareOverlay
+                        ? resolvedReaderTheme.accentSurface
+                        : resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   accessibilityLabel="Share"
                 >
                   <Ionicons
                     name="share-social-outline"
                     size={15}
-                    color={showShareOverlay ? '#c2410c' : '#52525b'}
+                    color={
+                      showShareOverlay
+                        ? resolvedReaderTheme.accent
+                        : resolvedReaderTheme.mutedText
+                    }
                   />
                 </Pressable>
                 {contentMode === 'pdf' ? (
                   <Pressable
                     onPress={() => void handleDownload()}
-                    style={styles.actionButton}
+                    style={[
+                      styles.actionButton,
+                      {
+                        borderColor: resolvedReaderTheme.border,
+                        backgroundColor: resolvedReaderTheme.buttonSurface,
+                      },
+                    ]}
                     accessibilityLabel="Download PDF"
                   >
-                    <Text style={styles.actionIcon}>{downloading ? '…' : '⬇'}</Text>
+                    <Text
+                      style={[
+                        styles.actionIcon,
+                        { color: resolvedReaderTheme.accent },
+                      ]}
+                    >
+                      {downloading ? '…' : '⬇'}
+                    </Text>
                   </Pressable>
                 ) : null}
               </>
             )}
           </View>
           {showShareOverlay ? (
-            <View style={styles.shareOverlayCard}>
+            <View
+              style={[
+                styles.shareOverlayCard,
+                {
+                  borderColor: resolvedReaderTheme.border,
+                  backgroundColor: resolvedReaderTheme.surface,
+                  shadowColor: resolvedReaderTheme.shadow,
+                },
+              ]}
+            >
               <View style={styles.shareOverlayRow}>
                 <Pressable
                   accessibilityLabel="Share"
-                  style={styles.shareIconButton}
+                  style={[
+                    styles.shareIconButton,
+                    {
+                      borderColor: resolvedReaderTheme.border,
+                      backgroundColor: resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   onPress={() => void openSystemShare()}
                 >
-                  <Ionicons name="arrow-redo-outline" size={18} color="#111827" />
+                  <Ionicons
+                    name="arrow-redo-outline"
+                    size={18}
+                    color={resolvedReaderTheme.text}
+                  />
                 </Pressable>
                 <Pressable
                   accessibilityLabel="Share on WhatsApp"
-                  style={styles.shareIconButton}
+                  style={[
+                    styles.shareIconButton,
+                    {
+                      borderColor: resolvedReaderTheme.border,
+                      backgroundColor: resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   onPress={() => void openWhatsAppShare()}
                 >
                   <FontAwesome6 name="whatsapp" size={18} color="#16a34a" />
                 </Pressable>
                 <Pressable
                   accessibilityLabel="Share on Facebook"
-                  style={styles.shareIconButton}
+                  style={[
+                    styles.shareIconButton,
+                    {
+                      borderColor: resolvedReaderTheme.border,
+                      backgroundColor: resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   disabled={!shareUrl}
                   onPress={() => void openShareUrl(shareLinks.facebookUrl)}
                 >
@@ -3406,14 +3582,30 @@ export default function PdfDocumentViewer({
                 </Pressable>
                 <Pressable
                   accessibilityLabel="Share on X"
-                  style={styles.shareIconButton}
+                  style={[
+                    styles.shareIconButton,
+                    {
+                      borderColor: resolvedReaderTheme.border,
+                      backgroundColor: resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   onPress={() => void openShareUrl(shareLinks.xUrl)}
                 >
-                  <FontAwesome6 name="x-twitter" size={18} color="#111827" />
+                  <FontAwesome6
+                    name="x-twitter"
+                    size={18}
+                    color={resolvedReaderTheme.text}
+                  />
                 </Pressable>
                 <Pressable
                   accessibilityLabel="Share on Telegram"
-                  style={styles.shareIconButton}
+                  style={[
+                    styles.shareIconButton,
+                    {
+                      borderColor: resolvedReaderTheme.border,
+                      backgroundColor: resolvedReaderTheme.buttonSurface,
+                    },
+                  ]}
                   onPress={() => void openShareUrl(shareLinks.telegramUrl)}
                 >
                   <FontAwesome6 name="telegram" size={18} color="#0284c7" />
@@ -3427,6 +3619,7 @@ export default function PdfDocumentViewer({
       <View
         style={[
           styles.viewerWrap,
+          { borderColor: resolvedReaderTheme.border },
           inlineFullScreenActive
             ? styles.viewerWrapFullScreen
             : { height: viewerHeight },
@@ -3448,9 +3641,21 @@ export default function PdfDocumentViewer({
         )}
       >
         {loadingPdf && !useNativeCompleteVerseView ? (
-          <View style={styles.loadingWrap}>
+          <View
+            style={[
+              styles.loadingWrap,
+              { backgroundColor: resolvedReaderTheme.background },
+            ]}
+          >
             <ActivityIndicator />
-            <Text style={styles.loadingText}>{loadingMessage}</Text>
+            <Text
+              style={[
+                styles.loadingText,
+                { color: resolvedReaderTheme.mutedText },
+              ]}
+            >
+              {loadingMessage}
+            </Text>
           </View>
         ) : null}
 
@@ -3458,7 +3663,13 @@ export default function PdfDocumentViewer({
           useNativeCompleteVerseView && contentMode === 'verse' && viewMode === 'continuous' ? (
             <NativeScrollView
               ref={completeScrollRef}
-              style={[styles.completeScroll, { height: completeViewerHeight }]}
+              style={[
+                styles.completeScroll,
+                {
+                  height: completeViewerHeight,
+                  backgroundColor: resolvedReaderTheme.background,
+                },
+              ]}
               contentContainerStyle={styles.completeScrollContent}
               nestedScrollEnabled
               scrollEventThrottle={64}
@@ -3492,6 +3703,15 @@ export default function PdfDocumentViewer({
                     }}
                     style={[
                       styles.completeVerseBlock,
+                      {
+                        borderColor: isActive
+                          ? resolvedReaderTheme.accent
+                          : resolvedReaderTheme.border,
+                        backgroundColor: isActive
+                          ? resolvedReaderTheme.accentSurface
+                          : resolvedReaderTheme.page,
+                        shadowColor: resolvedReaderTheme.shadow,
+                      },
                       isActive ? styles.completeVerseBlockActive : null,
                     ]}
                   >
@@ -3499,6 +3719,7 @@ export default function PdfDocumentViewer({
                       style={[
                         styles.completeVerseText,
                         textStyle,
+                        { color: resolvedReaderTheme.text },
                         {
                           fontSize: verseFontSizePx,
                           lineHeight: Math.round(verseFontSizePx * 1.45),
