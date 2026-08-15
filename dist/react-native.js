@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import * as ReactNative from 'react-native';
 import { StyleSheet, Platform, PanResponder, Alert, View, Pressable, Text, ActivityIndicator, NativeModules } from 'react-native';
 import { File, Paths } from 'expo-file-system';
@@ -8,10 +8,12 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { WebView } from 'react-native-webview';
-import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
+import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 
 // src/react/native/PdfDocumentViewer.tsx
 var NativeModal = ReactNative.Modal;
+var NativeScrollView = ReactNative.ScrollView;
+var NativeDimensions = ReactNative.Dimensions;
 var DEFAULT_READER_THEME = {
   background: "#f5f5f4",
   surface: "#fafaf9",
@@ -30,12 +32,35 @@ var DEFAULT_READER_THEME = {
   accentIndigo: "#3730a3",
   preserveInlineColors: true
 };
+var MIN_ZOOM_LEVEL = 0.5;
+var MAX_ZOOM_LEVEL = 3;
+var DEFAULT_ZOOM_LEVEL = 1.6;
+var PDF_ZOOM_STEP = 0.75;
+var VERSE_BUTTON_ZOOM_STEP_PX = 6;
+var VERSE_GESTURE_ZOOM_STEP_PX = 3;
 function resolveReaderTheme(theme) {
   return {
     ...DEFAULT_READER_THEME,
     ...theme || {}
   };
 }
+var COMPLETE_VERSE_STYLE_MAP = {
+  classic: { color: "#111827", fontWeight: "800" },
+  aarti: { color: "#9a3412", fontWeight: "800" },
+  sutra: {
+    color: "#374151",
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  soft: { color: "#92400e", fontStyle: "italic", fontWeight: "800" },
+  shastra: { color: "#0f172a", fontWeight: "900" },
+  midnight: { color: "#1d4ed8", fontWeight: "900" },
+  maroon: { color: "#7f1d1d", fontWeight: "900" },
+  forest: { color: "#166534", fontWeight: "800" },
+  indigo: { color: "#3730a3", fontWeight: "800" },
+  graphite: { color: "#3f3f46", fontWeight: "800" }
+};
 var formatTime = (seconds) => {
   const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
   const minutes = Math.floor(safeSeconds / 60);
@@ -48,6 +73,110 @@ var hasNativeStaticServer = () => {
 };
 var escapeHtml = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 var stripHtmlText = (value) => String(value || "").replace(/<\s*br\s*\/?>/gi, "\n").replace(/<\s*\/p\s*>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\n{3,}/g, "\n\n").trim();
+var decodeHtmlText = (value) => String(value || "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+var getHtmlAttribute = (tag, name) => {
+  const pattern = new RegExp(
+    `${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+    "i"
+  );
+  const match = tag.match(pattern);
+  return match?.[1] || match?.[2] || match?.[3] || "";
+};
+var parseNativeInlineStyle = (tagName, tag) => {
+  const style = {};
+  if (tagName === "b" || tagName === "strong") {
+    style.fontWeight = "900";
+  }
+  if (tagName === "i" || tagName === "em") {
+    style.fontStyle = "italic";
+  }
+  if (tagName === "u") {
+    style.textDecorationLine = "underline";
+  }
+  if (tagName === "s" || tagName === "strike" || tagName === "del") {
+    style.textDecorationLine = "line-through";
+  }
+  const fontColor = getHtmlAttribute(tag, "color");
+  if (tagName === "font" && fontColor) {
+    style.color = fontColor;
+  }
+  const inlineStyle = getHtmlAttribute(tag, "style");
+  for (const declaration of inlineStyle.split(";")) {
+    const [rawProperty, ...rawValueParts] = declaration.split(":");
+    const property = rawProperty?.trim().toLowerCase();
+    const value = rawValueParts.join(":").trim();
+    if (!property || !value) continue;
+    if (property === "color") {
+      style.color = value;
+    } else if (property === "font-weight") {
+      const numericWeight = Number(value);
+      style.fontWeight = Number.isFinite(numericWeight) ? String(Math.max(600, Math.min(900, numericWeight))) : value.includes("bold") ? "900" : style.fontWeight;
+    } else if (property === "font-style" && value.includes("italic")) {
+      style.fontStyle = "italic";
+    } else if (property === "text-decoration") {
+      if (value.includes("underline")) {
+        style.textDecorationLine = "underline";
+      } else if (value.includes("line-through")) {
+        style.textDecorationLine = "line-through";
+      }
+    }
+  }
+  return style;
+};
+var renderNativeRichText = (html, keyPrefix) => {
+  const nodes = [];
+  const styleStack = [{}];
+  let key = 0;
+  const currentStyle = () => Object.assign({}, ...styleStack);
+  const pushText = (value) => {
+    const decoded = decodeHtmlText(value);
+    if (!decoded) return;
+    nodes.push(
+      /* @__PURE__ */ jsx(Text, { style: currentStyle(), children: decoded }, `${keyPrefix}-${key++}`)
+    );
+  };
+  const pushBreak = (count = 1) => {
+    pushText("\n".repeat(count));
+  };
+  const tokens = String(html || "").match(/<[^>]+>|[^<]+/g) || [];
+  for (const token of tokens) {
+    if (!token.startsWith("<")) {
+      pushText(token);
+      continue;
+    }
+    const isClosingTag = /^<\s*\//.test(token);
+    const tagName = (token.replace(/^<\s*\/?\s*/, "").replace(/\/?\s*>$/, "").trim().split(/\s+/)[0] || "").toLowerCase();
+    if (!tagName) continue;
+    if (tagName === "br") {
+      pushBreak();
+      continue;
+    }
+    if (isClosingTag) {
+      if (["p", "div", "li"].includes(tagName)) {
+        pushBreak(tagName === "li" ? 1 : 2);
+      }
+      if (["b", "strong", "i", "em", "u", "s", "strike", "del", "span", "font"].includes(
+        tagName
+      ) && styleStack.length > 1) {
+        styleStack.pop();
+      }
+      continue;
+    }
+    if (tagName === "li") {
+      pushText("\u2022 ");
+      continue;
+    }
+    if (tagName === "p" || tagName === "div") {
+      continue;
+    }
+    if (["b", "strong", "i", "em", "u", "s", "strike", "del", "span", "font"].includes(
+      tagName
+    )) {
+      styleStack.push(parseNativeInlineStyle(tagName, token));
+    }
+  }
+  return nodes;
+};
 var escapeJsString = (value) => value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 var escapeJsData = (value) => JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 var buildPdfHtml = (pdfUrl, title, targetPage, viewMode, zoomLevel, neighborPageCount, maxBookHeight) => `
@@ -130,7 +259,7 @@ var buildPdfHtml = (pdfUrl, title, targetPage, viewMode, zoomLevel, neighborPage
         const maxBookHeight = ${Math.max(320, Math.floor(maxBookHeight))};
         const initialPage = Math.max(1, ${Math.max(1, Math.trunc(targetPage))});
         const initialViewMode = '${viewMode}';
-        let currentZoom = ${Math.max(0.5, Math.min(3, zoomLevel))};
+        let currentZoom = ${Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel))};
         const neighborPageCount = ${Math.max(0, Math.trunc(neighborPageCount))};
         const statusNode = document.getElementById('status');
         const appNode = document.getElementById('app');
@@ -170,7 +299,11 @@ var buildPdfHtml = (pdfUrl, title, targetPage, viewMode, zoomLevel, neighborPage
                 pageNodes.reduce((maxHeight, node) => {
                   const rect = node.getBoundingClientRect();
                   const scrollTop = window.scrollY || window.pageYOffset || 0;
-                  return Math.max(maxHeight, rect.bottom + scrollTop);
+                  return Math.max(
+                    maxHeight,
+                    rect.bottom + scrollTop,
+                    rect.top + scrollTop + (node.scrollHeight || 0)
+                  );
                 }, 0) +
                   16
               )
@@ -568,7 +701,7 @@ var buildPdfHtml = (pdfUrl, title, targetPage, viewMode, zoomLevel, neighborPage
           setZoom: (zoom, page) => {
             const requestedZoom = Number(zoom);
             if (!Number.isFinite(requestedZoom)) return;
-            currentZoom = Math.max(0.5, Math.min(3, requestedZoom));
+            currentZoom = Math.max(${MIN_ZOOM_LEVEL}, Math.min(${MAX_ZOOM_LEVEL}, requestedZoom));
             pageRenderCache.clear();
             const requestedPage = clampPage(page || currentPage);
             if (currentViewMode === 'continuous') {
@@ -864,14 +997,14 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
       .verse-label {
         margin: 0 0 4px;
         font-size: var(--verse-label-font-size, 12px);
-        font-weight: 700;
+        font-weight: 800;
         color: ${theme.accent};
         text-align: center;
       }
       .verse-group {
         margin: 0 0 4px;
         font-size: var(--verse-group-font-size, 11px);
-        font-weight: 600;
+        font-weight: 800;
         color: ${theme.mutedText};
         text-transform: uppercase;
         letter-spacing: 0.03em;
@@ -882,8 +1015,19 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         font-size: var(--verse-font-size, 22px);
         line-height: var(--verse-line-height, 1.45);
         color: ${theme.text};
+        font-weight: 800;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
         white-space: pre-wrap;
         text-align: center;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .verse-content * {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       ${preserveInlineColors ? "" : `.verse-content *,
       .verse-label * {
@@ -892,48 +1036,49 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
       .verse-content.style-aarti,
       .verse-label.style-aarti {
         color: ${theme.accent};
-        font-weight: 700;
+        font-weight: 800;
       }
       .verse-content.style-sutra,
       .verse-label.style-sutra {
         color: ${theme.mutedText};
-        font-weight: 700;
+        font-weight: 800;
         text-transform: uppercase;
       }
       .verse-content.style-soft,
       .verse-label.style-soft {
         color: ${theme.mutedText};
         font-style: italic;
+        font-weight: 800;
       }
       .verse-content.style-shastra,
       .verse-label.style-shastra {
         color: ${theme.text};
-        font-weight: 800;
+        font-weight: 900;
       }
       .verse-content.style-midnight,
       .verse-label.style-midnight {
         color: ${theme.accentBlue};
-        font-weight: 800;
+        font-weight: 900;
       }
       .verse-content.style-maroon,
       .verse-label.style-maroon {
         color: ${theme.accentRed};
-        font-weight: 800;
+        font-weight: 900;
       }
       .verse-content.style-forest,
       .verse-label.style-forest {
         color: ${theme.accentGreen};
-        font-weight: 700;
+        font-weight: 800;
       }
       .verse-content.style-indigo,
       .verse-label.style-indigo {
         color: ${theme.accentIndigo};
-        font-weight: 700;
+        font-weight: 800;
       }
       .verse-content.style-graphite,
       .verse-label.style-graphite {
         color: ${theme.mutedText};
-        font-weight: 600;
+        font-weight: 800;
       }
     </style>
   </head>
@@ -1390,9 +1535,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
           if (announceReady !== false) {
             postMessage({ type: 'ready' });
           }
-          if (currentViewMode === 'continuous') {
-            scheduleContentHeightUpdates();
-          }
+          scheduleContentHeightUpdates();
         };
 
         const findVerseNode = (verseId) => {
@@ -1725,6 +1868,21 @@ function PdfDocumentViewer({
   onFullScreenChange,
   readerTheme
 }) {
+  const [windowSize, setWindowSize] = useState(
+    () => NativeDimensions?.get?.("window") || { width: 0, height: 0 }
+  );
+  const windowWidth = windowSize.width || 0;
+  useEffect(() => {
+    const subscription = NativeDimensions?.addEventListener?.(
+      "change",
+      ({ window }) => {
+        setWindowSize(window);
+      }
+    );
+    return () => {
+      subscription?.remove?.();
+    };
+  }, []);
   const resolvedReaderTheme = useMemo(
     () => resolveReaderTheme(readerTheme),
     [readerTheme]
@@ -1740,7 +1898,7 @@ function PdfDocumentViewer({
       min,
       max,
       defaultSize,
-      step: 2
+      step: VERSE_BUTTON_ZOOM_STEP_PX
     };
   }, [
     verseLayout?.defaultFontSizePx,
@@ -1757,8 +1915,8 @@ function PdfDocumentViewer({
   const [pageCount, setPageCount] = useState(0);
   const requestedViewMode = controlledViewMode;
   const requestedZoomLevel = Math.max(
-    0.5,
-    Math.min(3, Number(controlledZoomLevel) || 1)
+    MIN_ZOOM_LEVEL,
+    Math.min(MAX_ZOOM_LEVEL, Number(controlledZoomLevel) || DEFAULT_ZOOM_LEVEL)
   );
   const initialViewModeRef = useRef(requestedViewMode);
   const initialZoomLevelRef = useRef(requestedZoomLevel);
@@ -1809,6 +1967,15 @@ function PdfDocumentViewer({
       Number(effectiveVerseLayout?.viewportHeightPx) > 0 ? Number(effectiveVerseLayout?.viewportHeightPx) : 640
     )
   );
+  const fullScreenViewportWidth = Math.max(
+    320,
+    Math.floor(
+      Number(effectiveVerseLayout?.viewportWidthPx) > 0 ? Number(effectiveVerseLayout?.viewportWidthPx) : windowWidth || 360
+    )
+  );
+  const fullScreenViewportHeight = visibleViewportHeight;
+  const isFullScreenLandscape = fullScreenViewportWidth > fullScreenViewportHeight;
+  const isEmbeddedLandscape = !isVerseFullScreen && fullScreenViewportWidth > fullScreenViewportHeight;
   const verseViewerHeight = Math.max(
     320,
     isVerseFullScreen ? visibleViewportHeight : Math.floor(effectiveVerseLayout?.readerHeightPx || 480)
@@ -1820,10 +1987,12 @@ function PdfDocumentViewer({
   const completeViewerHeight = isVerseFullScreen ? visibleViewportHeight : verseViewerHeight;
   const webViewRef = useRef(null);
   const fullScreenWebViewRef = useRef(null);
-  const fullScreenAcceptPageEventsRef = useRef(false);
+  useRef(false);
   const completeScrollRef = useRef(null);
   const completeVerseYByIdRef = useRef({});
+  const pendingCompleteScrollVerseIdRef = useRef(null);
   const completeRestoreTimerRef = useRef(null);
+  const completeRestoreGuardUntilRef = useRef(0);
   const staticServerRef = useRef(null);
   const overlayTimerRef = useRef(null);
   const suppressCompleteModeSyncRef = useRef(false);
@@ -1832,6 +2001,8 @@ function PdfDocumentViewer({
   const lastSyncedViewModeRef = useRef(null);
   const lastInjectedViewerStateRef = useRef(null);
   const pageCountRef = useRef(0);
+  const lastNativeReadyPageCountRef = useRef(0);
+  const onReadyRef = useRef(onReady);
   const versePagesSignatureRef = useRef("");
   const pageNumberRef = useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0 ? Math.trunc(Number(currentPage)) : 1
@@ -1845,6 +2016,10 @@ function PdfDocumentViewer({
   const useNativeFullScreenOverlay = contentMode === "verse" && isVerseFullScreen;
   const inlineFullScreenActive = contentMode === "verse" && isVerseFullScreen && !useNativeFullScreenOverlay;
   const viewerHeight = contentMode === "pdf" && viewMode === "book" ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight) : completeViewerHeight;
+  const useNativeCompleteVerseView = contentMode === "verse" && viewMode === "continuous" && !isVerseFullScreen;
+  const useNativeBookVerseView = contentMode === "verse" && viewMode === "book" && !isVerseFullScreen;
+  const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
+  const useNativeVersePaging = useNativeVerseView || useNativeFullScreenOverlay;
   const playableVerseMappings = useMemo(
     () => (verseAudioMappings || []).filter((mapping) => {
       const startMs = Number(mapping.segmentStartMs);
@@ -1872,10 +2047,19 @@ function PdfDocumentViewer({
       ...verse,
       id: String(verse.id),
       label: verse.label || `Verse ${index + 1}`,
+      contentHtml: String(verse.content || ""),
       contentText: stripHtmlText(verse.content)
     })),
     [verses]
   );
+  if (useNativeCompleteVerseView && pageNumberRef.current > 1 && !pendingCompleteScrollVerseIdRef.current) {
+    const pageVerseId = completeVerses[pageNumberRef.current - 1]?.id || null;
+    const readerVersePage = readerVerseId && useNativeVersePaging ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1 : 0;
+    const pendingVerseId = readerVersePage === pageNumberRef.current ? readerVerseId : pageVerseId;
+    if (pendingVerseId) {
+      pendingCompleteScrollVerseIdRef.current = pendingVerseId;
+    }
+  }
   const resolvedDownloadUrl = downloadUrl || pdfUrl || "";
   const label = filename?.trim() || title?.trim() || (contentMode === "verse" ? "Verse document" : "PDF document");
   const shareUrl = (downloadUrl || pdfUrl || "").trim();
@@ -1944,16 +2128,35 @@ function PdfDocumentViewer({
   useEffect(() => {
     pageCountRef.current = pageCount;
   }, [pageCount]);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
   const scrollCompleteToVerse = useCallback((verseId, animated = false) => {
-    if (!verseId) return;
+    if (!verseId) return false;
     const y = completeVerseYByIdRef.current[verseId];
-    if (!Number.isFinite(y)) return;
+    if (!Number.isFinite(y)) {
+      pendingCompleteScrollVerseIdRef.current = verseId;
+      return false;
+    }
+    completeRestoreGuardUntilRef.current = Date.now() + 700;
     completeScrollRef.current?.scrollTo({
       y: Math.max(0, y - 12),
       animated
     });
+    setTimeout(() => {
+      completeScrollRef.current?.scrollTo({
+        y: Math.max(0, y - 12),
+        animated: false
+      });
+    }, 120);
+    setTimeout(() => {
+      if (pendingCompleteScrollVerseIdRef.current === verseId) {
+        pendingCompleteScrollVerseIdRef.current = null;
+      }
+    }, 760);
+    return true;
   }, []);
-  useCallback((offsetY) => {
+  const updateCompleteAnchorFromOffset = useCallback((offsetY) => {
     let bestVerseId = null;
     let bestDistance = Infinity;
     const targetY = Math.max(0, offsetY + 24);
@@ -1966,23 +2169,31 @@ function PdfDocumentViewer({
     }
     if (bestVerseId) {
       setReaderVerseId((current) => current === bestVerseId ? current : bestVerseId);
-      const pageForVerse = versePageById[bestVerseId];
+      const nativePageForVerse = useNativeVersePaging ? completeVerses.findIndex((verse) => verse.id === bestVerseId) + 1 : 0;
+      const pageForVerse = versePageById[bestVerseId] || nativePageForVerse;
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         void setPageNumber(pageForVerse);
       }
     }
-  }, [pageNumber, setPageNumber, versePageById]);
+  }, [completeVerses, pageNumber, setPageNumber, useNativeVersePaging, versePageById]);
   useEffect(() => {
     if (contentMode !== "verse" || !isPageHydrated) return;
-    const pageVerses = verseIdsByPage[pageNumber];
+    const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
     setReaderVerseId((current) => current === firstVerseId ? current : firstVerseId);
-  }, [contentMode, isPageHydrated, pageNumber, verseIdsByPage]);
+  }, [
+    completeVerses,
+    contentMode,
+    isPageHydrated,
+    pageNumber,
+    useNativeVersePaging,
+    verseIdsByPage
+  ]);
   useEffect(() => {
     if (contentMode !== "verse" || viewMode !== "continuous") return;
-    const pageVerses = verseIdsByPage[pageNumber];
+    const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     if (pageNumber > 1 && (!pageVerses || pageVerses.length === 0)) {
       return;
     }
@@ -1992,9 +2203,11 @@ function PdfDocumentViewer({
     if (completeRestoreTimerRef.current) {
       clearTimeout(completeRestoreTimerRef.current);
     }
+    pendingCompleteScrollVerseIdRef.current = targetVerseId;
+    completeRestoreGuardUntilRef.current = Date.now() + 900;
     completeRestoreTimerRef.current = setTimeout(() => {
       scrollCompleteToVerse(targetVerseId, false);
-    }, 50);
+    }, 80);
     return () => {
       if (completeRestoreTimerRef.current) {
         clearTimeout(completeRestoreTimerRef.current);
@@ -2008,6 +2221,7 @@ function PdfDocumentViewer({
     pageNumber,
     readerVerseId,
     scrollCompleteToVerse,
+    useNativeVersePaging,
     verseFontSizePx,
     verseIdsByPage,
     viewMode
@@ -2041,13 +2255,30 @@ function PdfDocumentViewer({
   useEffect(() => {
     const requestedPage = Number(currentPage);
     if (!Number.isInteger(requestedPage) || requestedPage <= 0) return;
-    const nextPage = pageCount ? Math.min(Math.trunc(requestedPage), pageCount) : Math.trunc(requestedPage);
+    const knownPageCount = pageCountRef.current || pageCount;
+    const nextPage = knownPageCount ? Math.min(Math.trunc(requestedPage), knownPageCount) : Math.trunc(requestedPage);
     pageNumberRef.current = nextPage;
+    if ((useNativeCompleteVerseView || useNativeFullScreenOverlay) && nextPage > 1) {
+      const targetVerseId = completeVerses[nextPage - 1]?.id || null;
+      if (targetVerseId) {
+        pendingCompleteScrollVerseIdRef.current = targetVerseId;
+        completeRestoreGuardUntilRef.current = Date.now() + 900;
+      }
+    }
     setPageNumber((value) => value === nextPage ? value : nextPage);
-  }, [currentPage, pageCount]);
+  }, [
+    completeVerses,
+    currentPage,
+    pageCount,
+    useNativeCompleteVerseView,
+    useNativeFullScreenOverlay
+  ]);
   useEffect(() => {
     if (!Number.isFinite(Number(controlledZoomLevel))) return;
-    const nextZoom = Math.max(0.5, Math.min(3, Number(controlledZoomLevel)));
+    const nextZoom = Math.max(
+      MIN_ZOOM_LEVEL,
+      Math.min(MAX_ZOOM_LEVEL, Number(controlledZoomLevel))
+    );
     zoomLevelRef.current = nextZoom;
     setZoomLevel((value) => value === nextZoom ? value : nextZoom);
     if (contentMode === "verse") {
@@ -2067,6 +2298,26 @@ function PdfDocumentViewer({
     verseZoomConfig.defaultSize,
     verseZoomConfig.max,
     verseZoomConfig.min
+  ]);
+  useEffect(() => {
+    if (!useNativeVersePaging) return;
+    const nextPageCount = Math.max(1, completeVerses.length);
+    pageCountRef.current = nextPageCount;
+    setPageCount((value) => value === nextPageCount ? value : nextPageCount);
+    setLoadingPdf(false);
+    setViewerReady(true);
+    if (lastNativeReadyPageCountRef.current !== nextPageCount) {
+      lastNativeReadyPageCountRef.current = nextPageCount;
+      onReadyRef.current?.({ pageCount: nextPageCount });
+    }
+    const currentPage2 = pageNumberRef.current || pageNumber;
+    if (currentPage2 > nextPageCount) {
+      pageNumberRef.current = nextPageCount;
+      void setPageNumber(nextPageCount);
+    }
+  }, [
+    completeVerses.length,
+    useNativeVersePaging
   ]);
   useEffect(() => {
     setVerseFontSizePx((value) => {
@@ -2169,7 +2420,7 @@ function PdfDocumentViewer({
       resolvedReaderTheme
     ]
   );
-  const fullScreenWebViewSource = useMemo(
+  useMemo(
     () => ({ html: fullScreenVerseHtml }),
     [fullScreenVerseHtml]
   );
@@ -2388,7 +2639,10 @@ function PdfDocumentViewer({
     setVerseFontSizePx((value) => {
       const next = Math.max(
         verseZoomConfig.min,
-        Math.min(verseZoomConfig.max, value + deltaSteps)
+        Math.min(
+          verseZoomConfig.max,
+          value + deltaSteps * VERSE_GESTURE_ZOOM_STEP_PX
+        )
       );
       const nextZoom = next / verseZoomConfig.defaultSize;
       zoomLevelRef.current = nextZoom;
@@ -2435,7 +2689,10 @@ function PdfDocumentViewer({
   const adjustPdfZoom = useCallback(
     (delta) => {
       setZoomLevel((value) => {
-        const nextZoom = Math.max(0.5, Math.min(3, Math.round((value + delta) * 100) / 100));
+        const nextZoom = Math.max(
+          MIN_ZOOM_LEVEL,
+          Math.min(MAX_ZOOM_LEVEL, Math.round((value + delta) * 100) / 100)
+        );
         zoomLevelRef.current = nextZoom;
         return nextZoom;
       });
@@ -2529,7 +2786,10 @@ function PdfDocumentViewer({
       const safePage = Math.max(1, requestedPage);
       const safeMode = mode2 === "continuous" ? "continuous" : "book";
       const safeVerseId = escapeJsString(anchorVerseId || "");
-      const safeZoom = Math.max(0.5, Math.min(3, Number(requestedZoom) || 1));
+      const safeZoom = Math.max(
+        MIN_ZOOM_LEVEL,
+        Math.min(MAX_ZOOM_LEVEL, Number(requestedZoom) || DEFAULT_ZOOM_LEVEL)
+      );
       if (safeMode === "continuous" && suppressCompleteModeSyncRef.current) {
         suppressCompleteModeSyncRef.current = false;
         return;
@@ -2559,7 +2819,10 @@ function PdfDocumentViewer({
       const pageForAnchor = readerVerseId ? versePageById[readerVerseId] : void 0;
       const anchorBelongsToCurrentPage = pageForAnchor === currentPage2;
       const targetPage = pageForAnchor && anchorBelongsToCurrentPage ? pageForAnchor : pageCount ? Math.min(Math.max(1, currentPage2), pageCount) : Math.max(1, currentPage2);
-      const targetVerseId = anchorBelongsToCurrentPage ? readerVerseId : verseIdsByPage[targetPage]?.[0] || null;
+      const targetVerseId = anchorBelongsToCurrentPage ? readerVerseId : verseIdsByPage[targetPage]?.[0] || (useNativeVersePaging ? completeVerses[targetPage - 1]?.id : null) || null;
+      if (mode2 === "continuous" && targetVerseId) {
+        pendingCompleteScrollVerseIdRef.current = targetVerseId;
+      }
       pendingModeSwitchPageRef.current = targetPage;
       pageNumberRef.current = targetPage;
       viewModeRef.current = mode2;
@@ -2582,6 +2845,8 @@ function PdfDocumentViewer({
       setPageNumber,
       showOverlay,
       syncViewerStateToWebView,
+      completeVerses,
+      useNativeVersePaging,
       versePageById,
       verseIdsByPage,
       viewerReady,
@@ -2703,10 +2968,17 @@ ${shareUrl}`;
   const openSystemShare = useCallback(async () => {
     void openShareUrl(shareLinks.systemUrl);
   }, [openShareUrl, shareLinks.systemUrl]);
-  const zoomOutDisabled = contentMode === "verse" ? verseFontSizePx <= verseZoomConfig.min : zoomLevel <= 0.5;
-  const zoomInDisabled = contentMode === "verse" ? verseFontSizePx >= verseZoomConfig.max : zoomLevel >= 3;
-  const pageBadgeText = contentMode === "verse" && viewMode === "continuous" ? "Page 1 / 1" : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ""}`;
+  const zoomOutDisabled = contentMode === "verse" ? verseFontSizePx <= verseZoomConfig.min : zoomLevel <= MIN_ZOOM_LEVEL;
+  const zoomInDisabled = contentMode === "verse" ? verseFontSizePx >= verseZoomConfig.max : zoomLevel >= MAX_ZOOM_LEVEL;
+  const pageBadgeText = contentMode === "verse" && viewMode === "continuous" ? `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ""}` : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ""}`;
   const activeVerseAudio = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
+  const nativeBookVerse = (useNativeBookVerseView || useNativeFullScreenOverlay && viewMode === "book") && completeVerses.length ? completeVerses[Math.max(
+    0,
+    Math.min(
+      completeVerses.length - 1,
+      (pageNumberRef.current || pageNumber) - 1
+    )
+  )] : null;
   const verseAudioCurrentSeconds = Math.max(0, verseAudioStatus.currentTime || 0);
   const activeTrackDurationSeconds = useMemo(() => {
     if (!activeVerseAudio) return 0;
@@ -2739,7 +3011,106 @@ ${shareUrl}`;
     }
     showOverlay();
   }, [completeVerses, pageNumber, setPageNumber, showOverlay]);
-  const nativeFullScreenOverlay = useNativeFullScreenOverlay && NativeModal ? /* @__PURE__ */ jsx(
+  const nativeFullScreenControls = /* @__PURE__ */ jsxs(
+    View,
+    {
+      pointerEvents: "box-none",
+      style: [
+        styles.nativeFullScreenControls,
+        isFullScreenLandscape ? styles.nativeFullScreenControlsLandscape : null
+      ],
+      children: [
+        /* @__PURE__ */ jsxs(View, { style: styles.overlayZoomGroup, children: [
+          viewMode === "book" ? /* @__PURE__ */ jsx(
+            Pressable,
+            {
+              onPress: goToPreviousPage,
+              disabled: pageNumber <= 1,
+              style: [
+                styles.overlayZoomButton,
+                pageNumber <= 1 ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Previous page",
+              children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Prev" })
+            }
+          ) : null,
+          viewMode === "continuous" && (pageNumber > 1 || readerVerseId) ? /* @__PURE__ */ jsx(
+            Pressable,
+            {
+              onPress: scrollNativeFullScreenToTop,
+              style: styles.overlayZoomButton,
+              accessibilityLabel: "Go to top",
+              children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Top" })
+            }
+          ) : null,
+          /* @__PURE__ */ jsx(
+            Pressable,
+            {
+              onPress: zoomOutVerse,
+              disabled: zoomOutDisabled,
+              style: [
+                styles.overlayZoomButton,
+                zoomOutDisabled ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Zoom out",
+              children: /* @__PURE__ */ jsx(
+                Ionicons,
+                {
+                  name: "remove-outline",
+                  size: 20,
+                  color: zoomOutDisabled ? "#d4d4d8" : "#fff"
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            Pressable,
+            {
+              onPress: zoomInVerse,
+              disabled: zoomInDisabled,
+              style: [
+                styles.overlayZoomButton,
+                zoomInDisabled ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Zoom in",
+              children: /* @__PURE__ */ jsx(
+                Ionicons,
+                {
+                  name: "add-outline",
+                  size: 20,
+                  color: zoomInDisabled ? "#d4d4d8" : "#fff"
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            Pressable,
+            {
+              onPress: exitVerseFullScreen,
+              style: styles.overlayZoomButton,
+              accessibilityLabel: "Exit fullscreen reader",
+              children: /* @__PURE__ */ jsx(Ionicons, { name: "contract-outline", size: 20, color: "#fff" })
+            }
+          ),
+          viewMode === "book" ? /* @__PURE__ */ jsx(
+            Pressable,
+            {
+              onPress: goToNextPage,
+              disabled: Boolean(pageCount && pageNumber >= pageCount),
+              style: [
+                styles.overlayZoomButton,
+                pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Next page",
+              children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Next" })
+            }
+          ) : null
+        ] }),
+        /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) })
+      ]
+    }
+  );
+  const nativeFullScreenOverlay = useNativeFullScreenOverlay && NativeModal ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
     NativeModal,
     {
       visible: true,
@@ -2756,181 +3127,129 @@ ${shareUrl}`;
             { backgroundColor: resolvedReaderTheme.background }
           ],
           children: [
-            /* @__PURE__ */ jsx(
-              WebView,
+            viewMode === "book" ? /* @__PURE__ */ jsx(
+              NativeScrollView,
               {
-                ref: fullScreenWebViewRef,
-                originWhitelist: ["about:blank"],
-                source: fullScreenWebViewSource,
-                style: styles.nativeFullScreenWebView,
-                javaScriptEnabled: true,
-                domStorageEnabled: true,
-                startInLoadingState: false,
-                setSupportMultipleWindows: false,
-                mixedContentMode: "never",
-                allowFileAccess: false,
-                allowFileAccessFromFileURLs: false,
-                allowUniversalAccessFromFileURLs: false,
-                scrollEnabled: viewMode === "continuous",
-                nestedScrollEnabled: true,
-                bounces: false,
+                style: styles.nativeFullScreenScroll,
+                contentContainerStyle: [
+                  styles.nativeFullScreenScrollContent,
+                  isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null
+                ],
                 showsVerticalScrollIndicator: false,
-                showsHorizontalScrollIndicator: false,
-                scalesPageToFit: false,
-                pointerEvents: "auto",
-                onTouchStart: () => {
-                  fullScreenAcceptPageEventsRef.current = true;
-                  showOverlay();
-                },
-                onLoadStart: () => {
-                  fullScreenAcceptPageEventsRef.current = false;
-                },
-                onLoadEnd: () => {
-                  const safeVerseId = escapeJsString(readerVerseId || "");
-                  const script = `
-                (function() {
-                  if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.setViewMode === 'function') {
-                    window.__PDF_READER_BRIDGE__.setViewMode('${viewMode}', ${Math.max(1, pageNumber)}, '${safeVerseId}', ${Math.max(0.5, Math.min(3, zoomLevel))});
-                  }
-                })();
-                true;
-              `;
-                  fullScreenWebViewRef.current?.injectJavaScript(script);
-                  setTimeout(() => {
-                    fullScreenAcceptPageEventsRef.current = true;
-                  }, 250);
-                },
-                onMessage: (event) => {
-                  try {
-                    const payload = JSON.parse(event.nativeEvent.data || "{}");
-                    if (payload?.type === "interaction") {
-                      showOverlay();
-                      return;
-                    }
-                    if (payload?.type === "verse-zoom") {
-                      const deltaSteps = Number(payload.deltaSteps || 0);
-                      adjustVerseFontSize(deltaSteps);
-                      return;
-                    }
-                    if (payload?.type !== "page-change") return;
-                    if (!fullScreenAcceptPageEventsRef.current) return;
-                    if (viewMode === "book") return;
-                    if (viewMode === "continuous" && payload?.isAutoScroll !== true) return;
-                    const nextPage = Number(payload.pageNumber);
-                    if (!Number.isInteger(nextPage) || nextPage <= 0) return;
-                    const pendingSync = programmaticViewerSyncRef.current;
-                    if (pendingSync) {
-                      if (Date.now() > pendingSync.expiresAt) {
-                        programmaticViewerSyncRef.current = null;
-                      } else if (pendingSync.mode !== viewMode || pendingSync.page !== nextPage) {
-                        return;
-                      } else {
-                        programmaticViewerSyncRef.current = null;
+                onTouchStart: showOverlay,
+                children: /* @__PURE__ */ jsx(
+                  View,
+                  {
+                    style: [
+                      styles.nativeFullScreenPage,
+                      {
+                        borderColor: resolvedReaderTheme.accent,
+                        backgroundColor: resolvedReaderTheme.page,
+                        shadowColor: resolvedReaderTheme.shadow
                       }
-                    }
-                    if (nextPage === pageNumber) return;
-                    pageNumberRef.current = nextPage;
-                    void setPageNumber(nextPage);
-                    showOverlay();
-                  } catch {
+                    ],
+                    children: nativeBookVerse ? /* @__PURE__ */ jsx(
+                      Text,
+                      {
+                        style: [
+                          styles.nativeFullScreenVerseText,
+                          COMPLETE_VERSE_STYLE_MAP[nativeBookVerse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                          { color: resolvedReaderTheme.text },
+                          {
+                            fontSize: verseFontSizePx,
+                            lineHeight: Math.round(verseFontSizePx * 1.45)
+                          }
+                        ],
+                        children: renderNativeRichText(
+                          nativeBookVerse.contentHtml,
+                          `fullscreen-book-${nativeBookVerse.id}`
+                        )
+                      }
+                    ) : null
                   }
-                }
+                )
+              }
+            ) : /* @__PURE__ */ jsx(
+              NativeScrollView,
+              {
+                ref: completeScrollRef,
+                style: styles.nativeFullScreenScroll,
+                contentContainerStyle: [
+                  styles.nativeFullScreenScrollContent,
+                  isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null
+                ],
+                showsVerticalScrollIndicator: false,
+                scrollEventThrottle: 64,
+                onTouchStart: showOverlay,
+                onScroll: (event) => {
+                  if (pendingCompleteScrollVerseIdRef.current) return;
+                  if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                  updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+                },
+                onContentSizeChange: () => {
+                  scrollCompleteToVerse(
+                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                    false
+                  );
+                },
+                onLayout: () => {
+                  scrollCompleteToVerse(
+                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                    false
+                  );
+                },
+                children: completeVerses.map((verse) => {
+                  const isActive = readerVerseId === verse.id || activeVerseId === verse.id;
+                  const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
+                  return /* @__PURE__ */ jsx(
+                    View,
+                    {
+                      onLayout: (event) => {
+                        completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
+                        if (pendingCompleteScrollVerseIdRef.current === verse.id) {
+                          setTimeout(() => {
+                            scrollCompleteToVerse(verse.id, false);
+                          }, 0);
+                        }
+                      },
+                      style: [
+                        styles.nativeFullScreenVerseBlock,
+                        {
+                          borderColor: isActive ? resolvedReaderTheme.accent : resolvedReaderTheme.border,
+                          backgroundColor: isActive ? resolvedReaderTheme.accentSurface : resolvedReaderTheme.page
+                        },
+                        isActive ? styles.nativeFullScreenVerseBlockActive : null
+                      ],
+                      children: /* @__PURE__ */ jsx(
+                        Text,
+                        {
+                          style: [
+                            styles.nativeFullScreenVerseText,
+                            textStyle,
+                            { color: resolvedReaderTheme.text },
+                            {
+                              fontSize: verseFontSizePx,
+                              lineHeight: Math.round(verseFontSizePx * 1.45)
+                            }
+                          ],
+                          children: renderNativeRichText(
+                            verse.contentHtml,
+                            `fullscreen-complete-${verse.id}`
+                          )
+                        }
+                      )
+                    },
+                    verse.id
+                  );
+                })
               }
             ),
-            /* @__PURE__ */ jsxs(View, { pointerEvents: "box-none", style: styles.nativeFullScreenControls, children: [
-              /* @__PURE__ */ jsxs(View, { style: styles.overlayZoomGroup, children: [
-                viewMode === "book" ? /* @__PURE__ */ jsx(
-                  Pressable,
-                  {
-                    onPress: goToPreviousPage,
-                    disabled: pageNumber <= 1,
-                    style: [
-                      styles.overlayZoomButton,
-                      pageNumber <= 1 ? styles.overlayButtonDisabled : null
-                    ],
-                    accessibilityLabel: "Previous page",
-                    children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Prev" })
-                  }
-                ) : null,
-                viewMode === "continuous" && (pageNumber > 1 || readerVerseId) ? /* @__PURE__ */ jsx(
-                  Pressable,
-                  {
-                    onPress: scrollNativeFullScreenToTop,
-                    style: styles.overlayZoomButton,
-                    accessibilityLabel: "Go to top",
-                    children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Top" })
-                  }
-                ) : null,
-                /* @__PURE__ */ jsx(
-                  Pressable,
-                  {
-                    onPress: zoomOutVerse,
-                    disabled: zoomOutDisabled,
-                    style: [
-                      styles.overlayZoomButton,
-                      zoomOutDisabled ? styles.overlayButtonDisabled : null
-                    ],
-                    accessibilityLabel: "Zoom out",
-                    children: /* @__PURE__ */ jsx(
-                      Ionicons,
-                      {
-                        name: "remove-outline",
-                        size: 20,
-                        color: zoomOutDisabled ? "#d4d4d8" : "#fff"
-                      }
-                    )
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  Pressable,
-                  {
-                    onPress: zoomInVerse,
-                    disabled: zoomInDisabled,
-                    style: [
-                      styles.overlayZoomButton,
-                      zoomInDisabled ? styles.overlayButtonDisabled : null
-                    ],
-                    accessibilityLabel: "Zoom in",
-                    children: /* @__PURE__ */ jsx(
-                      Ionicons,
-                      {
-                        name: "add-outline",
-                        size: 20,
-                        color: zoomInDisabled ? "#d4d4d8" : "#fff"
-                      }
-                    )
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  Pressable,
-                  {
-                    onPress: exitVerseFullScreen,
-                    style: styles.overlayZoomButton,
-                    accessibilityLabel: "Exit fullscreen reader",
-                    children: /* @__PURE__ */ jsx(Ionicons, { name: "contract-outline", size: 20, color: "#fff" })
-                  }
-                ),
-                viewMode === "book" ? /* @__PURE__ */ jsx(
-                  Pressable,
-                  {
-                    onPress: goToNextPage,
-                    disabled: Boolean(pageCount && pageNumber >= pageCount),
-                    style: [
-                      styles.overlayZoomButton,
-                      pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
-                    ],
-                    accessibilityLabel: "Next page",
-                    children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Next" })
-                  }
-                ) : null
-              ] }),
-              /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) })
-            ] })
+            nativeFullScreenControls
           ]
         }
       )
     }
-  ) : null;
+  ) }) : null;
   const readerContent = /* @__PURE__ */ jsxs(
     View,
     {
@@ -3198,7 +3517,7 @@ ${shareUrl}`;
             style: [
               styles.viewerWrap,
               { borderColor: resolvedReaderTheme.border },
-              inlineFullScreenActive ? styles.viewerWrapFullScreen : { height: viewerHeight }
+              useNativeCompleteVerseView || useNativeBookVerseView ? { height: viewerHeight } : inlineFullScreenActive ? styles.viewerWrapFullScreen : { height: viewerHeight }
             ],
             onLayout: contentMode === "verse" ? (event) => {
               const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
@@ -3208,7 +3527,7 @@ ${shareUrl}`;
             } : void 0,
             ...viewMode === "book" && contentMode === "verse" ? panResponder.panHandlers : {},
             children: [
-              loadingPdf && true ? /* @__PURE__ */ jsxs(
+              loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? /* @__PURE__ */ jsxs(
                 View,
                 {
                   style: [
@@ -3230,7 +3549,133 @@ ${shareUrl}`;
                   ]
                 }
               ) : null,
-              !loadingError ? /* @__PURE__ */ jsx(
+              !loadingError ? useNativeBookVerseView ? /* @__PURE__ */ jsx(
+                NativeScrollView,
+                {
+                  style: [
+                    styles.completeScroll,
+                    { backgroundColor: resolvedReaderTheme.background }
+                  ],
+                  contentContainerStyle: [
+                    styles.nativeBookScrollContent,
+                    isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null
+                  ],
+                  nestedScrollEnabled: true,
+                  scrollEventThrottle: 64,
+                  showsVerticalScrollIndicator: false,
+                  onTouchStart: showOverlay,
+                  children: /* @__PURE__ */ jsx(
+                    View,
+                    {
+                      style: [
+                        styles.nativeBookPage,
+                        {
+                          borderColor: resolvedReaderTheme.accent,
+                          backgroundColor: resolvedReaderTheme.page,
+                          shadowColor: resolvedReaderTheme.shadow
+                        }
+                      ],
+                      children: nativeBookVerse ? /* @__PURE__ */ jsx(
+                        Text,
+                        {
+                          style: [
+                            styles.nativeBookVerseText,
+                            COMPLETE_VERSE_STYLE_MAP[nativeBookVerse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                            { color: resolvedReaderTheme.text },
+                            {
+                              fontSize: verseFontSizePx,
+                              lineHeight: Math.round(verseFontSizePx * 1.45)
+                            }
+                          ],
+                          children: renderNativeRichText(
+                            nativeBookVerse.contentHtml,
+                            `book-${nativeBookVerse.id}`
+                          )
+                        }
+                      ) : null
+                    }
+                  )
+                }
+              ) : useNativeCompleteVerseView && contentMode === "verse" && viewMode === "continuous" ? /* @__PURE__ */ jsx(
+                NativeScrollView,
+                {
+                  ref: completeScrollRef,
+                  style: [
+                    styles.completeScroll,
+                    { backgroundColor: resolvedReaderTheme.background }
+                  ],
+                  contentContainerStyle: [
+                    styles.completeScrollContent,
+                    isEmbeddedLandscape ? styles.completeScrollContentCompact : null
+                  ],
+                  nestedScrollEnabled: true,
+                  scrollEventThrottle: 64,
+                  showsVerticalScrollIndicator: false,
+                  onTouchStart: showOverlay,
+                  onScroll: (event) => {
+                    if (pendingCompleteScrollVerseIdRef.current) return;
+                    if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                    updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+                  },
+                  onContentSizeChange: () => {
+                    scrollCompleteToVerse(
+                      pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                      false
+                    );
+                  },
+                  onLayout: () => {
+                    scrollCompleteToVerse(
+                      pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                      false
+                    );
+                  },
+                  children: completeVerses.map((verse) => {
+                    const isActive = readerVerseId === verse.id || activeVerseId === verse.id;
+                    const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
+                    return /* @__PURE__ */ jsx(
+                      View,
+                      {
+                        onLayout: (event) => {
+                          completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
+                          if (pendingCompleteScrollVerseIdRef.current === verse.id) {
+                            setTimeout(() => {
+                              scrollCompleteToVerse(verse.id, false);
+                            }, 0);
+                          }
+                        },
+                        style: [
+                          styles.completeVerseBlock,
+                          {
+                            borderColor: isActive ? resolvedReaderTheme.accent : resolvedReaderTheme.border,
+                            backgroundColor: isActive ? resolvedReaderTheme.accentSurface : resolvedReaderTheme.page,
+                            shadowColor: resolvedReaderTheme.shadow
+                          },
+                          isActive ? styles.completeVerseBlockActive : null
+                        ],
+                        children: /* @__PURE__ */ jsx(
+                          Text,
+                          {
+                            style: [
+                              styles.completeVerseText,
+                              textStyle,
+                              { color: resolvedReaderTheme.text },
+                              {
+                                fontSize: verseFontSizePx,
+                                lineHeight: Math.round(verseFontSizePx * 1.45)
+                              }
+                            ],
+                            children: renderNativeRichText(
+                              verse.contentHtml,
+                              `complete-${verse.id}`
+                            )
+                          }
+                        )
+                      },
+                      verse.id
+                    );
+                  })
+                }
+              ) : /* @__PURE__ */ jsx(
                 WebView,
                 {
                   ref: webViewRef,
@@ -3260,7 +3705,7 @@ ${shareUrl}`;
                   allowFileAccess: usesLocalFileFallback,
                   allowFileAccessFromFileURLs: usesLocalFileFallback,
                   allowUniversalAccessFromFileURLs: usesLocalFileFallback,
-                  scrollEnabled: contentMode === "pdf",
+                  scrollEnabled: contentMode === "pdf" || isVerseFullScreen,
                   nestedScrollEnabled: viewMode === "book" || viewMode === "continuous",
                   bounces: false,
                   showsVerticalScrollIndicator: false,
@@ -3460,149 +3905,156 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && showOverlayControls ? /* @__PURE__ */ jsx(View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxs(View, { style: styles.overlayBottomCenter, children: [
-                hasVerseAudio ? /* @__PURE__ */ jsx(View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxs(View, { style: styles.overlayAudioControls, children: [
-                  /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onPress: toggleVerseAudio,
-                      style: [styles.overlayAudioButton, styles.overlayAudioPlayButton],
-                      accessibilityLabel: verseAudioStatus.playing ? "Pause audio" : "Play audio",
-                      children: /* @__PURE__ */ jsx(
-                        Ionicons,
+              !loadingError && showOverlayControls ? /* @__PURE__ */ jsx(
+                View,
+                {
+                  pointerEvents: "box-none",
+                  style: styles.viewerOverlay,
+                  children: /* @__PURE__ */ jsxs(View, { style: styles.overlayBottomCenter, children: [
+                    hasVerseAudio ? /* @__PURE__ */ jsx(View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxs(View, { style: styles.overlayAudioControls, children: [
+                      /* @__PURE__ */ jsx(
+                        Pressable,
                         {
-                          name: verseAudioStatus.playing ? "pause-outline" : "play-outline",
-                          size: 20,
-                          color: "#fff"
+                          onPress: toggleVerseAudio,
+                          style: [styles.overlayAudioButton, styles.overlayAudioPlayButton],
+                          accessibilityLabel: verseAudioStatus.playing ? "Pause audio" : "Play audio",
+                          children: /* @__PURE__ */ jsx(
+                            Ionicons,
+                            {
+                              name: verseAudioStatus.playing ? "pause-outline" : "play-outline",
+                              size: 20,
+                              color: "#fff"
+                            }
+                          )
                         }
-                      )
-                    }
-                  ),
-                  /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onLayout: (event) => {
-                        const nextWidth = Math.max(1, Math.round(event.nativeEvent.layout.width || 1));
-                        setAudioSliderWidth(nextWidth);
-                      },
-                      onPress: (event) => {
-                        const locationX = Math.max(0, event.nativeEvent.locationX || 0);
-                        seekActiveVerseAudioToRatio(locationX / audioSliderWidth);
-                      },
-                      disabled: !activeVerseAudio,
-                      style: [
-                        styles.overlayAudioSlider,
-                        !activeVerseAudio ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Seek mapped audio",
-                      children: /* @__PURE__ */ jsx(View, { style: styles.overlayAudioSliderTrack, children: /* @__PURE__ */ jsx(
-                        View,
+                      ),
+                      /* @__PURE__ */ jsx(
+                        Pressable,
                         {
+                          onLayout: (event) => {
+                            const nextWidth = Math.max(1, Math.round(event.nativeEvent.layout.width || 1));
+                            setAudioSliderWidth(nextWidth);
+                          },
+                          onPress: (event) => {
+                            const locationX = Math.max(0, event.nativeEvent.locationX || 0);
+                            seekActiveVerseAudioToRatio(locationX / audioSliderWidth);
+                          },
+                          disabled: !activeVerseAudio,
                           style: [
-                            styles.overlayAudioSliderFill,
-                            { width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%` }
-                          ]
+                            styles.overlayAudioSlider,
+                            !activeVerseAudio ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Seek mapped audio",
+                          children: /* @__PURE__ */ jsx(View, { style: styles.overlayAudioSliderTrack, children: /* @__PURE__ */ jsx(
+                            View,
+                            {
+                              style: [
+                                styles.overlayAudioSliderFill,
+                                { width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%` }
+                              ]
+                            }
+                          ) })
                         }
-                      ) })
-                    }
-                  ),
-                  verseAudioTimeText ? /* @__PURE__ */ jsx(Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
-                ] }) }) : null,
-                /* @__PURE__ */ jsxs(View, { style: styles.overlayZoomGroup, children: [
-                  viewMode === "book" ? /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onPress: goToPreviousPage,
-                      disabled: pageNumber <= 1,
-                      style: [
-                        styles.overlayZoomButton,
-                        pageNumber <= 1 ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Previous page",
-                      children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Prev" })
-                    }
-                  ) : null,
-                  viewMode === "continuous" && pageNumber > 1 ? /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onPress: goToFirstPage,
-                      style: styles.overlayZoomButton,
-                      accessibilityLabel: "Go to top",
-                      children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Top" })
-                    }
-                  ) : null,
-                  /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onPress: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-0.25),
-                      disabled: zoomOutDisabled,
-                      style: [
-                        styles.overlayZoomButton,
-                        zoomOutDisabled ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Zoom out",
-                      children: /* @__PURE__ */ jsx(
-                        Ionicons,
+                      ),
+                      verseAudioTimeText ? /* @__PURE__ */ jsx(Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
+                    ] }) }) : null,
+                    /* @__PURE__ */ jsxs(View, { style: styles.overlayZoomGroup, children: [
+                      viewMode === "book" ? /* @__PURE__ */ jsx(
+                        Pressable,
                         {
-                          name: "remove-outline",
-                          size: 20,
-                          color: zoomOutDisabled ? "#d4d4d8" : "#fff"
+                          onPress: goToPreviousPage,
+                          disabled: pageNumber <= 1,
+                          style: [
+                            styles.overlayZoomButton,
+                            pageNumber <= 1 ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Previous page",
+                          children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Prev" })
                         }
-                      )
-                    }
-                  ),
-                  /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onPress: () => contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(0.25),
-                      disabled: zoomInDisabled,
-                      style: [
-                        styles.overlayZoomButton,
-                        zoomInDisabled ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Zoom in",
-                      children: /* @__PURE__ */ jsx(
-                        Ionicons,
+                      ) : null,
+                      viewMode === "continuous" && pageNumber > 1 ? /* @__PURE__ */ jsx(
+                        Pressable,
                         {
-                          name: "add-outline",
-                          size: 20,
-                          color: zoomInDisabled ? "#d4d4d8" : "#fff"
+                          onPress: goToFirstPage,
+                          style: styles.overlayZoomButton,
+                          accessibilityLabel: "Go to top",
+                          children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Top" })
                         }
-                      )
-                    }
-                  ),
-                  contentMode === "verse" ? /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onPress: toggleVerseFullScreen,
-                      style: styles.overlayZoomButton,
-                      accessibilityLabel: isVerseFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
-                      children: /* @__PURE__ */ jsx(
-                        Ionicons,
+                      ) : null,
+                      /* @__PURE__ */ jsx(
+                        Pressable,
                         {
-                          name: isVerseFullScreen ? "contract-outline" : "expand-outline",
-                          size: 20,
-                          color: "#fff"
+                          onPress: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
+                          disabled: zoomOutDisabled,
+                          style: [
+                            styles.overlayZoomButton,
+                            zoomOutDisabled ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Zoom out",
+                          children: /* @__PURE__ */ jsx(
+                            Ionicons,
+                            {
+                              name: "remove-outline",
+                              size: 20,
+                              color: zoomOutDisabled ? "#d4d4d8" : "#fff"
+                            }
+                          )
                         }
-                      )
-                    }
-                  ) : null,
-                  viewMode === "book" ? /* @__PURE__ */ jsx(
-                    Pressable,
-                    {
-                      onPress: goToNextPage,
-                      disabled: Boolean(pageCount && pageNumber >= pageCount),
-                      style: [
-                        styles.overlayZoomButton,
-                        pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Next page",
-                      children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Next" })
-                    }
-                  ) : null
-                ] }),
-                /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) })
-              ] }) }) : null
+                      ),
+                      /* @__PURE__ */ jsx(
+                        Pressable,
+                        {
+                          onPress: () => contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
+                          disabled: zoomInDisabled,
+                          style: [
+                            styles.overlayZoomButton,
+                            zoomInDisabled ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Zoom in",
+                          children: /* @__PURE__ */ jsx(
+                            Ionicons,
+                            {
+                              name: "add-outline",
+                              size: 20,
+                              color: zoomInDisabled ? "#d4d4d8" : "#fff"
+                            }
+                          )
+                        }
+                      ),
+                      contentMode === "verse" ? /* @__PURE__ */ jsx(
+                        Pressable,
+                        {
+                          onPress: toggleVerseFullScreen,
+                          style: styles.overlayZoomButton,
+                          accessibilityLabel: isVerseFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
+                          children: /* @__PURE__ */ jsx(
+                            Ionicons,
+                            {
+                              name: isVerseFullScreen ? "contract-outline" : "expand-outline",
+                              size: 20,
+                              color: "#fff"
+                            }
+                          )
+                        }
+                      ) : null,
+                      viewMode === "book" ? /* @__PURE__ */ jsx(
+                        Pressable,
+                        {
+                          onPress: goToNextPage,
+                          disabled: Boolean(pageCount && pageNumber >= pageCount),
+                          style: [
+                            styles.overlayZoomButton,
+                            pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Next page",
+                          children: /* @__PURE__ */ jsx(Text, { style: styles.overlayButtonText, children: "Next" })
+                        }
+                      ) : null
+                    ] }),
+                    /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) })
+                  ] })
+                }
+              ) : null
             ]
           }
         ),
@@ -3633,7 +4085,9 @@ var styles = StyleSheet.create({
   },
   nativeFullScreenRoot: {
     flex: 1,
-    backgroundColor: "#f5f5f4"
+    backgroundColor: "#f5f5f4",
+    overflow: "hidden",
+    position: "relative"
   },
   nativeFullScreenWebView: {
     flex: 1,
@@ -3646,7 +4100,12 @@ var styles = StyleSheet.create({
   nativeFullScreenScrollContent: {
     paddingHorizontal: 6,
     paddingTop: Platform.OS === "ios" ? 48 : 10,
-    paddingBottom: 112
+    paddingBottom: 112,
+    gap: 10
+  },
+  nativeFullScreenScrollContentLandscape: {
+    paddingTop: 8,
+    paddingBottom: 88
   },
   nativeFullScreenPage: {
     borderRadius: 12,
@@ -3664,20 +4123,21 @@ var styles = StyleSheet.create({
     overflow: "hidden"
   },
   nativeFullScreenVerseBlock: {
-    paddingVertical: 10,
+    paddingVertical: 14,
     paddingHorizontal: 12,
-    marginBottom: 0,
-    borderRadius: 0,
+    paddingRight: 52,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e7e5e4",
     backgroundColor: "#fffbea"
   },
   nativeFullScreenVerseBlockActive: {
-    borderWidth: 2,
     borderColor: "#f97316"
   },
   nativeFullScreenVerseGroup: {
     color: "#6b7280",
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "800",
     textAlign: "center",
     textTransform: "uppercase",
     letterSpacing: 0.03,
@@ -3686,14 +4146,16 @@ var styles = StyleSheet.create({
   nativeFullScreenVerseLabel: {
     color: "#9a3412",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
     textAlign: "center",
     marginBottom: 4
   },
   nativeFullScreenVerseText: {
     color: "#111827",
-    fontWeight: "500",
-    textAlign: "center"
+    fontWeight: "800",
+    textAlign: "center",
+    flexShrink: 1,
+    width: "100%"
   },
   nativeFullScreenControls: {
     position: "absolute",
@@ -3701,7 +4163,13 @@ var styles = StyleSheet.create({
     right: 0,
     bottom: 18,
     alignItems: "center",
-    gap: 8
+    gap: 8,
+    zIndex: 30,
+    elevation: 30
+  },
+  nativeFullScreenControlsLandscape: {
+    bottom: 6,
+    gap: 4
   },
   header: {
     gap: 0,
@@ -3822,10 +4290,6 @@ var styles = StyleSheet.create({
     flex: 1,
     minHeight: 0
   },
-  viewerWrapContentSized: {
-    flex: 0,
-    minHeight: 0
-  },
   viewerWrapFullScreen: {
     minHeight: 0,
     flex: 1
@@ -3845,7 +4309,18 @@ var styles = StyleSheet.create({
   },
   completeScrollContent: {
     padding: 10,
+    paddingBottom: 104,
     gap: 10
+  },
+  completeScrollContentCompact: {
+    paddingBottom: 82
+  },
+  nativeBookScrollContent: {
+    padding: 10,
+    paddingBottom: 104
+  },
+  nativeBookScrollContentCompact: {
+    paddingBottom: 82
   },
   completeVerseBlock: {
     borderRadius: 12,
@@ -3888,7 +4363,28 @@ var styles = StyleSheet.create({
   },
   completeVerseText: {
     color: "#111827",
-    textAlign: "center"
+    textAlign: "center",
+    flexShrink: 1,
+    width: "100%"
+  },
+  nativeBookPage: {
+    width: "100%",
+    borderWidth: 3,
+    borderRadius: 8,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 92,
+    overflow: "hidden",
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1
+  },
+  nativeBookVerseText: {
+    color: "#111827",
+    textAlign: "center",
+    flexShrink: 1,
+    width: "100%"
   },
   loadingWrap: {
     position: "absolute",

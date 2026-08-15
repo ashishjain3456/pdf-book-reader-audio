@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import * as ReactNative from 'react-native';
 import { NativeModules, PanResponder, Platform } from 'react-native';
 import {
@@ -18,8 +19,9 @@ import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { WebView } from 'react-native-webview';
 import type { VerseAudioMapping } from '../../types/contracts';
 
-const NativeScrollView = (ReactNative as any).ScrollView;
 const NativeModal = (ReactNative as any).Modal;
+const NativeScrollView = (ReactNative as any).ScrollView;
+const NativeDimensions = (ReactNative as any).Dimensions;
 
 export type { VerseAudioMapping };
 
@@ -136,6 +138,7 @@ type SwipeGestureState = {
 };
 
 type CompleteVerseTextStyle = Record<string, unknown>;
+type NativeTextStyle = Record<string, unknown>;
 
 const DEFAULT_READER_THEME: Required<ReaderTheme> = {
   background: '#f5f5f4',
@@ -156,6 +159,13 @@ const DEFAULT_READER_THEME: Required<ReaderTheme> = {
   preserveInlineColors: true,
 };
 
+const MIN_ZOOM_LEVEL = 0.5;
+const MAX_ZOOM_LEVEL = 3;
+const DEFAULT_ZOOM_LEVEL = 1.6;
+const PDF_ZOOM_STEP = 0.75;
+const VERSE_BUTTON_ZOOM_STEP_PX = 6;
+const VERSE_GESTURE_ZOOM_STEP_PX = 3;
+
 function resolveReaderTheme(theme?: ReaderTheme): Required<ReaderTheme> {
   return {
     ...DEFAULT_READER_THEME,
@@ -164,21 +174,21 @@ function resolveReaderTheme(theme?: ReaderTheme): Required<ReaderTheme> {
 }
 
 const COMPLETE_VERSE_STYLE_MAP: Record<string, CompleteVerseTextStyle> = {
-  classic: { color: '#111827', fontWeight: '500' },
-  aarti: { color: '#9a3412', fontWeight: '700' },
+  classic: { color: '#111827', fontWeight: '800' },
+  aarti: { color: '#9a3412', fontWeight: '800' },
   sutra: {
     color: '#374151',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     textTransform: 'uppercase',
   },
-  soft: { color: '#92400e', fontStyle: 'italic' },
-  shastra: { color: '#0f172a', fontWeight: '800' },
-  midnight: { color: '#1d4ed8', fontWeight: '800' },
-  maroon: { color: '#7f1d1d', fontWeight: '800' },
-  forest: { color: '#166534', fontWeight: '700' },
-  indigo: { color: '#3730a3', fontWeight: '700' },
-  graphite: { color: '#3f3f46', fontWeight: '600' },
+  soft: { color: '#92400e', fontStyle: 'italic', fontWeight: '800' },
+  shastra: { color: '#0f172a', fontWeight: '900' },
+  midnight: { color: '#1d4ed8', fontWeight: '900' },
+  maroon: { color: '#7f1d1d', fontWeight: '900' },
+  forest: { color: '#166534', fontWeight: '800' },
+  indigo: { color: '#3730a3', fontWeight: '800' },
+  graphite: { color: '#3f3f46', fontWeight: '800' },
 };
 
 const formatTime = (seconds: number) => {
@@ -216,6 +226,150 @@ const stripHtmlText = (value: string) =>
     .replace(/&quot;/g, '"')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+const decodeHtmlText = (value: string) =>
+  String(value || '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+const getHtmlAttribute = (tag: string, name: string) => {
+  const pattern = new RegExp(
+    `${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+    'i'
+  );
+  const match = tag.match(pattern);
+  return match?.[1] || match?.[2] || match?.[3] || '';
+};
+
+const parseNativeInlineStyle = (
+  tagName: string,
+  tag: string
+): NativeTextStyle => {
+  const style: NativeTextStyle = {};
+  if (tagName === 'b' || tagName === 'strong') {
+    style.fontWeight = '900';
+  }
+  if (tagName === 'i' || tagName === 'em') {
+    style.fontStyle = 'italic';
+  }
+  if (tagName === 'u') {
+    style.textDecorationLine = 'underline';
+  }
+  if (tagName === 's' || tagName === 'strike' || tagName === 'del') {
+    style.textDecorationLine = 'line-through';
+  }
+
+  const fontColor = getHtmlAttribute(tag, 'color');
+  if (tagName === 'font' && fontColor) {
+    style.color = fontColor;
+  }
+
+  const inlineStyle = getHtmlAttribute(tag, 'style');
+  for (const declaration of inlineStyle.split(';')) {
+    const [rawProperty, ...rawValueParts] = declaration.split(':');
+    const property = rawProperty?.trim().toLowerCase();
+    const value = rawValueParts.join(':').trim();
+    if (!property || !value) continue;
+    if (property === 'color') {
+      style.color = value;
+    } else if (property === 'font-weight') {
+      const numericWeight = Number(value);
+      style.fontWeight = Number.isFinite(numericWeight)
+        ? String(Math.max(600, Math.min(900, numericWeight)))
+        : value.includes('bold')
+          ? '900'
+          : style.fontWeight;
+    } else if (property === 'font-style' && value.includes('italic')) {
+      style.fontStyle = 'italic';
+    } else if (property === 'text-decoration') {
+      if (value.includes('underline')) {
+        style.textDecorationLine = 'underline';
+      } else if (value.includes('line-through')) {
+        style.textDecorationLine = 'line-through';
+      }
+    }
+  }
+
+  return style;
+};
+
+const renderNativeRichText = (html: string, keyPrefix: string) => {
+  const nodes: ReactNode[] = [];
+  const styleStack: NativeTextStyle[] = [{}];
+  let key = 0;
+
+  const currentStyle = () =>
+    Object.assign({}, ...styleStack) as NativeTextStyle;
+  const pushText = (value: string) => {
+    const decoded = decodeHtmlText(value);
+    if (!decoded) return;
+    nodes.push(
+      <Text key={`${keyPrefix}-${key++}`} style={currentStyle()}>
+        {decoded}
+      </Text>
+    );
+  };
+  const pushBreak = (count = 1) => {
+    pushText('\n'.repeat(count));
+  };
+
+  const tokens = String(html || '').match(/<[^>]+>|[^<]+/g) || [];
+  for (const token of tokens) {
+    if (!token.startsWith('<')) {
+      pushText(token);
+      continue;
+    }
+
+    const isClosingTag = /^<\s*\//.test(token);
+    const tagName = (
+      token
+        .replace(/^<\s*\/?\s*/, '')
+        .replace(/\/?\s*>$/, '')
+        .trim()
+        .split(/\s+/)[0] || ''
+    ).toLowerCase();
+
+    if (!tagName) continue;
+    if (tagName === 'br') {
+      pushBreak();
+      continue;
+    }
+    if (isClosingTag) {
+      if (['p', 'div', 'li'].includes(tagName)) {
+        pushBreak(tagName === 'li' ? 1 : 2);
+      }
+      if (
+        ['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'span', 'font'].includes(
+          tagName
+        ) &&
+        styleStack.length > 1
+      ) {
+        styleStack.pop();
+      }
+      continue;
+    }
+    if (tagName === 'li') {
+      pushText('• ');
+      continue;
+    }
+    if (tagName === 'p' || tagName === 'div') {
+      continue;
+    }
+    if (
+      ['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'span', 'font'].includes(
+        tagName
+      )
+    ) {
+      styleStack.push(parseNativeInlineStyle(tagName, token));
+    }
+  }
+
+  return nodes;
+};
 
 const escapeJsString = (value: string) =>
   value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -315,7 +469,7 @@ const buildPdfHtml = (
         const maxBookHeight = ${Math.max(320, Math.floor(maxBookHeight))};
         const initialPage = Math.max(1, ${Math.max(1, Math.trunc(targetPage))});
         const initialViewMode = '${viewMode}';
-        let currentZoom = ${Math.max(0.5, Math.min(3, zoomLevel))};
+        let currentZoom = ${Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel))};
         const neighborPageCount = ${Math.max(0, Math.trunc(neighborPageCount))};
         const statusNode = document.getElementById('status');
         const appNode = document.getElementById('app');
@@ -355,7 +509,11 @@ const buildPdfHtml = (
                 pageNodes.reduce((maxHeight, node) => {
                   const rect = node.getBoundingClientRect();
                   const scrollTop = window.scrollY || window.pageYOffset || 0;
-                  return Math.max(maxHeight, rect.bottom + scrollTop);
+                  return Math.max(
+                    maxHeight,
+                    rect.bottom + scrollTop,
+                    rect.top + scrollTop + (node.scrollHeight || 0)
+                  );
                 }, 0) +
                   16
               )
@@ -753,7 +911,7 @@ const buildPdfHtml = (
           setZoom: (zoom, page) => {
             const requestedZoom = Number(zoom);
             if (!Number.isFinite(requestedZoom)) return;
-            currentZoom = Math.max(0.5, Math.min(3, requestedZoom));
+            currentZoom = Math.max(${MIN_ZOOM_LEVEL}, Math.min(${MAX_ZOOM_LEVEL}, requestedZoom));
             pageRenderCache.clear();
             const requestedPage = clampPage(page || currentPage);
             if (currentViewMode === 'continuous') {
@@ -1070,14 +1228,14 @@ const buildVerseHtml = (
       .verse-label {
         margin: 0 0 4px;
         font-size: var(--verse-label-font-size, 12px);
-        font-weight: 700;
+        font-weight: 800;
         color: ${theme.accent};
         text-align: center;
       }
       .verse-group {
         margin: 0 0 4px;
         font-size: var(--verse-group-font-size, 11px);
-        font-weight: 600;
+        font-weight: 800;
         color: ${theme.mutedText};
         text-transform: uppercase;
         letter-spacing: 0.03em;
@@ -1088,8 +1246,19 @@ const buildVerseHtml = (
         font-size: var(--verse-font-size, 22px);
         line-height: var(--verse-line-height, 1.45);
         color: ${theme.text};
+        font-weight: 800;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
         white-space: pre-wrap;
         text-align: center;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .verse-content * {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       ${
         preserveInlineColors
@@ -1102,48 +1271,49 @@ const buildVerseHtml = (
       .verse-content.style-aarti,
       .verse-label.style-aarti {
         color: ${theme.accent};
-        font-weight: 700;
+        font-weight: 800;
       }
       .verse-content.style-sutra,
       .verse-label.style-sutra {
         color: ${theme.mutedText};
-        font-weight: 700;
+        font-weight: 800;
         text-transform: uppercase;
       }
       .verse-content.style-soft,
       .verse-label.style-soft {
         color: ${theme.mutedText};
         font-style: italic;
+        font-weight: 800;
       }
       .verse-content.style-shastra,
       .verse-label.style-shastra {
         color: ${theme.text};
-        font-weight: 800;
+        font-weight: 900;
       }
       .verse-content.style-midnight,
       .verse-label.style-midnight {
         color: ${theme.accentBlue};
-        font-weight: 800;
+        font-weight: 900;
       }
       .verse-content.style-maroon,
       .verse-label.style-maroon {
         color: ${theme.accentRed};
-        font-weight: 800;
+        font-weight: 900;
       }
       .verse-content.style-forest,
       .verse-label.style-forest {
         color: ${theme.accentGreen};
-        font-weight: 700;
+        font-weight: 800;
       }
       .verse-content.style-indigo,
       .verse-label.style-indigo {
         color: ${theme.accentIndigo};
-        font-weight: 700;
+        font-weight: 800;
       }
       .verse-content.style-graphite,
       .verse-label.style-graphite {
         color: ${theme.mutedText};
-        font-weight: 600;
+        font-weight: 800;
       }
     </style>
   </head>
@@ -1600,9 +1770,7 @@ const buildVerseHtml = (
           if (announceReady !== false) {
             postMessage({ type: 'ready' });
           }
-          if (currentViewMode === 'continuous') {
-            scheduleContentHeightUpdates();
-          }
+          scheduleContentHeightUpdates();
         };
 
         const findVerseNode = (verseId) => {
@@ -1936,6 +2104,21 @@ export default function PdfDocumentViewer({
   onFullScreenChange,
   readerTheme,
 }: PdfDocumentViewerProps) {
+  const [windowSize, setWindowSize] = useState(() =>
+    NativeDimensions?.get?.('window') || { width: 0, height: 0 }
+  );
+  const windowWidth = windowSize.width || 0;
+  useEffect(() => {
+    const subscription = NativeDimensions?.addEventListener?.(
+      'change',
+      ({ window }: { window: { width: number; height: number } }) => {
+        setWindowSize(window);
+      }
+    );
+    return () => {
+      subscription?.remove?.();
+    };
+  }, []);
   const resolvedReaderTheme = useMemo(
     () => resolveReaderTheme(readerTheme),
     [readerTheme]
@@ -1952,7 +2135,7 @@ export default function PdfDocumentViewer({
       min,
       max,
       defaultSize,
-      step: 2,
+      step: VERSE_BUTTON_ZOOM_STEP_PX,
     };
   }, [
     verseLayout?.defaultFontSizePx,
@@ -1970,8 +2153,8 @@ export default function PdfDocumentViewer({
   const [pageCount, setPageCount] = useState<number>(0);
   const requestedViewMode: ReaderViewMode = controlledViewMode;
   const requestedZoomLevel = Math.max(
-    0.5,
-    Math.min(3, Number(controlledZoomLevel) || 1)
+    MIN_ZOOM_LEVEL,
+    Math.min(MAX_ZOOM_LEVEL, Number(controlledZoomLevel) || DEFAULT_ZOOM_LEVEL)
   );
   const initialViewModeRef = useRef(requestedViewMode);
   const initialZoomLevelRef = useRef(requestedZoomLevel);
@@ -2024,6 +2207,19 @@ export default function PdfDocumentViewer({
         : 640
     )
   );
+  const fullScreenViewportWidth = Math.max(
+    320,
+    Math.floor(
+      Number(effectiveVerseLayout?.viewportWidthPx) > 0
+        ? Number(effectiveVerseLayout?.viewportWidthPx)
+        : windowWidth || 360
+    )
+  );
+  const fullScreenViewportHeight = visibleViewportHeight;
+  const isFullScreenLandscape =
+    fullScreenViewportWidth > fullScreenViewportHeight;
+  const isEmbeddedLandscape =
+    !isVerseFullScreen && fullScreenViewportWidth > fullScreenViewportHeight;
   const minVerseViewerHeight = isVerseFullScreen
     ? visibleViewportHeight
     : Math.max(280, Math.floor(visibleViewportHeight * 0.45));
@@ -2049,7 +2245,9 @@ export default function PdfDocumentViewer({
   const fullScreenAcceptPageEventsRef = useRef(false);
   const completeScrollRef = useRef<any>(null);
   const completeVerseYByIdRef = useRef<Record<string, number>>({});
+  const pendingCompleteScrollVerseIdRef = useRef<string | null>(null);
   const completeRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completeRestoreGuardUntilRef = useRef(0);
   const staticServerRef = useRef<any>(null);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressCompleteModeSyncRef = useRef(false);
@@ -2062,6 +2260,8 @@ export default function PdfDocumentViewer({
   const lastSyncedViewModeRef = useRef<ReaderViewMode | null>(null);
   const lastInjectedViewerStateRef = useRef<string | null>(null);
   const pageCountRef = useRef(0);
+  const lastNativeReadyPageCountRef = useRef(0);
+  const onReadyRef = useRef(onReady);
   const versePagesSignatureRef = useRef('');
   const pageNumberRef = useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0
@@ -2083,7 +2283,12 @@ export default function PdfDocumentViewer({
     contentMode === 'pdf' && viewMode === 'book'
       ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight)
       : completeViewerHeight;
-  const useNativeCompleteVerseView = false;
+  const useNativeCompleteVerseView =
+    contentMode === 'verse' && viewMode === 'continuous' && !isVerseFullScreen;
+  const useNativeBookVerseView =
+    contentMode === 'verse' && viewMode === 'book' && !isVerseFullScreen;
+  const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
+  const useNativeVersePaging = useNativeVerseView || useNativeFullScreenOverlay;
   const playableVerseMappings = useMemo(
     () =>
       (verseAudioMappings || [])
@@ -2127,10 +2332,27 @@ export default function PdfDocumentViewer({
           ...verse,
           id: String(verse.id),
           label: verse.label || `Verse ${index + 1}`,
+          contentHtml: String(verse.content || ''),
           contentText: stripHtmlText(verse.content),
         })),
     [verses]
   );
+  if (
+    useNativeCompleteVerseView &&
+    pageNumberRef.current > 1 &&
+    !pendingCompleteScrollVerseIdRef.current
+  ) {
+    const pageVerseId = completeVerses[pageNumberRef.current - 1]?.id || null;
+    const readerVersePage =
+      readerVerseId && useNativeVersePaging
+        ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1
+        : 0;
+    const pendingVerseId =
+      readerVersePage === pageNumberRef.current ? readerVerseId : pageVerseId;
+    if (pendingVerseId) {
+      pendingCompleteScrollVerseIdRef.current = pendingVerseId;
+    }
+  }
   const resolvedDownloadUrl = downloadUrl || pdfUrl || '';
   const label = filename?.trim() || title?.trim() || (contentMode === 'verse' ? 'Verse document' : 'PDF document');
   const shareUrl = (downloadUrl || pdfUrl || '').trim();
@@ -2220,14 +2442,34 @@ export default function PdfDocumentViewer({
     pageCountRef.current = pageCount;
   }, [pageCount]);
 
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
   const scrollCompleteToVerse = useCallback((verseId: string | null, animated = false) => {
-    if (!verseId) return;
+    if (!verseId) return false;
     const y = completeVerseYByIdRef.current[verseId];
-    if (!Number.isFinite(y)) return;
+    if (!Number.isFinite(y)) {
+      pendingCompleteScrollVerseIdRef.current = verseId;
+      return false;
+    }
+    completeRestoreGuardUntilRef.current = Date.now() + 700;
     completeScrollRef.current?.scrollTo({
       y: Math.max(0, y - 12),
       animated,
     });
+    setTimeout(() => {
+      completeScrollRef.current?.scrollTo({
+        y: Math.max(0, y - 12),
+        animated: false,
+      });
+    }, 120);
+    setTimeout(() => {
+      if (pendingCompleteScrollVerseIdRef.current === verseId) {
+        pendingCompleteScrollVerseIdRef.current = null;
+      }
+    }, 760);
+    return true;
   }, []);
 
   const updateCompleteAnchorFromOffset = useCallback((offsetY: number) => {
@@ -2245,22 +2487,37 @@ export default function PdfDocumentViewer({
 
     if (bestVerseId) {
       setReaderVerseId((current) => (current === bestVerseId ? current : bestVerseId));
-      const pageForVerse = versePageById[bestVerseId];
+      const nativePageForVerse =
+        useNativeVersePaging
+          ? completeVerses.findIndex((verse) => verse.id === bestVerseId) + 1
+          : 0;
+      const pageForVerse = versePageById[bestVerseId] || nativePageForVerse;
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         void setPageNumber(pageForVerse);
       }
     }
-  }, [pageNumber, setPageNumber, versePageById]);
+  }, [completeVerses, pageNumber, setPageNumber, useNativeVersePaging, versePageById]);
 
   useEffect(() => {
     if (contentMode !== 'verse' || !isPageHydrated) return;
-    const pageVerses = verseIdsByPage[pageNumber];
+    const pageVerses =
+      verseIdsByPage[pageNumber] ||
+      (useNativeVersePaging && completeVerses[pageNumber - 1]?.id
+        ? [completeVerses[pageNumber - 1].id]
+        : undefined);
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
 
     setReaderVerseId((current) => (current === firstVerseId ? current : firstVerseId));
-  }, [contentMode, isPageHydrated, pageNumber, verseIdsByPage]);
+  }, [
+    completeVerses,
+    contentMode,
+    isPageHydrated,
+    pageNumber,
+    useNativeVersePaging,
+    verseIdsByPage,
+  ]);
 
   useEffect(() => {
     if (contentMode !== 'verse' || viewMode !== 'continuous') return;
@@ -2268,7 +2525,11 @@ export default function PdfDocumentViewer({
     // Don't scroll while we're still loading the persisted page number
     if (!isPageHydrated) return;
 
-    const pageVerses = verseIdsByPage[pageNumber];
+    const pageVerses =
+      verseIdsByPage[pageNumber] ||
+      (useNativeVersePaging && completeVerses[pageNumber - 1]?.id
+        ? [completeVerses[pageNumber - 1].id]
+        : undefined);
 
     // If we're on a non-first page but don't have the mapping yet, wait for it
     // instead of falling back to the very first verse.
@@ -2289,9 +2550,11 @@ export default function PdfDocumentViewer({
     if (completeRestoreTimerRef.current) {
       clearTimeout(completeRestoreTimerRef.current);
     }
+    pendingCompleteScrollVerseIdRef.current = targetVerseId;
+    completeRestoreGuardUntilRef.current = Date.now() + 900;
     completeRestoreTimerRef.current = setTimeout(() => {
       scrollCompleteToVerse(targetVerseId, false);
-    }, 50);
+    }, 80);
 
     return () => {
       if (completeRestoreTimerRef.current) {
@@ -2306,6 +2569,7 @@ export default function PdfDocumentViewer({
     pageNumber,
     readerVerseId,
     scrollCompleteToVerse,
+    useNativeVersePaging,
     verseFontSizePx,
     verseIdsByPage,
     viewMode,
@@ -2347,16 +2611,33 @@ export default function PdfDocumentViewer({
   useEffect(() => {
     const requestedPage = Number(currentPage);
     if (!Number.isInteger(requestedPage) || requestedPage <= 0) return;
-    const nextPage = pageCount
-      ? Math.min(Math.trunc(requestedPage), pageCount)
+    const knownPageCount = pageCountRef.current || pageCount;
+    const nextPage = knownPageCount
+      ? Math.min(Math.trunc(requestedPage), knownPageCount)
       : Math.trunc(requestedPage);
     pageNumberRef.current = nextPage;
+    if ((useNativeCompleteVerseView || useNativeFullScreenOverlay) && nextPage > 1) {
+      const targetVerseId = completeVerses[nextPage - 1]?.id || null;
+      if (targetVerseId) {
+        pendingCompleteScrollVerseIdRef.current = targetVerseId;
+        completeRestoreGuardUntilRef.current = Date.now() + 900;
+      }
+    }
     setPageNumber((value) => (value === nextPage ? value : nextPage));
-  }, [currentPage, pageCount]);
+  }, [
+    completeVerses,
+    currentPage,
+    pageCount,
+    useNativeCompleteVerseView,
+    useNativeFullScreenOverlay,
+  ]);
 
   useEffect(() => {
     if (!Number.isFinite(Number(controlledZoomLevel))) return;
-    const nextZoom = Math.max(0.5, Math.min(3, Number(controlledZoomLevel)));
+    const nextZoom = Math.max(
+      MIN_ZOOM_LEVEL,
+      Math.min(MAX_ZOOM_LEVEL, Number(controlledZoomLevel))
+    );
     zoomLevelRef.current = nextZoom;
     setZoomLevel((value) => (value === nextZoom ? value : nextZoom));
     if (contentMode === 'verse') {
@@ -2376,6 +2657,27 @@ export default function PdfDocumentViewer({
     verseZoomConfig.defaultSize,
     verseZoomConfig.max,
     verseZoomConfig.min,
+  ]);
+
+  useEffect(() => {
+    if (!useNativeVersePaging) return;
+    const nextPageCount = Math.max(1, completeVerses.length);
+    pageCountRef.current = nextPageCount;
+    setPageCount((value) => (value === nextPageCount ? value : nextPageCount));
+    setLoadingPdf(false);
+    setViewerReady(true);
+    if (lastNativeReadyPageCountRef.current !== nextPageCount) {
+      lastNativeReadyPageCountRef.current = nextPageCount;
+      onReadyRef.current?.({ pageCount: nextPageCount });
+    }
+    const currentPage = pageNumberRef.current || pageNumber;
+    if (currentPage > nextPageCount) {
+      pageNumberRef.current = nextPageCount;
+      void setPageNumber(nextPageCount);
+    }
+  }, [
+    completeVerses.length,
+    useNativeVersePaging,
   ]);
 
   useEffect(() => {
@@ -2753,7 +3055,10 @@ export default function PdfDocumentViewer({
     setVerseFontSizePx((value) => {
       const next = Math.max(
         verseZoomConfig.min,
-        Math.min(verseZoomConfig.max, value + deltaSteps)
+        Math.min(
+          verseZoomConfig.max,
+          value + deltaSteps * VERSE_GESTURE_ZOOM_STEP_PX
+        )
       );
       const nextZoom = next / verseZoomConfig.defaultSize;
       zoomLevelRef.current = nextZoom;
@@ -2803,7 +3108,10 @@ export default function PdfDocumentViewer({
   const adjustPdfZoom = useCallback(
     (delta: number) => {
       setZoomLevel((value) => {
-        const nextZoom = Math.max(0.5, Math.min(3, Math.round((value + delta) * 100) / 100));
+        const nextZoom = Math.max(
+          MIN_ZOOM_LEVEL,
+          Math.min(MAX_ZOOM_LEVEL, Math.round((value + delta) * 100) / 100)
+        );
         zoomLevelRef.current = nextZoom;
         return nextZoom;
       });
@@ -2915,7 +3223,10 @@ export default function PdfDocumentViewer({
       const safePage = Math.max(1, requestedPage);
       const safeMode = mode === 'continuous' ? 'continuous' : 'book';
       const safeVerseId = escapeJsString(anchorVerseId || '');
-      const safeZoom = Math.max(0.5, Math.min(3, Number(requestedZoom) || 1));
+      const safeZoom = Math.max(
+        MIN_ZOOM_LEVEL,
+        Math.min(MAX_ZOOM_LEVEL, Number(requestedZoom) || DEFAULT_ZOOM_LEVEL)
+      );
       if (
         safeMode === 'continuous' &&
         suppressCompleteModeSyncRef.current
@@ -2954,7 +3265,14 @@ export default function PdfDocumentViewer({
         ? Math.min(Math.max(1, currentPage), pageCount)
         : Math.max(1, currentPage);
       const targetVerseId =
-        anchorBelongsToCurrentPage ? readerVerseId : verseIdsByPage[targetPage]?.[0] || null;
+        anchorBelongsToCurrentPage
+          ? readerVerseId
+          : verseIdsByPage[targetPage]?.[0] ||
+            (useNativeVersePaging ? completeVerses[targetPage - 1]?.id : null) ||
+            null;
+      if (mode === 'continuous' && targetVerseId) {
+        pendingCompleteScrollVerseIdRef.current = targetVerseId;
+      }
       pendingModeSwitchPageRef.current = targetPage;
       pageNumberRef.current = targetPage;
       viewModeRef.current = mode;
@@ -2977,6 +3295,8 @@ export default function PdfDocumentViewer({
       setPageNumber,
       showOverlay,
       syncViewerStateToWebView,
+      completeVerses,
+      useNativeVersePaging,
       versePageById,
       verseIdsByPage,
       viewerReady,
@@ -3122,17 +3442,31 @@ export default function PdfDocumentViewer({
   const zoomOutDisabled =
     contentMode === 'verse'
       ? verseFontSizePx <= verseZoomConfig.min
-      : zoomLevel <= 0.5;
+      : zoomLevel <= MIN_ZOOM_LEVEL;
   const zoomInDisabled =
     contentMode === 'verse'
       ? verseFontSizePx >= verseZoomConfig.max
-      : zoomLevel >= 3;
+      : zoomLevel >= MAX_ZOOM_LEVEL;
   const pageBadgeText =
     contentMode === 'verse' && viewMode === 'continuous'
-      ? 'Page 1 / 1'
+      ? `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`
       : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`;
   const activeVerseAudio =
     activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
+  const nativeBookVerse =
+    (useNativeBookVerseView ||
+      (useNativeFullScreenOverlay && viewMode === 'book')) &&
+    completeVerses.length
+      ? completeVerses[
+          Math.max(
+            0,
+            Math.min(
+              completeVerses.length - 1,
+              (pageNumberRef.current || pageNumber) - 1
+            )
+          )
+        ]
+      : null;
   const verseAudioCurrentSeconds = Math.max(0, verseAudioStatus.currentTime || 0);
   const activeTrackDurationSeconds = useMemo(() => {
     if (!activeVerseAudio) return 0;
@@ -3178,185 +3512,238 @@ export default function PdfDocumentViewer({
     }
     showOverlay();
   }, [completeVerses, pageNumber, setPageNumber, showOverlay]);
+  const nativeFullScreenControls = (
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.nativeFullScreenControls,
+        isFullScreenLandscape ? styles.nativeFullScreenControlsLandscape : null,
+      ]}
+    >
+      <View style={styles.overlayZoomGroup}>
+        {viewMode === 'book' ? (
+          <Pressable
+            onPress={goToPreviousPage}
+            disabled={pageNumber <= 1}
+            style={[
+              styles.overlayZoomButton,
+              pageNumber <= 1 ? styles.overlayButtonDisabled : null,
+            ]}
+            accessibilityLabel="Previous page"
+          >
+            <Text style={styles.overlayButtonText}>Prev</Text>
+          </Pressable>
+        ) : null}
+        {viewMode === 'continuous' && (pageNumber > 1 || readerVerseId) ? (
+          <Pressable
+            onPress={scrollNativeFullScreenToTop}
+            style={styles.overlayZoomButton}
+            accessibilityLabel="Go to top"
+          >
+            <Text style={styles.overlayButtonText}>Top</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={zoomOutVerse}
+          disabled={zoomOutDisabled}
+          style={[
+            styles.overlayZoomButton,
+            zoomOutDisabled ? styles.overlayButtonDisabled : null,
+          ]}
+          accessibilityLabel="Zoom out"
+        >
+          <Ionicons
+            name="remove-outline"
+            size={20}
+            color={zoomOutDisabled ? '#d4d4d8' : '#fff'}
+          />
+        </Pressable>
+        <Pressable
+          onPress={zoomInVerse}
+          disabled={zoomInDisabled}
+          style={[
+            styles.overlayZoomButton,
+            zoomInDisabled ? styles.overlayButtonDisabled : null,
+          ]}
+          accessibilityLabel="Zoom in"
+        >
+          <Ionicons
+            name="add-outline"
+            size={20}
+            color={zoomInDisabled ? '#d4d4d8' : '#fff'}
+          />
+        </Pressable>
+        <Pressable
+          onPress={exitVerseFullScreen}
+          style={styles.overlayZoomButton}
+          accessibilityLabel="Exit fullscreen reader"
+        >
+          <Ionicons name="contract-outline" size={20} color="#fff" />
+        </Pressable>
+        {viewMode === 'book' ? (
+          <Pressable
+            onPress={goToNextPage}
+            disabled={Boolean(pageCount && pageNumber >= pageCount)}
+            style={[
+              styles.overlayZoomButton,
+              pageCount && pageNumber >= pageCount
+                ? styles.overlayButtonDisabled
+                : null,
+            ]}
+            accessibilityLabel="Next page"
+          >
+            <Text style={styles.overlayButtonText}>Next</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={styles.overlayPageBadge}>
+        <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
+      </View>
+    </View>
+  );
   const nativeFullScreenOverlay =
     useNativeFullScreenOverlay && NativeModal ? (
-      <NativeModal
-        visible
-        transparent={false}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        statusBarTranslucent
-        onRequestClose={exitVerseFullScreen}
-      >
-        <View
-          style={[
-            styles.nativeFullScreenRoot,
-            { backgroundColor: resolvedReaderTheme.background },
-          ]}
+      <>
+        <NativeModal
+          visible
+          transparent={false}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          statusBarTranslucent
+          onRequestClose={exitVerseFullScreen}
         >
-          <WebView
-            ref={fullScreenWebViewRef}
-            originWhitelist={['about:blank']}
-            source={fullScreenWebViewSource}
-            style={styles.nativeFullScreenWebView}
-            javaScriptEnabled
-            domStorageEnabled
-            startInLoadingState={false}
-            setSupportMultipleWindows={false}
-            mixedContentMode="never"
-            allowFileAccess={false}
-            allowFileAccessFromFileURLs={false}
-            allowUniversalAccessFromFileURLs={false}
-            scrollEnabled={viewMode === 'continuous'}
-            nestedScrollEnabled
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-            showsHorizontalScrollIndicator={false}
-            scalesPageToFit={false}
-            pointerEvents="auto"
-            onTouchStart={() => {
-              fullScreenAcceptPageEventsRef.current = true;
-              showOverlay();
-            }}
-            onLoadStart={() => {
-              fullScreenAcceptPageEventsRef.current = false;
-            }}
-            onLoadEnd={() => {
-              const safeVerseId = escapeJsString(readerVerseId || '');
-              const script = `
-                (function() {
-                  if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.setViewMode === 'function') {
-                    window.__PDF_READER_BRIDGE__.setViewMode('${viewMode}', ${Math.max(1, pageNumber)}, '${safeVerseId}', ${Math.max(0.5, Math.min(3, zoomLevel))});
-                  }
-                })();
-                true;
-              `;
-              fullScreenWebViewRef.current?.injectJavaScript(script);
-              setTimeout(() => {
-                fullScreenAcceptPageEventsRef.current = true;
-              }, 250);
-            }}
-            onMessage={(event: { nativeEvent: { data?: string } }) => {
-              try {
-                const payload = JSON.parse(event.nativeEvent.data || '{}');
-                if (payload?.type === 'interaction') {
-                  showOverlay();
-                  return;
-                }
-                if (payload?.type === 'verse-zoom') {
-                  const deltaSteps = Number(payload.deltaSteps || 0);
-                  adjustVerseFontSize(deltaSteps);
-                  return;
-                }
-                if (payload?.type !== 'page-change') return;
-                if (!fullScreenAcceptPageEventsRef.current) return;
-                if (viewMode === 'book') return;
-                if (viewMode === 'continuous' && payload?.isAutoScroll !== true) return;
-                const nextPage = Number(payload.pageNumber);
-                if (!Number.isInteger(nextPage) || nextPage <= 0) return;
-                const pendingSync = programmaticViewerSyncRef.current;
-                if (pendingSync) {
-                  if (Date.now() > pendingSync.expiresAt) {
-                    programmaticViewerSyncRef.current = null;
-                  } else if (pendingSync.mode !== viewMode || pendingSync.page !== nextPage) {
-                    return;
-                  } else {
-                    programmaticViewerSyncRef.current = null;
-                  }
-                }
-                if (nextPage === pageNumber) return;
-                pageNumberRef.current = nextPage;
-                void setPageNumber(nextPage);
-                showOverlay();
-              } catch {
-                // ignore malformed fullscreen reader payloads
-              }
-            }}
-          />
-
-          <View pointerEvents="box-none" style={styles.nativeFullScreenControls}>
-            <View style={styles.overlayZoomGroup}>
-              {viewMode === 'book' ? (
-                <Pressable
-                  onPress={goToPreviousPage}
-                  disabled={pageNumber <= 1}
-                  style={[
-                    styles.overlayZoomButton,
-                    pageNumber <= 1 ? styles.overlayButtonDisabled : null,
-                  ]}
-                  accessibilityLabel="Previous page"
-                >
-                  <Text style={styles.overlayButtonText}>Prev</Text>
-                </Pressable>
-              ) : null}
-              {viewMode === 'continuous' && (pageNumber > 1 || readerVerseId) ? (
-                <Pressable
-                  onPress={scrollNativeFullScreenToTop}
-                  style={styles.overlayZoomButton}
-                  accessibilityLabel="Go to top"
-                >
-                  <Text style={styles.overlayButtonText}>Top</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={zoomOutVerse}
-                disabled={zoomOutDisabled}
+          <View
+            style={[
+              styles.nativeFullScreenRoot,
+              { backgroundColor: resolvedReaderTheme.background },
+            ]}
+          >
+            {viewMode === 'book' ? (
+            <NativeScrollView
+              style={styles.nativeFullScreenScroll}
+              contentContainerStyle={[
+                styles.nativeFullScreenScrollContent,
+                isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null,
+              ]}
+              showsVerticalScrollIndicator={false}
+              onTouchStart={showOverlay}
+            >
+              <View
                 style={[
-                  styles.overlayZoomButton,
-                  zoomOutDisabled ? styles.overlayButtonDisabled : null,
+                  styles.nativeFullScreenPage,
+                  {
+                    borderColor: resolvedReaderTheme.accent,
+                    backgroundColor: resolvedReaderTheme.page,
+                    shadowColor: resolvedReaderTheme.shadow,
+                  },
                 ]}
-                accessibilityLabel="Zoom out"
               >
-                <Ionicons
-                  name="remove-outline"
-                  size={20}
-                  color={zoomOutDisabled ? '#d4d4d8' : '#fff'}
-                />
-              </Pressable>
-              <Pressable
-                onPress={zoomInVerse}
-                disabled={zoomInDisabled}
-                style={[
-                  styles.overlayZoomButton,
-                  zoomInDisabled ? styles.overlayButtonDisabled : null,
-                ]}
-                accessibilityLabel="Zoom in"
-              >
-                <Ionicons
-                  name="add-outline"
-                  size={20}
-                  color={zoomInDisabled ? '#d4d4d8' : '#fff'}
-                />
-              </Pressable>
-              <Pressable
-                onPress={exitVerseFullScreen}
-                style={styles.overlayZoomButton}
-                accessibilityLabel="Exit fullscreen reader"
-              >
-                <Ionicons name="contract-outline" size={20} color="#fff" />
-              </Pressable>
-              {viewMode === 'book' ? (
-                <Pressable
-                  onPress={goToNextPage}
-                  disabled={Boolean(pageCount && pageNumber >= pageCount)}
-                  style={[
-                    styles.overlayZoomButton,
-                    pageCount && pageNumber >= pageCount
-                      ? styles.overlayButtonDisabled
-                      : null,
-                  ]}
-                  accessibilityLabel="Next page"
-                >
-                  <Text style={styles.overlayButtonText}>Next</Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <View style={styles.overlayPageBadge}>
-              <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
-            </View>
+                {nativeBookVerse ? (
+                  <Text
+                    style={[
+                      styles.nativeFullScreenVerseText,
+                      COMPLETE_VERSE_STYLE_MAP[
+                        nativeBookVerse.styleKey || 'classic'
+                      ] || COMPLETE_VERSE_STYLE_MAP.classic,
+                      { color: resolvedReaderTheme.text },
+                      {
+                        fontSize: verseFontSizePx,
+                        lineHeight: Math.round(verseFontSizePx * 1.45),
+                      },
+                    ]}
+                  >
+                    {renderNativeRichText(
+                      nativeBookVerse.contentHtml,
+                      `fullscreen-book-${nativeBookVerse.id}`
+                    )}
+                  </Text>
+                ) : null}
+              </View>
+            </NativeScrollView>
+          ) : (
+            <NativeScrollView
+              ref={completeScrollRef}
+              style={styles.nativeFullScreenScroll}
+              contentContainerStyle={[
+                styles.nativeFullScreenScrollContent,
+                isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null,
+              ]}
+              showsVerticalScrollIndicator={false}
+              scrollEventThrottle={64}
+              onTouchStart={showOverlay}
+              onScroll={(event: { nativeEvent: { contentOffset: { y: number } } }) => {
+                if (pendingCompleteScrollVerseIdRef.current) return;
+                if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+              }}
+              onContentSizeChange={() => {
+                scrollCompleteToVerse(
+                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                  false
+                );
+              }}
+              onLayout={() => {
+                scrollCompleteToVerse(
+                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                  false
+                );
+              }}
+            >
+              {completeVerses.map((verse) => {
+                const isActive = readerVerseId === verse.id || activeVerseId === verse.id;
+                const textStyle =
+                  COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
+                  COMPLETE_VERSE_STYLE_MAP.classic;
+                return (
+                  <View
+                    key={verse.id}
+                    onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
+                      completeVerseYByIdRef.current[verse.id] =
+                        event.nativeEvent.layout.y;
+                      if (pendingCompleteScrollVerseIdRef.current === verse.id) {
+                        setTimeout(() => {
+                          scrollCompleteToVerse(verse.id, false);
+                        }, 0);
+                      }
+                    }}
+                    style={[
+                      styles.nativeFullScreenVerseBlock,
+                      {
+                        borderColor: isActive
+                          ? resolvedReaderTheme.accent
+                          : resolvedReaderTheme.border,
+                        backgroundColor: isActive
+                          ? resolvedReaderTheme.accentSurface
+                          : resolvedReaderTheme.page,
+                      },
+                      isActive ? styles.nativeFullScreenVerseBlockActive : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.nativeFullScreenVerseText,
+                        textStyle,
+                        { color: resolvedReaderTheme.text },
+                        {
+                          fontSize: verseFontSizePx,
+                          lineHeight: Math.round(verseFontSizePx * 1.45),
+                        },
+                      ]}
+                    >
+                      {renderNativeRichText(
+                        verse.contentHtml,
+                        `fullscreen-complete-${verse.id}`
+                      )}
+                    </Text>
+                  </View>
+                );
+              })}
+            </NativeScrollView>
+          )}
+          {nativeFullScreenControls}
           </View>
-        </View>
-      </NativeModal>
+        </NativeModal>
+      </>
     ) : null;
   const readerContent = (
     <View
@@ -3620,9 +4007,11 @@ export default function PdfDocumentViewer({
         style={[
           styles.viewerWrap,
           { borderColor: resolvedReaderTheme.border },
-          inlineFullScreenActive
-            ? styles.viewerWrapFullScreen
-            : { height: viewerHeight },
+          useNativeCompleteVerseView || useNativeBookVerseView
+              ? { height: viewerHeight }
+              : inlineFullScreenActive
+              ? styles.viewerWrapFullScreen
+              : { height: viewerHeight },
         ]}
         onLayout={
           contentMode === 'verse'
@@ -3640,7 +4029,7 @@ export default function PdfDocumentViewer({
             : {}
         )}
       >
-        {loadingPdf && !useNativeCompleteVerseView ? (
+        {loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? (
           <View
             style={[
               styles.loadingWrap,
@@ -3660,77 +4049,136 @@ export default function PdfDocumentViewer({
         ) : null}
 
         {!loadingError ? (
-          useNativeCompleteVerseView && contentMode === 'verse' && viewMode === 'continuous' ? (
+          useNativeBookVerseView ? (
+            <NativeScrollView
+              style={[
+                styles.completeScroll,
+                { backgroundColor: resolvedReaderTheme.background },
+              ]}
+              contentContainerStyle={[
+                styles.nativeBookScrollContent,
+                isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null,
+              ]}
+              nestedScrollEnabled
+              scrollEventThrottle={64}
+              showsVerticalScrollIndicator={false}
+              onTouchStart={showOverlay}
+            >
+              <View
+                style={[
+                  styles.nativeBookPage,
+                  {
+                    borderColor: resolvedReaderTheme.accent,
+                    backgroundColor: resolvedReaderTheme.page,
+                    shadowColor: resolvedReaderTheme.shadow,
+                  },
+                ]}
+              >
+                {nativeBookVerse ? (
+                  <Text
+                    style={[
+                      styles.nativeBookVerseText,
+                      COMPLETE_VERSE_STYLE_MAP[
+                        nativeBookVerse.styleKey || 'classic'
+                      ] || COMPLETE_VERSE_STYLE_MAP.classic,
+                      { color: resolvedReaderTheme.text },
+                      {
+                        fontSize: verseFontSizePx,
+                        lineHeight: Math.round(verseFontSizePx * 1.45),
+                      },
+                    ]}
+                  >
+                    {renderNativeRichText(
+                      nativeBookVerse.contentHtml,
+                      `book-${nativeBookVerse.id}`
+                    )}
+                  </Text>
+                ) : null}
+              </View>
+            </NativeScrollView>
+          ) : useNativeCompleteVerseView && contentMode === 'verse' && viewMode === 'continuous' ? (
             <NativeScrollView
               ref={completeScrollRef}
               style={[
                 styles.completeScroll,
-                {
-                  height: completeViewerHeight,
-                  backgroundColor: resolvedReaderTheme.background,
-                },
+                { backgroundColor: resolvedReaderTheme.background },
               ]}
-              contentContainerStyle={styles.completeScrollContent}
+              contentContainerStyle={[
+                styles.completeScrollContent,
+                isEmbeddedLandscape ? styles.completeScrollContentCompact : null,
+              ]}
               nestedScrollEnabled
               scrollEventThrottle={64}
+              showsVerticalScrollIndicator={false}
+              onTouchStart={showOverlay}
               onScroll={(event: { nativeEvent: { contentOffset: { y: number } } }) => {
+                if (pendingCompleteScrollVerseIdRef.current) return;
+                if (Date.now() < completeRestoreGuardUntilRef.current) return;
                 updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
               }}
               onContentSizeChange={() => {
-                scrollCompleteToVerse(readerVerseId, false);
+                scrollCompleteToVerse(
+                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                  false
+                );
+              }}
+              onLayout={() => {
+                scrollCompleteToVerse(
+                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                  false
+                );
               }}
             >
-              {completeVerses.map((verse) => {
-                const isActive = readerVerseId === verse.id || activeVerseId === verse.id;
-                const textStyle =
-                  COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
-                  COMPLETE_VERSE_STYLE_MAP.classic;
-                return (
-                  <Pressable
-                    key={verse.id}
-                    onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
-                      completeVerseYByIdRef.current[verse.id] =
-                        event.nativeEvent.layout.y;
-                    }}
-                    onPress={() => {
-                      setReaderVerseId(verse.id);
-                      const pageForVerse = versePageById[verse.id];
-                      if (pageForVerse && pageForVerse !== pageNumber) {
-                        pageNumberRef.current = pageForVerse;
-                        void setPageNumber(pageForVerse);
-                      }
-                      showOverlay();
-                    }}
-                    style={[
-                      styles.completeVerseBlock,
-                      {
-                        borderColor: isActive
-                          ? resolvedReaderTheme.accent
-                          : resolvedReaderTheme.border,
-                        backgroundColor: isActive
-                          ? resolvedReaderTheme.accentSurface
-                          : resolvedReaderTheme.page,
-                        shadowColor: resolvedReaderTheme.shadow,
-                      },
-                      isActive ? styles.completeVerseBlockActive : null,
-                    ]}
-                  >
-                    <Text
+                {completeVerses.map((verse) => {
+                  const isActive = readerVerseId === verse.id || activeVerseId === verse.id;
+                  const textStyle =
+                    COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
+                    COMPLETE_VERSE_STYLE_MAP.classic;
+                  return (
+                    <View
+                      key={verse.id}
+                      onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
+                        completeVerseYByIdRef.current[verse.id] =
+                          event.nativeEvent.layout.y;
+                        if (pendingCompleteScrollVerseIdRef.current === verse.id) {
+                          setTimeout(() => {
+                            scrollCompleteToVerse(verse.id, false);
+                          }, 0);
+                        }
+                      }}
                       style={[
-                        styles.completeVerseText,
-                        textStyle,
-                        { color: resolvedReaderTheme.text },
+                        styles.completeVerseBlock,
                         {
-                          fontSize: verseFontSizePx,
-                          lineHeight: Math.round(verseFontSizePx * 1.45),
+                          borderColor: isActive
+                            ? resolvedReaderTheme.accent
+                            : resolvedReaderTheme.border,
+                          backgroundColor: isActive
+                            ? resolvedReaderTheme.accentSurface
+                            : resolvedReaderTheme.page,
+                          shadowColor: resolvedReaderTheme.shadow,
                         },
+                        isActive ? styles.completeVerseBlockActive : null,
                       ]}
                     >
-                      {verse.contentText}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                      <Text
+                        style={[
+                          styles.completeVerseText,
+                          textStyle,
+                          { color: resolvedReaderTheme.text },
+                          {
+                            fontSize: verseFontSizePx,
+                            lineHeight: Math.round(verseFontSizePx * 1.45),
+                          },
+                        ]}
+                      >
+                        {renderNativeRichText(
+                          verse.contentHtml,
+                          `complete-${verse.id}`
+                        )}
+                      </Text>
+                    </View>
+                  );
+                })}
             </NativeScrollView>
           ) : (
           <WebView
@@ -3762,7 +4210,7 @@ export default function PdfDocumentViewer({
             allowFileAccess={usesLocalFileFallback}
             allowFileAccessFromFileURLs={usesLocalFileFallback}
             allowUniversalAccessFromFileURLs={usesLocalFileFallback}
-            scrollEnabled={contentMode === 'pdf'}
+            scrollEnabled={contentMode === 'pdf' || isVerseFullScreen}
             nestedScrollEnabled={viewMode === 'book' || viewMode === 'continuous'}
             bounces={false}
             showsVerticalScrollIndicator={false}
@@ -3984,7 +4432,10 @@ export default function PdfDocumentViewer({
           </View>
         )}
         {!loadingError && showOverlayControls ? (
-          <View pointerEvents="box-none" style={styles.viewerOverlay}>
+          <View
+            pointerEvents="box-none"
+            style={styles.viewerOverlay}
+          >
             <View style={styles.overlayBottomCenter}>
               {hasVerseAudio ? (
                 <View pointerEvents="auto" style={styles.overlayAudioPanel}>
@@ -4058,7 +4509,7 @@ export default function PdfDocumentViewer({
                     onPress={() =>
                       contentMode === 'verse'
                         ? zoomOutVerse()
-                        : adjustPdfZoom(-0.25)
+                        : adjustPdfZoom(-PDF_ZOOM_STEP)
                     }
                     disabled={zoomOutDisabled}
                     style={[
@@ -4077,7 +4528,7 @@ export default function PdfDocumentViewer({
                     onPress={() =>
                       contentMode === 'verse'
                         ? zoomInVerse()
-                        : adjustPdfZoom(0.25)
+                        : adjustPdfZoom(PDF_ZOOM_STEP)
                     }
                     disabled={zoomInDisabled}
                     style={[
@@ -4171,6 +4622,8 @@ const styles = StyleSheet.create({
   nativeFullScreenRoot: {
     flex: 1,
     backgroundColor: '#f5f5f4',
+    overflow: 'hidden',
+    position: 'relative',
   },
   nativeFullScreenWebView: {
     flex: 1,
@@ -4184,6 +4637,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingTop: Platform.OS === 'ios' ? 48 : 10,
     paddingBottom: 112,
+    gap: 10,
+  },
+  nativeFullScreenScrollContentLandscape: {
+    paddingTop: 8,
+    paddingBottom: 88,
   },
   nativeFullScreenPage: {
     borderRadius: 12,
@@ -4201,20 +4659,21 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   nativeFullScreenVerseBlock: {
-    paddingVertical: 10,
+    paddingVertical: 14,
     paddingHorizontal: 12,
-    marginBottom: 0,
-    borderRadius: 0,
+    paddingRight: 52,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e7e5e4',
     backgroundColor: '#fffbea',
   },
   nativeFullScreenVerseBlockActive: {
-    borderWidth: 2,
     borderColor: '#f97316',
   },
   nativeFullScreenVerseGroup: {
     color: '#6b7280',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '800',
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 0.03,
@@ -4223,14 +4682,16 @@ const styles = StyleSheet.create({
   nativeFullScreenVerseLabel: {
     color: '#9a3412',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     textAlign: 'center',
     marginBottom: 4,
   },
   nativeFullScreenVerseText: {
     color: '#111827',
-    fontWeight: '500',
+    fontWeight: '800',
     textAlign: 'center',
+    flexShrink: 1,
+    width: '100%',
   },
   nativeFullScreenControls: {
     position: 'absolute',
@@ -4239,6 +4700,12 @@ const styles = StyleSheet.create({
     bottom: 18,
     alignItems: 'center',
     gap: 8,
+    zIndex: 30,
+    elevation: 30,
+  },
+  nativeFullScreenControlsLandscape: {
+    bottom: 6,
+    gap: 4,
   },
   header: {
     gap: 0,
@@ -4359,10 +4826,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
   },
-  viewerWrapContentSized: {
-    flex: 0,
-    minHeight: 0,
-  },
   viewerWrapFullScreen: {
     minHeight: 0,
     flex: 1,
@@ -4382,7 +4845,18 @@ const styles = StyleSheet.create({
   },
   completeScrollContent: {
     padding: 10,
+    paddingBottom: 104,
     gap: 10,
+  },
+  completeScrollContentCompact: {
+    paddingBottom: 82,
+  },
+  nativeBookScrollContent: {
+    padding: 10,
+    paddingBottom: 104,
+  },
+  nativeBookScrollContentCompact: {
+    paddingBottom: 82,
   },
   completeVerseBlock: {
     borderRadius: 12,
@@ -4426,6 +4900,27 @@ const styles = StyleSheet.create({
   completeVerseText: {
     color: '#111827',
     textAlign: 'center',
+    flexShrink: 1,
+    width: '100%',
+  },
+  nativeBookPage: {
+    width: '100%',
+    borderWidth: 3,
+    borderRadius: 8,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 92,
+    overflow: 'hidden',
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  nativeBookVerseText: {
+    color: '#111827',
+    textAlign: 'center',
+    flexShrink: 1,
+    width: '100%',
   },
   loadingWrap: {
     position: 'absolute',
