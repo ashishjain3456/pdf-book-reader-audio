@@ -3188,10 +3188,15 @@ export default function PdfDocumentViewer({
   }, [pageCount, pageNumber, setPageNumber, showOverlay, verseIdsByPage]);
 
   const goToFirstPage = useCallback(() => {
+    const firstVerseId = completeVerses[0]?.id || null;
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
     void setPageNumber(1);
+    setReaderVerseId((current) => (current === firstVerseId ? current : firstVerseId));
     if (viewMode === 'continuous') {
+      pendingCompleteScrollVerseIdRef.current = firstVerseId;
+      completeRestoreGuardUntilRef.current = Date.now() + 700;
+      completeScrollRef.current?.scrollTo({ y: 0, animated: true });
       const script = `
         (function() {
           if (!window.__PDF_READER_BRIDGE__) return;
@@ -3209,7 +3214,7 @@ export default function PdfDocumentViewer({
       fullScreenWebViewRef.current?.injectJavaScript(script);
     }
     showOverlay();
-  }, [setPageNumber, showOverlay, viewMode]);
+  }, [completeVerses, setPageNumber, showOverlay, viewMode]);
 
   const panResponder = useMemo(
     () =>
@@ -3525,16 +3530,6 @@ export default function PdfDocumentViewer({
     activeVerseAudioDurationSeconds > 0
       ? activeVerseAudioElapsedSeconds / activeVerseAudioDurationSeconds
       : 0;
-  const scrollNativeFullScreenToTop = useCallback(() => {
-    completeScrollRef.current?.scrollTo({ y: 0, animated: true });
-    const firstVerseId = completeVerses[0]?.id || null;
-    setReaderVerseId(firstVerseId);
-    if (pageNumber !== 1) {
-      pageNumberRef.current = 1;
-      void setPageNumber(1);
-    }
-    showOverlay();
-  }, [completeVerses, pageNumber, setPageNumber, showOverlay]);
   const nativeFullScreenControls = (
     <View
       pointerEvents="box-none"
@@ -3557,13 +3552,13 @@ export default function PdfDocumentViewer({
             <Text style={styles.overlayButtonText}>Prev</Text>
           </Pressable>
         ) : null}
-        {viewMode === 'continuous' && (pageNumber > 1 || readerVerseId) ? (
+        {pageNumber > 1 ? (
           <Pressable
-            onPress={scrollNativeFullScreenToTop}
+            onPress={goToFirstPage}
             style={styles.overlayZoomButton}
-            accessibilityLabel="Go to top"
+            accessibilityLabel="Go to start"
           >
-            <Text style={styles.overlayButtonText}>Top</Text>
+            <Text style={styles.overlayButtonText}>Start</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -4529,13 +4524,13 @@ export default function PdfDocumentViewer({
                       <Text style={styles.overlayButtonText}>Prev</Text>
                     </Pressable>
                   ) : null}
-                  {viewMode === 'continuous' && pageNumber > 1 ? (
+                  {pageNumber > 1 ? (
                     <Pressable
                       onPress={goToFirstPage}
                       style={styles.overlayZoomButton}
-                      accessibilityLabel="Go to top"
+                      accessibilityLabel="Go to start"
                     >
-                      <Text style={styles.overlayButtonText}>Top</Text>
+                      <Text style={styles.overlayButtonText}>Start</Text>
                     </Pressable>
                   ) : null}
                   <Pressable

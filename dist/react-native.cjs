@@ -2786,10 +2786,15 @@ function PdfDocumentViewer({
     showOverlay();
   }, [pageCount, pageNumber, setPageNumber, showOverlay, verseIdsByPage]);
   const goToFirstPage = react.useCallback(() => {
+    const firstVerseId = completeVerses[0]?.id || null;
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
     void setPageNumber(1);
+    setReaderVerseId((current) => current === firstVerseId ? current : firstVerseId);
     if (viewMode === "continuous") {
+      pendingCompleteScrollVerseIdRef.current = firstVerseId;
+      completeRestoreGuardUntilRef.current = Date.now() + 700;
+      completeScrollRef.current?.scrollTo({ y: 0, animated: true });
       const script = `
         (function() {
           if (!window.__PDF_READER_BRIDGE__) return;
@@ -2807,7 +2812,7 @@ function PdfDocumentViewer({
       fullScreenWebViewRef.current?.injectJavaScript(script);
     }
     showOverlay();
-  }, [setPageNumber, showOverlay, viewMode]);
+  }, [completeVerses, setPageNumber, showOverlay, viewMode]);
   const panResponder = react.useMemo(
     () => ReactNative.PanResponder.create({
       onStartShouldSetPanResponderCapture: () => {
@@ -3048,16 +3053,6 @@ ${shareUrl}`;
     )
   ) : 0;
   const activeVerseAudioProgress = activeVerseAudioDurationSeconds > 0 ? activeVerseAudioElapsedSeconds / activeVerseAudioDurationSeconds : 0;
-  const scrollNativeFullScreenToTop = react.useCallback(() => {
-    completeScrollRef.current?.scrollTo({ y: 0, animated: true });
-    const firstVerseId = completeVerses[0]?.id || null;
-    setReaderVerseId(firstVerseId);
-    if (pageNumber !== 1) {
-      pageNumberRef.current = 1;
-      void setPageNumber(1);
-    }
-    showOverlay();
-  }, [completeVerses, pageNumber, setPageNumber, showOverlay]);
   const nativeFullScreenControls = /* @__PURE__ */ jsxRuntime.jsxs(
     ReactNative.View,
     {
@@ -3081,13 +3076,13 @@ ${shareUrl}`;
               children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
             }
           ) : null,
-          viewMode === "continuous" && (pageNumber > 1 || readerVerseId) ? /* @__PURE__ */ jsxRuntime.jsx(
+          pageNumber > 1 ? /* @__PURE__ */ jsxRuntime.jsx(
             ReactNative.Pressable,
             {
-              onPress: scrollNativeFullScreenToTop,
+              onPress: goToFirstPage,
               style: styles.overlayZoomButton,
-              accessibilityLabel: "Go to top",
-              children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Top" })
+              accessibilityLabel: "Go to start",
+              children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Start" })
             }
           ) : null,
           /* @__PURE__ */ jsxRuntime.jsx(
@@ -4029,13 +4024,13 @@ ${shareUrl}`;
                           children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
                         }
                       ) : null,
-                      viewMode === "continuous" && pageNumber > 1 ? /* @__PURE__ */ jsxRuntime.jsx(
+                      pageNumber > 1 ? /* @__PURE__ */ jsxRuntime.jsx(
                         ReactNative.Pressable,
                         {
                           onPress: goToFirstPage,
                           style: styles.overlayZoomButton,
-                          accessibilityLabel: "Go to top",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Top" })
+                          accessibilityLabel: "Go to start",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Start" })
                         }
                       ) : null,
                       /* @__PURE__ */ jsxRuntime.jsx(
