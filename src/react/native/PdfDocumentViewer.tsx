@@ -2246,6 +2246,7 @@ export default function PdfDocumentViewer({
   const completeScrollRef = useRef<any>(null);
   const completeVerseYByIdRef = useRef<Record<string, number>>({});
   const pendingCompleteScrollVerseIdRef = useRef<string | null>(null);
+  const userDraggingCompleteScrollRef = useRef(false);
   const completeRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completeRestoreGuardUntilRef = useRef(0);
   const staticServerRef = useRef<any>(null);
@@ -2498,6 +2499,28 @@ export default function PdfDocumentViewer({
       }
     }
   }, [completeVerses, pageNumber, setPageNumber, useNativeVersePaging, versePageById]);
+
+  const handleCompleteScrollBeginDrag = useCallback(() => {
+    userDraggingCompleteScrollRef.current = true;
+    pendingCompleteScrollVerseIdRef.current = null;
+    completeRestoreGuardUntilRef.current = 0;
+  }, []);
+
+  const handleCompleteScrollEndDrag = useCallback(
+    (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+      userDraggingCompleteScrollRef.current = false;
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+    },
+    [updateCompleteAnchorFromOffset]
+  );
+
+  const handleCompleteMomentumScrollEnd = useCallback(
+    (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+      userDraggingCompleteScrollRef.current = false;
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+    },
+    [updateCompleteAnchorFromOffset]
+  );
 
   useEffect(() => {
     if (contentMode !== 'verse' || !isPageHydrated) return;
@@ -3671,9 +3694,14 @@ export default function PdfDocumentViewer({
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={64}
               onTouchStart={showOverlay}
+              onScrollBeginDrag={handleCompleteScrollBeginDrag}
+              onScrollEndDrag={handleCompleteScrollEndDrag}
+              onMomentumScrollEnd={handleCompleteMomentumScrollEnd}
               onScroll={(event: { nativeEvent: { contentOffset: { y: number } } }) => {
-                if (pendingCompleteScrollVerseIdRef.current) return;
-                if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                if (!userDraggingCompleteScrollRef.current) {
+                  if (pendingCompleteScrollVerseIdRef.current) return;
+                  if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                }
                 updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
               }}
               onContentSizeChange={() => {
@@ -4111,9 +4139,14 @@ export default function PdfDocumentViewer({
               scrollEventThrottle={64}
               showsVerticalScrollIndicator={false}
               onTouchStart={showOverlay}
+              onScrollBeginDrag={handleCompleteScrollBeginDrag}
+              onScrollEndDrag={handleCompleteScrollEndDrag}
+              onMomentumScrollEnd={handleCompleteMomentumScrollEnd}
               onScroll={(event: { nativeEvent: { contentOffset: { y: number } } }) => {
-                if (pendingCompleteScrollVerseIdRef.current) return;
-                if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                if (!userDraggingCompleteScrollRef.current) {
+                  if (pendingCompleteScrollVerseIdRef.current) return;
+                  if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                }
                 updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
               }}
               onContentSizeChange={() => {

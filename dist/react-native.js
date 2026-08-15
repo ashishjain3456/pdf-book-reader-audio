@@ -1991,6 +1991,7 @@ function PdfDocumentViewer({
   const completeScrollRef = useRef(null);
   const completeVerseYByIdRef = useRef({});
   const pendingCompleteScrollVerseIdRef = useRef(null);
+  const userDraggingCompleteScrollRef = useRef(false);
   const completeRestoreTimerRef = useRef(null);
   const completeRestoreGuardUntilRef = useRef(0);
   const staticServerRef = useRef(null);
@@ -2177,6 +2178,25 @@ function PdfDocumentViewer({
       }
     }
   }, [completeVerses, pageNumber, setPageNumber, useNativeVersePaging, versePageById]);
+  const handleCompleteScrollBeginDrag = useCallback(() => {
+    userDraggingCompleteScrollRef.current = true;
+    pendingCompleteScrollVerseIdRef.current = null;
+    completeRestoreGuardUntilRef.current = 0;
+  }, []);
+  const handleCompleteScrollEndDrag = useCallback(
+    (event) => {
+      userDraggingCompleteScrollRef.current = false;
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+    },
+    [updateCompleteAnchorFromOffset]
+  );
+  const handleCompleteMomentumScrollEnd = useCallback(
+    (event) => {
+      userDraggingCompleteScrollRef.current = false;
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+    },
+    [updateCompleteAnchorFromOffset]
+  );
   useEffect(() => {
     if (contentMode !== "verse" || !isPageHydrated) return;
     const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
@@ -3181,9 +3201,14 @@ ${shareUrl}`;
                 showsVerticalScrollIndicator: false,
                 scrollEventThrottle: 64,
                 onTouchStart: showOverlay,
+                onScrollBeginDrag: handleCompleteScrollBeginDrag,
+                onScrollEndDrag: handleCompleteScrollEndDrag,
+                onMomentumScrollEnd: handleCompleteMomentumScrollEnd,
                 onScroll: (event) => {
-                  if (pendingCompleteScrollVerseIdRef.current) return;
-                  if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                  if (!userDraggingCompleteScrollRef.current) {
+                    if (pendingCompleteScrollVerseIdRef.current) return;
+                    if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                  }
                   updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
                 },
                 onContentSizeChange: () => {
@@ -3612,9 +3637,14 @@ ${shareUrl}`;
                   scrollEventThrottle: 64,
                   showsVerticalScrollIndicator: false,
                   onTouchStart: showOverlay,
+                  onScrollBeginDrag: handleCompleteScrollBeginDrag,
+                  onScrollEndDrag: handleCompleteScrollEndDrag,
+                  onMomentumScrollEnd: handleCompleteMomentumScrollEnd,
                   onScroll: (event) => {
-                    if (pendingCompleteScrollVerseIdRef.current) return;
-                    if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                    if (!userDraggingCompleteScrollRef.current) {
+                      if (pendingCompleteScrollVerseIdRef.current) return;
+                      if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                    }
                     updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
                   },
                   onContentSizeChange: () => {
