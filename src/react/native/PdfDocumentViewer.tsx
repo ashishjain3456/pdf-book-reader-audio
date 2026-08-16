@@ -3031,9 +3031,21 @@ export default function PdfDocumentViewer({
     if (matchedIndex >= 0) {
       const matched = playableVerseMappings[matchedIndex];
       const verseId = String(matched.verseId);
+      const pageForVerse = versePageById[verseId];
+      const verseChanged = activeVerseAudioIndex !== matchedIndex;
       setActiveVerseAudioIndex((prev) => (prev === matchedIndex ? prev : matchedIndex));
       setActiveVerseId((prev) => (prev === verseId ? prev : verseId));
-      syncActiveVerseToWebView(verseId, verseAudioStatus.playing, false);
+      if (pageForVerse && pageForVerse !== pageNumber) {
+        pageNumberRef.current = pageForVerse;
+        void setPageNumber(pageForVerse);
+      }
+      if (
+        verseChanged &&
+        (useNativeCompleteVerseView || useNativeFullScreenOverlay)
+      ) {
+        void scrollCompleteToVerse(verseId, true);
+      }
+      syncActiveVerseToWebView(verseId, verseAudioStatus.playing, verseChanged);
 
       return;
     }
@@ -3061,11 +3073,17 @@ export default function PdfDocumentViewer({
     currentVerseAudioUrl,
     hasVerseAudio,
     playableVerseMappings,
+    pageNumber,
+    scrollCompleteToVerse,
+    setPageNumber,
     syncActiveVerseToWebView,
+    useNativeCompleteVerseView,
+    useNativeFullScreenOverlay,
     verseAudioPlayer,
     verseAudioStatus.currentTime,
     verseAudioStatus.isLoaded,
     verseAudioStatus.playing,
+    versePageById,
   ]);
 
   useEffect(() => {
