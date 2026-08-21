@@ -107,6 +107,7 @@ export type VerseLayoutConfig = {
   enablePageTurnEffect?: boolean;
   showSecondPage?: boolean;
   allowDoubleSpread?: boolean;
+  autoAlignCurrentVerse?: boolean;
   viewportWidthPx?: number;
   viewportHeightPx?: number;
   readerHeightPx?: number;
@@ -2290,6 +2291,7 @@ export default function PdfDocumentViewer({
     contentMode === 'verse' && viewMode === 'book' && !isVerseFullScreen;
   const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
   const useNativeVersePaging = useNativeVerseView || useNativeFullScreenOverlay;
+  const autoAlignCurrentVerse = effectiveVerseLayout?.autoAlignCurrentVerse !== false;
   const playableVerseMappings = useMemo(
     () =>
       (verseAudioMappings || [])
@@ -2544,6 +2546,7 @@ export default function PdfDocumentViewer({
 
   useEffect(() => {
     if (contentMode !== 'verse' || viewMode !== 'continuous') return;
+    if (!autoAlignCurrentVerse) return;
 
     // Don't scroll while we're still loading the persisted page number
     if (!isPageHydrated) return;
@@ -2586,6 +2589,7 @@ export default function PdfDocumentViewer({
       }
     };
   }, [
+    autoAlignCurrentVerse,
     completeVerses,
     contentMode,
     isPageHydrated,
@@ -3718,12 +3722,14 @@ export default function PdfDocumentViewer({
                 updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
               }}
               onContentSizeChange={() => {
+                if (!autoAlignCurrentVerse) return;
                 scrollCompleteToVerse(
                   pendingCompleteScrollVerseIdRef.current || readerVerseId,
                   false
                 );
               }}
               onLayout={() => {
+                if (!autoAlignCurrentVerse) return;
                 scrollCompleteToVerse(
                   pendingCompleteScrollVerseIdRef.current || readerVerseId,
                   false
@@ -3741,6 +3747,7 @@ export default function PdfDocumentViewer({
                     onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
                       completeVerseYByIdRef.current[verse.id] =
                         event.nativeEvent.layout.y;
+                      if (!autoAlignCurrentVerse) return;
                       if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                         setTimeout(() => {
                           scrollCompleteToVerse(verse.id, false);
@@ -4163,12 +4170,14 @@ export default function PdfDocumentViewer({
                 updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
               }}
               onContentSizeChange={() => {
+                if (!autoAlignCurrentVerse) return;
                 scrollCompleteToVerse(
                   pendingCompleteScrollVerseIdRef.current || readerVerseId,
                   false
                 );
               }}
               onLayout={() => {
+                if (!autoAlignCurrentVerse) return;
                 scrollCompleteToVerse(
                   pendingCompleteScrollVerseIdRef.current || readerVerseId,
                   false
@@ -4186,6 +4195,7 @@ export default function PdfDocumentViewer({
                       onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
                         completeVerseYByIdRef.current[verse.id] =
                           event.nativeEvent.layout.y;
+                        if (!autoAlignCurrentVerse) return;
                         if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                           setTimeout(() => {
                             scrollCompleteToVerse(verse.id, false);

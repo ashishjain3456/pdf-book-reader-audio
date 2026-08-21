@@ -82,6 +82,7 @@ type VerseLayoutConfig = {
     enablePageTurnEffect?: boolean;
     showSecondPage?: boolean;
     allowDoubleSpread?: boolean;
+    autoAlignCurrentVerse?: boolean;
     viewportWidthPx?: number;
     viewportHeightPx?: number;
     readerHeightPx?: number;

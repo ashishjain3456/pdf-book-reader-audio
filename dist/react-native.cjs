@@ -2048,6 +2048,7 @@ function PdfDocumentViewer({
   const useNativeBookVerseView = contentMode === "verse" && viewMode === "book" && !isVerseFullScreen;
   const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
   const useNativeVersePaging = useNativeVerseView || useNativeFullScreenOverlay;
+  const autoAlignCurrentVerse = effectiveVerseLayout?.autoAlignCurrentVerse !== false;
   const playableVerseMappings = react.useMemo(
     () => (verseAudioMappings || []).filter((mapping) => {
       const startMs = Number(mapping.segmentStartMs);
@@ -2240,6 +2241,7 @@ function PdfDocumentViewer({
   ]);
   react.useEffect(() => {
     if (contentMode !== "verse" || viewMode !== "continuous") return;
+    if (!autoAlignCurrentVerse) return;
     const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     if (pageNumber > 1 && (!pageVerses || pageVerses.length === 0)) {
       return;
@@ -2262,6 +2264,7 @@ function PdfDocumentViewer({
       }
     };
   }, [
+    autoAlignCurrentVerse,
     completeVerses,
     contentMode,
     isPageHydrated,
@@ -3249,12 +3252,14 @@ ${shareUrl}`;
                   updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
                 },
                 onContentSizeChange: () => {
+                  if (!autoAlignCurrentVerse) return;
                   scrollCompleteToVerse(
                     pendingCompleteScrollVerseIdRef.current || readerVerseId,
                     false
                   );
                 },
                 onLayout: () => {
+                  if (!autoAlignCurrentVerse) return;
                   scrollCompleteToVerse(
                     pendingCompleteScrollVerseIdRef.current || readerVerseId,
                     false
@@ -3268,6 +3273,7 @@ ${shareUrl}`;
                     {
                       onLayout: (event) => {
                         completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
+                        if (!autoAlignCurrentVerse) return;
                         if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                           setTimeout(() => {
                             scrollCompleteToVerse(verse.id, false);
@@ -3685,12 +3691,14 @@ ${shareUrl}`;
                     updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
                   },
                   onContentSizeChange: () => {
+                    if (!autoAlignCurrentVerse) return;
                     scrollCompleteToVerse(
                       pendingCompleteScrollVerseIdRef.current || readerVerseId,
                       false
                     );
                   },
                   onLayout: () => {
+                    if (!autoAlignCurrentVerse) return;
                     scrollCompleteToVerse(
                       pendingCompleteScrollVerseIdRef.current || readerVerseId,
                       false
@@ -3704,6 +3712,7 @@ ${shareUrl}`;
                       {
                         onLayout: (event) => {
                           completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
+                          if (!autoAlignCurrentVerse) return;
                           if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                             setTimeout(() => {
                               scrollCompleteToVerse(verse.id, false);
