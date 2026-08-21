@@ -2049,6 +2049,7 @@ function PdfDocumentViewer({
   const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
   const useNativeVersePaging = useNativeVerseView || useNativeFullScreenOverlay;
   const autoAlignCurrentVerse = effectiveVerseLayout?.autoAlignCurrentVerse !== false;
+  const highlightCurrentVerse = effectiveVerseLayout?.highlightCurrentVerse !== false;
   const playableVerseMappings = react.useMemo(
     () => (verseAudioMappings || []).filter((mapping) => {
       const startMs = Number(mapping.segmentStartMs);
@@ -3266,7 +3267,7 @@ ${shareUrl}`;
                   );
                 },
                 children: completeVerses.map((verse) => {
-                  const isActive = readerVerseId === verse.id || activeVerseId === verse.id;
+                  const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
                   const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
                   return /* @__PURE__ */ jsxRuntime.jsx(
                     ReactNative.View,
@@ -3705,7 +3706,7 @@ ${shareUrl}`;
                     );
                   },
                   children: completeVerses.map((verse) => {
-                    const isActive = readerVerseId === verse.id || activeVerseId === verse.id;
+                    const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
                     const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
                     return /* @__PURE__ */ jsxRuntime.jsx(
                       ReactNative.View,
