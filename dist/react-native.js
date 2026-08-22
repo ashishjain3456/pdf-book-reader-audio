@@ -1953,6 +1953,7 @@ function PdfDocumentViewer({
   const [readerVerseId, setReaderVerseId] = useState(null);
   const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = useState(null);
   const [pendingVerseAudioSeekMs, setPendingVerseAudioSeekMs] = useState(null);
+  const pendingVerseAudioAutoplayRef = useRef(true);
   const [versePageById, setVersePageById] = useState({});
   const [verseIdsByPage, setVerseIdsByPage] = useState({});
   const [audioSliderWidth, setAudioSliderWidth] = useState(1);
@@ -2159,7 +2160,67 @@ function PdfDocumentViewer({
     }, 760);
     return true;
   }, []);
-  const updateCompleteAnchorFromOffset = useCallback((offsetY) => {
+  const getNativeVersePage = useCallback(
+    (verseId) => {
+      if (!verseId) return 0;
+      const mappedPage = versePageById[verseId];
+      if (mappedPage) return mappedPage;
+      if (!useNativeVersePaging) return 0;
+      const verseIndex = completeVerses.findIndex(
+        (verse) => verse.id === verseId
+      );
+      return verseIndex >= 0 ? verseIndex + 1 : 0;
+    },
+    [completeVerses, useNativeVersePaging, versePageById]
+  );
+  const updateActiveAudioFromVerse = useCallback(
+    (verseId, shouldSeek) => {
+      if (!verseId || !hasVerseAudio) return;
+      const preferredSourceUrl = currentVerseAudioUrl;
+      const nextIndex = playableVerseMappings.findIndex((mapping) => {
+        if (String(mapping.verseId) !== verseId) return false;
+        return !preferredSourceUrl || mapping.audioAssetUrl === preferredSourceUrl;
+      });
+      if (nextIndex < 0) return;
+      const item = playableVerseMappings[nextIndex];
+      const wasPlaying = verseAudioStatus.playing;
+      setActiveVerseAudioIndex(
+        (current) => current === nextIndex ? current : nextIndex
+      );
+      setActiveVerseId((current) => current === verseId ? current : verseId);
+      if (!shouldSeek) return;
+      const seekToSegmentStart = () => {
+        void verseAudioPlayer.seekTo(item.segmentStartMs / 1e3).then(() => {
+          if (!wasPlaying) return;
+          try {
+            verseAudioPlayer.play();
+          } catch {
+          }
+        });
+      };
+      if (currentVerseAudioUrl !== item.audioAssetUrl) {
+        try {
+          verseAudioPlayer.pause();
+          verseAudioPlayer.replace(item.audioAssetUrl);
+          setCurrentVerseAudioUrl(item.audioAssetUrl);
+          pendingVerseAudioAutoplayRef.current = wasPlaying;
+          setPendingVerseAudioSeekMs(item.segmentStartMs);
+        } catch {
+          setPendingVerseAudioSeekMs(null);
+        }
+        return;
+      }
+      seekToSegmentStart();
+    },
+    [
+      currentVerseAudioUrl,
+      hasVerseAudio,
+      playableVerseMappings,
+      verseAudioPlayer,
+      verseAudioStatus.playing
+    ]
+  );
+  const updateCompleteAnchorFromOffset = useCallback((offsetY, options) => {
     let bestVerseId = null;
     let bestDistance = Infinity;
     const targetY = Math.max(0, offsetY + 24);
@@ -2172,14 +2233,14 @@ function PdfDocumentViewer({
     }
     if (bestVerseId) {
       setReaderVerseId((current) => current === bestVerseId ? current : bestVerseId);
-      const nativePageForVerse = useNativeVersePaging ? completeVerses.findIndex((verse) => verse.id === bestVerseId) + 1 : 0;
-      const pageForVerse = versePageById[bestVerseId] || nativePageForVerse;
+      updateActiveAudioFromVerse(bestVerseId, options?.syncAudio === true);
+      const pageForVerse = getNativeVersePage(bestVerseId);
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         void setPageNumber(pageForVerse);
       }
     }
-  }, [completeVerses, pageNumber, setPageNumber, useNativeVersePaging, versePageById]);
+  }, [getNativeVersePage, pageNumber, setPageNumber, updateActiveAudioFromVerse]);
   const handleCompleteScrollBeginDrag = useCallback(() => {
     userDraggingCompleteScrollRef.current = true;
     pendingCompleteScrollVerseIdRef.current = null;
@@ -2188,14 +2249,18 @@ function PdfDocumentViewer({
   const handleCompleteScrollEndDrag = useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
-      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y, {
+        syncAudio: true
+      });
     },
     [updateCompleteAnchorFromOffset]
   );
   const handleCompleteMomentumScrollEnd = useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
-      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y, {
+        syncAudio: true
+      });
     },
     [updateCompleteAnchorFromOffset]
   );
@@ -2476,9 +2541,10 @@ function PdfDocumentViewer({
       if (!item) return;
       const autoplay = options?.autoplay ?? true;
       const verseId = String(item.verseId);
-      const pageForVerse = versePageById[verseId];
+      const pageForVerse = getNativeVersePage(verseId);
       setActiveVerseAudioIndex(targetIndex);
       setActiveVerseId(verseId);
+      setReaderVerseId((current) => current === verseId ? current : verseId);
       syncActiveVerseToWebView(verseId, autoplay, true);
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
@@ -2500,6 +2566,7 @@ function PdfDocumentViewer({
           verseAudioPlayer.pause();
           verseAudioPlayer.replace(item.audioAssetUrl);
           setCurrentVerseAudioUrl(item.audioAssetUrl);
+          pendingVerseAudioAutoplayRef.current = autoplay;
           setPendingVerseAudioSeekMs(item.segmentStartMs);
         } catch {
           setPendingVerseAudioSeekMs(null);
@@ -2512,13 +2579,13 @@ function PdfDocumentViewer({
     },
     [
       currentVerseAudioUrl,
+      getNativeVersePage,
       pageNumber,
       playableVerseMappings,
       setPageNumber,
       showOverlay,
       syncActiveVerseToWebView,
-      verseAudioPlayer,
-      versePageById
+      verseAudioPlayer
     ]
   );
   const toggleVerseAudio = useCallback(() => {
@@ -2600,8 +2667,10 @@ function PdfDocumentViewer({
     if (!hasVerseAudio || pendingVerseAudioSeekMs === null) return;
     if (!verseAudioStatus.isLoaded) return;
     const targetMs = pendingVerseAudioSeekMs;
+    const shouldPlayAfterSeek = pendingVerseAudioAutoplayRef.current;
     setPendingVerseAudioSeekMs(null);
     void verseAudioPlayer.seekTo(targetMs / 1e3).then(() => {
+      if (!shouldPlayAfterSeek) return;
       try {
         verseAudioPlayer.play();
       } catch {
@@ -2623,10 +2692,11 @@ function PdfDocumentViewer({
     if (matchedIndex >= 0) {
       const matched = playableVerseMappings[matchedIndex];
       const verseId = String(matched.verseId);
-      const pageForVerse = versePageById[verseId];
+      const pageForVerse = getNativeVersePage(verseId);
       const verseChanged = activeVerseAudioIndex !== matchedIndex;
       setActiveVerseAudioIndex((prev) => prev === matchedIndex ? prev : matchedIndex);
       setActiveVerseId((prev) => prev === verseId ? prev : verseId);
+      setReaderVerseId((prev) => prev === verseId ? prev : verseId);
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         void setPageNumber(pageForVerse);
@@ -2655,6 +2725,7 @@ function PdfDocumentViewer({
     activateVerseAudioIndex,
     activeVerseAudioIndex,
     currentVerseAudioUrl,
+    getNativeVersePage,
     hasVerseAudio,
     playableVerseMappings,
     pageNumber,
@@ -2666,8 +2737,7 @@ function PdfDocumentViewer({
     verseAudioPlayer,
     verseAudioStatus.currentTime,
     verseAudioStatus.isLoaded,
-    verseAudioStatus.playing,
-    versePageById
+    verseAudioStatus.playing
   ]);
   useEffect(() => {
     if (!viewerReady || contentMode !== "verse") return;
