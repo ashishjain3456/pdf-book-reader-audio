@@ -2492,61 +2492,7 @@ export default function PdfDocumentViewer({
     [completeVerses, useNativeVersePaging, versePageById]
   );
 
-  const updateActiveAudioFromVerse = useCallback(
-    (verseId: string | null, shouldSeek: boolean) => {
-      if (!verseId || !hasVerseAudio) return;
-      const preferredSourceUrl = currentVerseAudioUrl;
-      const nextIndex = playableVerseMappings.findIndex((mapping) => {
-        if (String(mapping.verseId) !== verseId) return false;
-        return !preferredSourceUrl || mapping.audioAssetUrl === preferredSourceUrl;
-      });
-      if (nextIndex < 0) return;
-
-      const item = playableVerseMappings[nextIndex];
-      const wasPlaying = verseAudioStatus.playing;
-      setActiveVerseAudioIndex((current) =>
-        current === nextIndex ? current : nextIndex
-      );
-      setActiveVerseId((current) => (current === verseId ? current : verseId));
-
-      if (!shouldSeek) return;
-
-      const seekToSegmentStart = () => {
-        void verseAudioPlayer.seekTo(item.segmentStartMs / 1000).then(() => {
-          if (!wasPlaying) return;
-          try {
-            verseAudioPlayer.play();
-          } catch {
-            // ignore player lifecycle errors
-          }
-        });
-      };
-
-      if (currentVerseAudioUrl !== item.audioAssetUrl) {
-        try {
-          verseAudioPlayer.pause();
-          verseAudioPlayer.replace(item.audioAssetUrl);
-          setCurrentVerseAudioUrl(item.audioAssetUrl);
-          pendingVerseAudioAutoplayRef.current = wasPlaying;
-          setPendingVerseAudioSeekMs(item.segmentStartMs);
-        } catch {
-          setPendingVerseAudioSeekMs(null);
-        }
-        return;
-      }
-
-      seekToSegmentStart();
-    },
-    [
-      currentVerseAudioUrl,
-      hasVerseAudio,
-      playableVerseMappings,
-      verseAudioPlayer,
-      verseAudioStatus.playing,
-    ]
-  );
-
-  const updateCompleteAnchorFromOffset = useCallback((offsetY: number, options?: { syncAudio?: boolean }) => {
+  const updateCompleteAnchorFromOffset = useCallback((offsetY: number) => {
     let bestVerseId: string | null = null;
     let bestDistance = Infinity;
     const targetY = Math.max(0, offsetY + 24);
@@ -2561,14 +2507,13 @@ export default function PdfDocumentViewer({
 
     if (bestVerseId) {
       setReaderVerseId((current) => (current === bestVerseId ? current : bestVerseId));
-      updateActiveAudioFromVerse(bestVerseId, options?.syncAudio === true);
       const pageForVerse = getNativeVersePage(bestVerseId);
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         void setPageNumber(pageForVerse);
       }
     }
-  }, [getNativeVersePage, pageNumber, setPageNumber, updateActiveAudioFromVerse]);
+  }, [getNativeVersePage, pageNumber, setPageNumber]);
 
   const handleCompleteScrollBeginDrag = useCallback(() => {
     userDraggingCompleteScrollRef.current = true;
@@ -2579,9 +2524,7 @@ export default function PdfDocumentViewer({
   const handleCompleteScrollEndDrag = useCallback(
     (event: { nativeEvent: { contentOffset: { y: number } } }) => {
       userDraggingCompleteScrollRef.current = false;
-      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y, {
-        syncAudio: true,
-      });
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
     },
     [updateCompleteAnchorFromOffset]
   );
@@ -2589,9 +2532,7 @@ export default function PdfDocumentViewer({
   const handleCompleteMomentumScrollEnd = useCallback(
     (event: { nativeEvent: { contentOffset: { y: number } } }) => {
       userDraggingCompleteScrollRef.current = false;
-      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y, {
-        syncAudio: true,
-      });
+      updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
     },
     [updateCompleteAnchorFromOffset]
   );
@@ -3000,6 +2941,23 @@ export default function PdfDocumentViewer({
     }
 
     if (activeVerseAudioIndex !== null) {
+      const activeItem = playableVerseMappings[activeVerseAudioIndex];
+      const activeVerseId = activeItem ? String(activeItem.verseId) : null;
+      if (activeVerseId) {
+        const pageForVerse = getNativeVersePage(activeVerseId);
+        setActiveVerseId(activeVerseId);
+        setReaderVerseId((current) =>
+          current === activeVerseId ? current : activeVerseId
+        );
+        if (pageForVerse && pageForVerse !== pageNumber) {
+          pageNumberRef.current = pageForVerse;
+          void setPageNumber(pageForVerse);
+        }
+        if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
+          void scrollCompleteToVerse(activeVerseId, true);
+        }
+        syncActiveVerseToWebView(activeVerseId, true, true);
+      }
       try {
         verseAudioPlayer.play();
       } catch {
@@ -3013,8 +2971,16 @@ export default function PdfDocumentViewer({
   }, [
     activateVerseAudioIndex,
     activeVerseAudioIndex,
+    getNativeVersePage,
     hasVerseAudio,
+    pageNumber,
+    playableVerseMappings,
+    scrollCompleteToVerse,
+    setPageNumber,
     showOverlay,
+    syncActiveVerseToWebView,
+    useNativeCompleteVerseView,
+    useNativeFullScreenOverlay,
     verseAudioPlayer,
     verseAudioStatus.playing,
   ]);
@@ -3113,9 +3079,15 @@ export default function PdfDocumentViewer({
       const verseId = String(matched.verseId);
       const pageForVerse = getNativeVersePage(verseId);
       const verseChanged = activeVerseAudioIndex !== matchedIndex;
-      setActiveVerseAudioIndex((prev) => (prev === matchedIndex ? prev : matchedIndex));
-      setActiveVerseId((prev) => (prev === verseId ? prev : verseId));
-      setReaderVerseId((prev) => (prev === verseId ? prev : verseId));
+      if (activeVerseAudioIndex !== matchedIndex) {
+        setActiveVerseAudioIndex(matchedIndex);
+      }
+      if (activeVerseId !== verseId) {
+        setActiveVerseId(verseId);
+      }
+      if (readerVerseId !== verseId) {
+        setReaderVerseId(verseId);
+      }
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         void setPageNumber(pageForVerse);
@@ -3151,11 +3123,13 @@ export default function PdfDocumentViewer({
   }, [
     activateVerseAudioIndex,
     activeVerseAudioIndex,
+    activeVerseId,
     currentVerseAudioUrl,
     getNativeVersePage,
     hasVerseAudio,
     playableVerseMappings,
     pageNumber,
+    readerVerseId,
     scrollCompleteToVerse,
     setPageNumber,
     syncActiveVerseToWebView,
@@ -3649,15 +3623,6 @@ export default function PdfDocumentViewer({
             accessibilityLabel="Previous page"
           >
             <Text style={styles.overlayButtonText}>Prev</Text>
-          </Pressable>
-        ) : null}
-        {pageNumber > 1 ? (
-          <Pressable
-            onPress={goToFirstPage}
-            style={styles.overlayZoomButton}
-            accessibilityLabel="Go to start"
-          >
-            <Text style={styles.overlayButtonText}>Start</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -4591,7 +4556,9 @@ export default function PdfDocumentViewer({
                     <Pressable
                       onLayout={(event: { nativeEvent: { layout: { width?: number } } }) => {
                         const nextWidth = Math.max(1, Math.round(event.nativeEvent.layout.width || 1));
-                        setAudioSliderWidth(nextWidth);
+                        setAudioSliderWidth((current) =>
+                          current === nextWidth ? current : nextWidth
+                        );
                       }}
                       onPress={(event: { nativeEvent: { locationX?: number } }) => {
                         const locationX = Math.max(0, event.nativeEvent.locationX || 0);
@@ -4631,15 +4598,6 @@ export default function PdfDocumentViewer({
                       accessibilityLabel="Previous page"
                     >
                       <Text style={styles.overlayButtonText}>Prev</Text>
-                    </Pressable>
-                  ) : null}
-                  {pageNumber > 1 ? (
-                    <Pressable
-                      onPress={goToFirstPage}
-                      style={styles.overlayZoomButton}
-                      accessibilityLabel="Go to start"
-                    >
-                      <Text style={styles.overlayButtonText}>Start</Text>
                     </Pressable>
                   ) : null}
                   <Pressable
