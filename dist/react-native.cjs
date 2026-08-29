@@ -38,6 +38,9 @@ var Ionicons__default = /*#__PURE__*/_interopDefault(Ionicons);
 var FontAwesome6__default = /*#__PURE__*/_interopDefault(FontAwesome6);
 
 // src/react/native/PdfDocumentViewer.tsx
+
+// src/react/native/assets/pageFlipBrowserScript.ts
+var PAGE_FLIP_BROWSER_SCRIPT = '!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).St={})}(this,(function(t){"use strict";class e{constructor(t,e){this.state={angle:0,area:[],position:{x:0,y:0},hardAngle:0,hardDrawingAngle:0},this.createdDensity=e,this.nowDrawingDensity=this.createdDensity,this.render=t}setDensity(t){this.createdDensity=t,this.nowDrawingDensity=t}setDrawingDensity(t){this.nowDrawingDensity=t}setPosition(t){this.state.position=t}setAngle(t){this.state.angle=t}setArea(t){this.state.area=t}setHardDrawingAngle(t){this.state.hardDrawingAngle=t}setHardAngle(t){this.state.hardAngle=t,this.state.hardDrawingAngle=t}setOrientation(t){this.orientation=t}getDrawingDensity(){return this.nowDrawingDensity}getDensity(){return this.createdDensity}getHardAngle(){return this.state.hardAngle}}class i extends e{constructor(t,e,i){super(t,i),this.image=null,this.isLoad=!1,this.loadingAngle=0,this.image=new Image,this.image.src=e}draw(t){const e=this.render.getContext(),i=this.render.convertToGlobal(this.state.position),s=this.render.getRect().pageWidth,n=this.render.getRect().height;e.save(),e.translate(i.x,i.y),e.beginPath();for(let t of this.state.area)null!==t&&(t=this.render.convertToGlobal(t),e.lineTo(t.x-i.x,t.y-i.y));e.rotate(this.state.angle),e.clip(),this.isLoad?e.drawImage(this.image,0,0,s,n):this.drawLoader(e,{x:0,y:0},s,n),e.restore()}simpleDraw(t){const e=this.render.getRect(),i=this.render.getContext(),s=e.pageWidth,n=e.height,h=1===t?e.left+e.pageWidth:e.left,r=e.top;this.isLoad?i.drawImage(this.image,h,r,s,n):this.drawLoader(i,{x:h,y:r},s,n)}drawLoader(t,e,i,s){t.beginPath(),t.strokeStyle="rgb(200, 200, 200)",t.fillStyle="rgb(255, 255, 255)",t.lineWidth=1,t.rect(e.x+1,e.y+1,i-1,s-1),t.stroke(),t.fill();const n={x:e.x+i/2,y:e.y+s/2};t.beginPath(),t.lineWidth=10,t.arc(n.x,n.y,20,this.loadingAngle,3*Math.PI/2+this.loadingAngle),t.stroke(),t.closePath(),this.loadingAngle+=.07,this.loadingAngle>=2*Math.PI&&(this.loadingAngle=0)}load(){this.isLoad||(this.image.onload=()=>{this.isLoad=!0})}newTemporaryCopy(){return this}getTemporaryCopy(){return this}hideTemporaryCopy(){}}class s{constructor(t,e){this.pages=[],this.currentPageIndex=0,this.currentSpreadIndex=0,this.landscapeSpread=[],this.portraitSpread=[],this.render=e,this.app=t,this.currentPageIndex=0,this.isShowCover=this.app.getSettings().showCover}destroy(){this.pages=[]}createSpread(){this.landscapeSpread=[],this.portraitSpread=[];for(let t=0;t<this.pages.length;t++)this.portraitSpread.push([t]);let t=0;this.isShowCover&&(this.pages[0].setDensity("hard"),this.landscapeSpread.push([t]),t++);for(let e=t;e<this.pages.length;e+=2)e<this.pages.length-1?this.landscapeSpread.push([e,e+1]):(this.landscapeSpread.push([e]),this.pages[e].setDensity("hard"))}getSpread(){return"landscape"===this.render.getOrientation()?this.landscapeSpread:this.portraitSpread}getSpreadIndexByPage(t){const e=this.getSpread();for(let i=0;i<e.length;i++)if(t===e[i][0]||t===e[i][1])return i;return null}getPageCount(){return this.pages.length}getPages(){return this.pages}getPage(t){if(t>=0&&t<this.pages.length)return this.pages[t];throw new Error("Invalid page number")}nextBy(t){const e=this.pages.indexOf(t);return e<this.pages.length-1?this.pages[e+1]:null}prevBy(t){const e=this.pages.indexOf(t);return e>0?this.pages[e-1]:null}getFlippingPage(t){const e=this.currentSpreadIndex;if("portrait"===this.render.getOrientation())return 0===t?this.pages[e].newTemporaryCopy():this.pages[e-1];{const i=0===t?this.getSpread()[e+1]:this.getSpread()[e-1];return 1===i.length||0===t?this.pages[i[0]]:this.pages[i[1]]}}getBottomPage(t){const e=this.currentSpreadIndex;if("portrait"===this.render.getOrientation())return 0===t?this.pages[e+1]:this.pages[e-1];{const i=0===t?this.getSpread()[e+1]:this.getSpread()[e-1];return 1===i.length?this.pages[i[0]]:0===t?this.pages[i[1]]:this.pages[i[0]]}}showNext(){this.currentSpreadIndex<this.getSpread().length&&(this.currentSpreadIndex++,this.showSpread())}showPrev(){this.currentSpreadIndex>0&&(this.currentSpreadIndex--,this.showSpread())}getCurrentPageIndex(){return this.currentPageIndex}show(t=null){if(null===t&&(t=this.currentPageIndex),t<0||t>=this.pages.length)return;const e=this.getSpreadIndexByPage(t);null!==e&&(this.currentSpreadIndex=e,this.showSpread())}getCurrentSpreadIndex(){return this.currentSpreadIndex}setCurrentSpreadIndex(t){if(!(t>=0&&t<this.getSpread().length))throw new Error("Invalid page");this.currentSpreadIndex=t}showSpread(){const t=this.getSpread()[this.currentSpreadIndex];2===t.length?(this.render.setLeftPage(this.pages[t[0]]),this.render.setRightPage(this.pages[t[1]])):"landscape"===this.render.getOrientation()&&t[0]===this.pages.length-1?(this.render.setLeftPage(this.pages[t[0]]),this.render.setRightPage(null)):(this.render.setLeftPage(null),this.render.setRightPage(this.pages[t[0]])),this.currentPageIndex=t[0],this.app.updatePageIndex(this.currentPageIndex)}}class n extends s{constructor(t,e,i){super(t,e),this.imagesHref=i}load(){for(const t of this.imagesHref){const e=new i(this.render,t,"soft");e.load(),this.pages.push(e)}this.createSpread()}}class h{static GetDistanceBetweenTwoPoint(t,e){return null===t||null===e?1/0:Math.sqrt(Math.pow(e.x-t.x,2)+Math.pow(e.y-t.y,2))}static GetSegmentLength(t){return h.GetDistanceBetweenTwoPoint(t[0],t[1])}static GetAngleBetweenTwoLine(t,e){const i=t[0].y-t[1].y,s=e[0].y-e[1].y,n=t[1].x-t[0].x,h=e[1].x-e[0].x;return Math.acos((i*s+n*h)/(Math.sqrt(i*i+n*n)*Math.sqrt(s*s+h*h)))}static PointInRect(t,e){return null===e?null:e.x>=t.left&&e.x<=t.width+t.left&&e.y>=t.top&&e.y<=t.top+t.height?e:null}static GetRotatedPoint(t,e,i){return{x:t.x*Math.cos(i)+t.y*Math.sin(i)+e.x,y:t.y*Math.cos(i)-t.x*Math.sin(i)+e.y}}static LimitPointToCircle(t,e,i){if(h.GetDistanceBetweenTwoPoint(t,i)<=e)return i;const s=t.x,n=t.y,r=i.x,o=i.y;let a=Math.sqrt(Math.pow(e,2)*Math.pow(s-r,2)/(Math.pow(s-r,2)+Math.pow(n-o,2)))+s;i.x<0&&(a*=-1);let g=(a-s)*(n-o)/(s-r)+n;return s-r+n===0&&(g=e),{x:a,y:g}}static GetIntersectBetweenTwoSegment(t,e,i){return h.PointInRect(t,h.GetIntersectBeetwenTwoLine(e,i))}static GetIntersectBeetwenTwoLine(t,e){const i=t[0].y-t[1].y,s=e[0].y-e[1].y,n=t[1].x-t[0].x,h=e[1].x-e[0].x,r=t[0].x*t[1].y-t[1].x*t[0].y,o=e[0].x*e[1].y-e[1].x*e[0].y,a=i*o-s*r,g=n*o-h*r,l=-(r*h-o*n)/(i*h-s*n),d=-(i*o-s*r)/(i*h-s*n);if(isFinite(l)&&isFinite(d))return{x:l,y:d};if(Math.abs(a-g)<.1)throw new Error("Segment included");return null}static GetCordsFromTwoPoint(t,e){const i=Math.abs(t.x-e.x),s=Math.abs(t.y-e.y),n=Math.max(i,s),h=[t];function r(t,e,i,s,n){return e>t?t+n*(i/s):e<t?t-n*(i/s):t}for(let o=1;o<=n;o+=1)h.push({x:r(t.x,e.x,i,n,o),y:r(t.y,e.y,s,n,o)});return h}}class r extends e{constructor(t,e,i){super(t,i),this.copiedElement=null,this.temporaryCopy=null,this.isLoad=!1,this.element=e,this.element.classList.add("stf__item"),this.element.classList.add("--"+i)}newTemporaryCopy(){return"hard"===this.nowDrawingDensity?this:(null===this.temporaryCopy&&(this.copiedElement=this.element.cloneNode(!0),this.element.parentElement.appendChild(this.copiedElement),this.temporaryCopy=new r(this.render,this.copiedElement,this.nowDrawingDensity)),this.getTemporaryCopy())}getTemporaryCopy(){return this.temporaryCopy}hideTemporaryCopy(){null!==this.temporaryCopy&&(this.copiedElement.remove(),this.copiedElement=null,this.temporaryCopy=null)}draw(t){const e=t||this.nowDrawingDensity,i=this.render.convertToGlobal(this.state.position),s=this.render.getRect().pageWidth,n=this.render.getRect().height;this.element.classList.remove("--simple");const h=`\\n            display: block;\\n            z-index: ${this.element.style.zIndex};\\n            left: 0;\\n            top: 0;\\n            width: ${s}px;\\n            height: ${n}px;\\n        `;"hard"===e?this.drawHard(h):this.drawSoft(i,h)}drawHard(t=""){const e=this.render.getRect().left+this.render.getRect().width/2,i=this.state.hardDrawingAngle,s=t+"\\n                backface-visibility: hidden;\\n                -webkit-backface-visibility: hidden;\\n                clip-path: none;\\n                -webkit-clip-path: none;\\n            "+(0===this.orientation?`transform-origin: ${this.render.getRect().pageWidth}px 0; \\n                   transform: translate3d(0, 0, 0) rotateY(${i}deg);`:`transform-origin: 0 0; \\n                   transform: translate3d(${e}px, 0, 0) rotateY(${i}deg);`);this.element.style.cssText=s}drawSoft(t,e=""){let i="polygon( ";for(const t of this.state.area)if(null!==t){let e=1===this.render.getDirection()?{x:-t.x+this.state.position.x,y:t.y-this.state.position.y}:{x:t.x-this.state.position.x,y:t.y-this.state.position.y};e=h.GetRotatedPoint(e,{x:0,y:0},this.state.angle),i+=e.x+"px "+e.y+"px, "}i=i.slice(0,-2),i+=")";const s=e+`transform-origin: 0 0; clip-path: ${i}; -webkit-clip-path: ${i};`+(this.render.isSafari()&&0===this.state.angle?`transform: translate(${t.x}px, ${t.y}px);`:`transform: translate3d(${t.x}px, ${t.y}px, 0) rotate(${this.state.angle}rad);`);this.element.style.cssText=s}simpleDraw(t){const e=this.render.getRect(),i=e.pageWidth,s=e.height,n=1===t?e.left+e.pageWidth:e.left,h=e.top;this.element.classList.add("--simple"),this.element.style.cssText=`\\n            position: absolute; \\n            display: block; \\n            height: ${s}px; \\n            left: ${n}px; \\n            top: ${h}px; \\n            width: ${i}px; \\n            z-index: ${this.render.getSettings().startZIndex+1};`}getElement(){return this.element}load(){this.isLoad=!0}setOrientation(t){super.setOrientation(t),this.element.classList.remove("--left","--right"),this.element.classList.add(1===t?"--right":"--left")}setDrawingDensity(t){this.element.classList.remove("--soft","--hard"),this.element.classList.add("--"+t),super.setDrawingDensity(t)}}class o extends s{constructor(t,e,i,s){super(t,e),this.element=i,this.pagesElement=s}load(){for(const t of this.pagesElement){const e=new r(this.render,t,"hard"===t.dataset.density?"hard":"soft");e.load(),this.pages.push(e)}this.createSpread()}}class a{constructor(t,e,i,s){this.direction=t,this.corner=e,this.topIntersectPoint=null,this.sideIntersectPoint=null,this.bottomIntersectPoint=null,this.pageWidth=parseInt(i,10),this.pageHeight=parseInt(s,10)}calc(t){try{return this.position=this.calcAngleAndPosition(t),this.calculateIntersectPoint(this.position),!0}catch(t){return!1}}getFlippingClipArea(){const t=[];let e=!1;return t.push(this.rect.topLeft),t.push(this.topIntersectPoint),null===this.sideIntersectPoint?e=!0:(t.push(this.sideIntersectPoint),null===this.bottomIntersectPoint&&(e=!1)),t.push(this.bottomIntersectPoint),(e||"bottom"===this.corner)&&t.push(this.rect.bottomLeft),t}getBottomClipArea(){const t=[];return t.push(this.topIntersectPoint),"top"===this.corner?t.push({x:this.pageWidth,y:0}):(null!==this.topIntersectPoint&&t.push({x:this.pageWidth,y:0}),t.push({x:this.pageWidth,y:this.pageHeight})),null!==this.sideIntersectPoint?h.GetDistanceBetweenTwoPoint(this.sideIntersectPoint,this.topIntersectPoint)>=10&&t.push(this.sideIntersectPoint):"top"===this.corner&&t.push({x:this.pageWidth,y:this.pageHeight}),t.push(this.bottomIntersectPoint),t.push(this.topIntersectPoint),t}getAngle(){return 0===this.direction?-this.angle:this.angle}getRect(){return this.rect}getPosition(){return this.position}getActiveCorner(){return 0===this.direction?this.rect.topLeft:this.rect.topRight}getDirection(){return this.direction}getFlippingProgress(){return Math.abs((this.position.x-this.pageWidth)/(2*this.pageWidth)*100)}getCorner(){return this.corner}getBottomPagePosition(){return 1===this.direction?{x:this.pageWidth,y:0}:{x:0,y:0}}getShadowStartPoint(){return"top"===this.corner?this.topIntersectPoint:null!==this.sideIntersectPoint?this.sideIntersectPoint:this.topIntersectPoint}getShadowAngle(){const t=h.GetAngleBetweenTwoLine(this.getSegmentToShadowLine(),[{x:0,y:0},{x:this.pageWidth,y:0}]);return 0===this.direction?t:Math.PI-t}calcAngleAndPosition(t){let e=t;if(this.updateAngleAndGeometry(e),e="top"===this.corner?this.checkPositionAtCenterLine(e,{x:0,y:0},{x:0,y:this.pageHeight}):this.checkPositionAtCenterLine(e,{x:0,y:this.pageHeight},{x:0,y:0}),Math.abs(e.x-this.pageWidth)<1&&Math.abs(e.y)<1)throw new Error("Point is too small");return e}updateAngleAndGeometry(t){this.angle=this.calculateAngle(t),this.rect=this.getPageRect(t)}calculateAngle(t){const e=this.pageWidth-t.x+1,i="bottom"===this.corner?this.pageHeight-t.y:t.y;let s=2*Math.acos(e/Math.sqrt(i*i+e*e));i<0&&(s=-s);const n=Math.PI-s;if(!isFinite(s)||n>=0&&n<.003)throw new Error("The G point is too small");return"bottom"===this.corner&&(s=-s),s}getPageRect(t){return"top"===this.corner?this.getRectFromBasePoint([{x:0,y:0},{x:this.pageWidth,y:0},{x:0,y:this.pageHeight},{x:this.pageWidth,y:this.pageHeight}],t):this.getRectFromBasePoint([{x:0,y:-this.pageHeight},{x:this.pageWidth,y:-this.pageHeight},{x:0,y:0},{x:this.pageWidth,y:0}],t)}getRectFromBasePoint(t,e){return{topLeft:this.getRotatedPoint(t[0],e),topRight:this.getRotatedPoint(t[1],e),bottomLeft:this.getRotatedPoint(t[2],e),bottomRight:this.getRotatedPoint(t[3],e)}}getRotatedPoint(t,e){return{x:t.x*Math.cos(this.angle)+t.y*Math.sin(this.angle)+e.x,y:t.y*Math.cos(this.angle)-t.x*Math.sin(this.angle)+e.y}}calculateIntersectPoint(t){const e={left:-1,top:-1,width:this.pageWidth+2,height:this.pageHeight+2};"top"===this.corner?(this.topIntersectPoint=h.GetIntersectBetweenTwoSegment(e,[t,this.rect.topRight],[{x:0,y:0},{x:this.pageWidth,y:0}]),this.sideIntersectPoint=h.GetIntersectBetweenTwoSegment(e,[t,this.rect.bottomLeft],[{x:this.pageWidth,y:0},{x:this.pageWidth,y:this.pageHeight}]),this.bottomIntersectPoint=h.GetIntersectBetweenTwoSegment(e,[this.rect.bottomLeft,this.rect.bottomRight],[{x:0,y:this.pageHeight},{x:this.pageWidth,y:this.pageHeight}])):(this.topIntersectPoint=h.GetIntersectBetweenTwoSegment(e,[this.rect.topLeft,this.rect.topRight],[{x:0,y:0},{x:this.pageWidth,y:0}]),this.sideIntersectPoint=h.GetIntersectBetweenTwoSegment(e,[t,this.rect.topLeft],[{x:this.pageWidth,y:0},{x:this.pageWidth,y:this.pageHeight}]),this.bottomIntersectPoint=h.GetIntersectBetweenTwoSegment(e,[this.rect.bottomLeft,this.rect.bottomRight],[{x:0,y:this.pageHeight},{x:this.pageWidth,y:this.pageHeight}]))}checkPositionAtCenterLine(t,e,i){let s=t;const n=h.LimitPointToCircle(e,this.pageWidth,s);s!==n&&(s=n,this.updateAngleAndGeometry(s));const r=Math.sqrt(Math.pow(this.pageWidth,2)+Math.pow(this.pageHeight,2));let o=this.rect.bottomRight,a=this.rect.topLeft;if("bottom"===this.corner&&(o=this.rect.topRight,a=this.rect.bottomLeft),o.x<=0){const t=h.LimitPointToCircle(i,r,a);t!==s&&(s=t,this.updateAngleAndGeometry(s))}return s}getSegmentToShadowLine(){const t=this.getShadowStartPoint();return[t,t!==this.sideIntersectPoint&&null!==this.sideIntersectPoint?this.sideIntersectPoint:this.bottomIntersectPoint]}}class g{constructor(t,e){this.flippingPage=null,this.bottomPage=null,this.calc=null,this.state="read",this.render=t,this.app=e}fold(t){this.setState("user_fold"),null===this.calc&&this.start(t),this.do(this.render.convertToPage(t))}flip(t){if(this.app.getSettings().disableFlipByClick&&!this.isPointOnCorners(t))return;if(null!==this.calc&&this.render.finishAnimation(),!this.start(t))return;const e=this.getBoundsRect();this.setState("flipping");const i=e.height/10,s="bottom"===this.calc.getCorner()?e.height-i:i,n="bottom"===this.calc.getCorner()?e.height:0;this.calc.calc({x:e.pageWidth-i,y:s}),this.animateFlippingTo({x:e.pageWidth-i,y:s},{x:-e.pageWidth,y:n},!0)}start(t){this.reset();const e=this.render.convertToBook(t),i=this.getBoundsRect(),s=this.getDirectionByPoint(e),n=e.y>=i.height/2?"bottom":"top";if(!this.checkDirection(s))return!1;try{if(this.flippingPage=this.app.getPageCollection().getFlippingPage(s),this.bottomPage=this.app.getPageCollection().getBottomPage(s),"landscape"===this.render.getOrientation())if(1===s){const t=this.app.getPageCollection().nextBy(this.flippingPage);null!==t&&this.flippingPage.getDensity()!==t.getDensity()&&(this.flippingPage.setDrawingDensity("hard"),t.setDrawingDensity("hard"))}else{const t=this.app.getPageCollection().prevBy(this.flippingPage);null!==t&&this.flippingPage.getDensity()!==t.getDensity()&&(this.flippingPage.setDrawingDensity("hard"),t.setDrawingDensity("hard"))}return this.render.setDirection(s),this.calc=new a(s,n,i.pageWidth.toString(10),i.height.toString(10)),!0}catch(t){return!1}}do(t){if(null!==this.calc&&this.calc.calc(t)){const t=this.calc.getFlippingProgress();this.bottomPage.setArea(this.calc.getBottomClipArea()),this.bottomPage.setPosition(this.calc.getBottomPagePosition()),this.bottomPage.setAngle(0),this.bottomPage.setHardAngle(0),this.flippingPage.setArea(this.calc.getFlippingClipArea()),this.flippingPage.setPosition(this.calc.getActiveCorner()),this.flippingPage.setAngle(this.calc.getAngle()),0===this.calc.getDirection()?this.flippingPage.setHardAngle(90*(200-2*t)/100):this.flippingPage.setHardAngle(-90*(200-2*t)/100),this.render.setPageRect(this.calc.getRect()),this.render.setBottomPage(this.bottomPage),this.render.setFlippingPage(this.flippingPage),this.render.setShadowData(this.calc.getShadowStartPoint(),this.calc.getShadowAngle(),t,this.calc.getDirection())}}flipToPage(t,e){const i=this.app.getPageCollection().getCurrentSpreadIndex(),s=this.app.getPageCollection().getSpreadIndexByPage(t);try{s>i&&(this.app.getPageCollection().setCurrentSpreadIndex(s-1),this.flipNext(e)),s<i&&(this.app.getPageCollection().setCurrentSpreadIndex(s+1),this.flipPrev(e))}catch(t){}}flipNext(t){this.flip({x:this.render.getRect().left+2*this.render.getRect().pageWidth-10,y:"top"===t?1:this.render.getRect().height-2})}flipPrev(t){this.flip({x:10,y:"top"===t?1:this.render.getRect().height-2})}stopMove(){if(null===this.calc)return;const t=this.calc.getPosition(),e=this.getBoundsRect(),i="bottom"===this.calc.getCorner()?e.height:0;t.x<=0?this.animateFlippingTo(t,{x:-e.pageWidth,y:i},!0):this.animateFlippingTo(t,{x:e.pageWidth,y:i},!1)}showCorner(t){if(!this.checkState("read","fold_corner"))return;const e=this.getBoundsRect(),i=e.pageWidth;if(this.isPointOnCorners(t))if(null===this.calc){if(!this.start(t))return;this.setState("fold_corner"),this.calc.calc({x:i-1,y:1});const s=50,n="bottom"===this.calc.getCorner()?e.height-1:1,h="bottom"===this.calc.getCorner()?e.height-s:s;this.animateFlippingTo({x:i-1,y:n},{x:i-s,y:h},!1,!1)}else this.do(this.render.convertToPage(t));else this.setState("read"),this.render.finishAnimation(),this.stopMove()}animateFlippingTo(t,e,i,s=!0){const n=h.GetCordsFromTwoPoint(t,e),r=[];for(const t of n)r.push(()=>this.do(t));const o=this.getAnimationDuration(n.length);this.render.startAnimation(r,o,()=>{this.calc&&(i&&(1===this.calc.getDirection()?this.app.turnToPrevPage():this.app.turnToNextPage()),s&&(this.render.setBottomPage(null),this.render.setFlippingPage(null),this.render.clearShadow(),this.setState("read"),this.reset()))})}getCalculation(){return this.calc}getState(){return this.state}setState(t){this.state!==t&&(this.app.updateState(t),this.state=t)}getDirectionByPoint(t){const e=this.getBoundsRect();if("portrait"===this.render.getOrientation()){if(t.x-e.pageWidth<=e.width/5)return 1}else if(t.x<e.width/2)return 1;return 0}getAnimationDuration(t){const e=this.app.getSettings().flippingTime;return t>=1e3?e:t/1e3*e}checkDirection(t){return 0===t?this.app.getCurrentPageIndex()<this.app.getPageCount()-1:this.app.getCurrentPageIndex()>=1}reset(){this.calc=null,this.flippingPage=null,this.bottomPage=null}getBoundsRect(){return this.render.getRect()}checkState(...t){for(const e of t)if(this.state===e)return!0;return!1}isPointOnCorners(t){const e=this.getBoundsRect(),i=e.pageWidth,s=Math.sqrt(Math.pow(i,2)+Math.pow(e.height,2))/5,n=this.render.convertToBook(t);return n.x>0&&n.y>0&&n.x<e.width&&n.y<e.height&&(n.x<s||n.x>e.width-s)&&(n.y<s||n.y>e.height-s)}}class l{constructor(t,e){this.leftPage=null,this.rightPage=null,this.flippingPage=null,this.bottomPage=null,this.direction=null,this.orientation=null,this.shadow=null,this.animation=null,this.pageRect=null,this.boundsRect=null,this.timer=0,this.safari=!1,this.setting=e,this.app=t;const i=new RegExp("Version\\\\/[\\\\d\\\\.]+.*Safari/");this.safari=null!==i.exec(window.navigator.userAgent)}render(t){if(null!==this.animation){const e=Math.round((t-this.animation.startedAt)/this.animation.durationFrame);e<this.animation.frames.length?this.animation.frames[e]():(this.animation.onAnimateEnd(),this.animation=null)}this.timer=t,this.drawFrame()}start(){this.update();const t=e=>{this.render(e),requestAnimationFrame(t)};requestAnimationFrame(t)}startAnimation(t,e,i){this.finishAnimation(),this.animation={frames:t,duration:e,durationFrame:e/t.length,onAnimateEnd:i,startedAt:this.timer}}finishAnimation(){null!==this.animation&&(this.animation.frames[this.animation.frames.length-1](),null!==this.animation.onAnimateEnd&&this.animation.onAnimateEnd()),this.animation=null}update(){this.boundsRect=null;const t=this.calculateBoundsRect();this.orientation!==t&&(this.orientation=t,this.app.updateOrientation(t))}calculateBoundsRect(){let t="landscape";const e=this.getBlockWidth(),i=e/2,s=this.getBlockHeight()/2,n=this.setting.width/this.setting.height;let h=this.setting.width,r=this.setting.height,o=i-h;return"stretch"===this.setting.size?(e<2*this.setting.minWidth&&this.app.getSettings().usePortrait&&(t="portrait"),h="portrait"===t?this.getBlockWidth():this.getBlockWidth()/2,h>this.setting.maxWidth&&(h=this.setting.maxWidth),r=h/n,r>this.getBlockHeight()&&(r=this.getBlockHeight(),h=r*n),o="portrait"===t?i-h/2-h:i-h):e<2*h&&this.app.getSettings().usePortrait&&(t="portrait",o=i-h/2-h),this.boundsRect={left:o,top:s-r/2,width:2*h,height:r,pageWidth:h},t}setShadowData(t,e,i,s){if(!this.app.getSettings().drawShadow)return;const n=100*this.getSettings().maxShadowOpacity;this.shadow={pos:t,angle:e,width:3*this.getRect().pageWidth/4*i/100,opacity:(100-i)*n/100/100,direction:s,progress:2*i}}clearShadow(){this.shadow=null}getBlockWidth(){return this.app.getUI().getDistElement().offsetWidth}getBlockHeight(){return this.app.getUI().getDistElement().offsetHeight}getDirection(){return this.direction}getRect(){return null===this.boundsRect&&this.calculateBoundsRect(),this.boundsRect}getSettings(){return this.app.getSettings()}getOrientation(){return this.orientation}setPageRect(t){this.pageRect=t}setDirection(t){this.direction=t}setRightPage(t){null!==t&&t.setOrientation(1),this.rightPage=t}setLeftPage(t){null!==t&&t.setOrientation(0),this.leftPage=t}setBottomPage(t){null!==t&&t.setOrientation(1===this.direction?0:1),this.bottomPage=t}setFlippingPage(t){null!==t&&t.setOrientation(0===this.direction&&"portrait"!==this.orientation?0:1),this.flippingPage=t}convertToBook(t){const e=this.getRect();return{x:t.x-e.left,y:t.y-e.top}}isSafari(){return this.safari}convertToPage(t,e){e||(e=this.direction);const i=this.getRect();return{x:0===e?t.x-i.left-i.width/2:i.width/2-t.x+i.left,y:t.y-i.top}}convertToGlobal(t,e){if(e||(e=this.direction),null==t)return null;const i=this.getRect();return{x:0===e?t.x+i.left+i.width/2:i.width/2-t.x+i.left,y:t.y+i.top}}convertRectToGlobal(t,e){return e||(e=this.direction),{topLeft:this.convertToGlobal(t.topLeft,e),topRight:this.convertToGlobal(t.topRight,e),bottomLeft:this.convertToGlobal(t.bottomLeft,e),bottomRight:this.convertToGlobal(t.bottomRight,e)}}}class d extends l{constructor(t,e,i){super(t,e),this.canvas=i,this.ctx=i.getContext("2d")}getContext(){return this.ctx}reload(){}drawFrame(){this.clear(),"portrait"!==this.orientation&&null!=this.leftPage&&this.leftPage.simpleDraw(0),null!=this.rightPage&&this.rightPage.simpleDraw(1),null!=this.bottomPage&&this.bottomPage.draw(),this.drawBookShadow(),null!=this.flippingPage&&this.flippingPage.draw(),null!=this.shadow&&(this.drawOuterShadow(),this.drawInnerShadow());const t=this.getRect();"portrait"===this.orientation&&(this.ctx.beginPath(),this.ctx.rect(t.left+t.pageWidth,t.top,t.width,t.height),this.ctx.clip())}drawBookShadow(){const t=this.getRect();this.ctx.save(),this.ctx.beginPath();const e=t.width/20;this.ctx.rect(t.left,t.top,t.width,t.height);const i={x:t.left+t.width/2-e/2,y:0};this.ctx.translate(i.x,i.y);const s=this.ctx.createLinearGradient(0,0,e,0);s.addColorStop(0,"rgba(0, 0, 0, 0)"),s.addColorStop(.4,"rgba(0, 0, 0, 0.2)"),s.addColorStop(.49,"rgba(0, 0, 0, 0.1)"),s.addColorStop(.5,"rgba(0, 0, 0, 0.5)"),s.addColorStop(.51,"rgba(0, 0, 0, 0.4)"),s.addColorStop(1,"rgba(0, 0, 0, 0)"),this.ctx.clip(),this.ctx.fillStyle=s,this.ctx.fillRect(0,0,e,2*t.height),this.ctx.restore()}drawOuterShadow(){const t=this.getRect();this.ctx.save(),this.ctx.beginPath(),this.ctx.rect(t.left,t.top,t.width,t.height);const e=this.convertToGlobal({x:this.shadow.pos.x,y:this.shadow.pos.y});this.ctx.translate(e.x,e.y),this.ctx.rotate(Math.PI+this.shadow.angle+Math.PI/2);const i=this.ctx.createLinearGradient(0,0,this.shadow.width,0);0===this.shadow.direction?(this.ctx.translate(0,-100),i.addColorStop(0,"rgba(0, 0, 0, "+this.shadow.opacity+")"),i.addColorStop(1,"rgba(0, 0, 0, 0)")):(this.ctx.translate(-this.shadow.width,-100),i.addColorStop(0,"rgba(0, 0, 0, 0)"),i.addColorStop(1,"rgba(0, 0, 0, "+this.shadow.opacity+")")),this.ctx.clip(),this.ctx.fillStyle=i,this.ctx.fillRect(0,0,this.shadow.width,2*t.height),this.ctx.restore()}drawInnerShadow(){const t=this.getRect();this.ctx.save(),this.ctx.beginPath();const e=this.convertToGlobal({x:this.shadow.pos.x,y:this.shadow.pos.y}),i=this.convertRectToGlobal(this.pageRect);this.ctx.moveTo(i.topLeft.x,i.topLeft.y),this.ctx.lineTo(i.topRight.x,i.topRight.y),this.ctx.lineTo(i.bottomRight.x,i.bottomRight.y),this.ctx.lineTo(i.bottomLeft.x,i.bottomLeft.y),this.ctx.translate(e.x,e.y),this.ctx.rotate(Math.PI+this.shadow.angle+Math.PI/2);const s=3*this.shadow.width/4,n=this.ctx.createLinearGradient(0,0,s,0);0===this.shadow.direction?(this.ctx.translate(-s,-100),n.addColorStop(1,"rgba(0, 0, 0, "+this.shadow.opacity+")"),n.addColorStop(.9,"rgba(0, 0, 0, 0.05)"),n.addColorStop(.7,"rgba(0, 0, 0, "+this.shadow.opacity+")"),n.addColorStop(0,"rgba(0, 0, 0, 0)")):(this.ctx.translate(0,-100),n.addColorStop(0,"rgba(0, 0, 0, "+this.shadow.opacity+")"),n.addColorStop(.1,"rgba(0, 0, 0, 0.05)"),n.addColorStop(.3,"rgba(0, 0, 0, "+this.shadow.opacity+")"),n.addColorStop(1,"rgba(0, 0, 0, 0)")),this.ctx.clip(),this.ctx.fillStyle=n,this.ctx.fillRect(0,0,s,2*t.height),this.ctx.restore()}clear(){this.ctx.fillStyle="white",this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height)}}class p{constructor(t,e,i){this.touchPoint=null,this.swipeTimeout=250,this.onResize=()=>{this.update()},this.onMouseDown=t=>{if(this.checkTarget(t.target)){const e=this.getMousePos(t.clientX,t.clientY);this.app.startUserTouch(e),t.preventDefault()}},this.onTouchStart=t=>{if(this.checkTarget(t.target)&&t.changedTouches.length>0){const e=t.changedTouches[0],i=this.getMousePos(e.clientX,e.clientY);this.touchPoint={point:i,time:Date.now()},setTimeout(()=>{null!==this.touchPoint&&this.app.startUserTouch(i)},this.swipeTimeout),this.app.getSettings().mobileScrollSupport||t.preventDefault()}},this.onMouseUp=t=>{const e=this.getMousePos(t.clientX,t.clientY);this.app.userStop(e)},this.onMouseMove=t=>{const e=this.getMousePos(t.clientX,t.clientY);this.app.userMove(e,!1)},this.onTouchMove=t=>{if(t.changedTouches.length>0){const e=t.changedTouches[0],i=this.getMousePos(e.clientX,e.clientY);this.app.getSettings().mobileScrollSupport?(null!==this.touchPoint&&(Math.abs(this.touchPoint.point.x-i.x)>10||"read"!==this.app.getState())&&t.cancelable&&this.app.userMove(i,!0),"read"!==this.app.getState()&&t.preventDefault()):this.app.userMove(i,!0)}},this.onTouchEnd=t=>{if(t.changedTouches.length>0){const e=t.changedTouches[0],i=this.getMousePos(e.clientX,e.clientY);let s=!1;if(null!==this.touchPoint){const t=i.x-this.touchPoint.point.x,e=Math.abs(i.y-this.touchPoint.point.y);Math.abs(t)>this.swipeDistance&&e<2*this.swipeDistance&&Date.now()-this.touchPoint.time<this.swipeTimeout&&(t>0?this.app.flipPrev(this.touchPoint.point.y<this.app.getRender().getRect().height/2?"top":"bottom"):this.app.flipNext(this.touchPoint.point.y<this.app.getRender().getRect().height/2?"top":"bottom"),s=!0),this.touchPoint=null}this.app.userStop(i,s)}},this.parentElement=t,t.classList.add("stf__parent"),t.insertAdjacentHTML("afterbegin",\'<div class="stf__wrapper"></div>\'),this.wrapper=t.querySelector(".stf__wrapper"),this.app=e;const s=this.app.getSettings().usePortrait?1:2;t.style.minWidth=i.minWidth*s+"px",t.style.minHeight=i.minHeight+"px","fixed"===i.size&&(t.style.minWidth=i.width*s+"px",t.style.minHeight=i.height+"px"),i.autoSize&&(t.style.width="100%",t.style.maxWidth=2*i.maxWidth+"px"),t.style.display="block",window.addEventListener("resize",this.onResize,!1),this.swipeDistance=i.swipeDistance}destroy(){this.app.getSettings().useMouseEvents&&this.removeHandlers(),this.distElement.remove(),this.wrapper.remove()}getDistElement(){return this.distElement}getWrapper(){return this.wrapper}setOrientationStyle(t){this.wrapper.classList.remove("--portrait","--landscape"),"portrait"===t?(this.app.getSettings().autoSize&&(this.wrapper.style.paddingBottom=this.app.getSettings().height/this.app.getSettings().width*100+"%"),this.wrapper.classList.add("--portrait")):(this.app.getSettings().autoSize&&(this.wrapper.style.paddingBottom=this.app.getSettings().height/(2*this.app.getSettings().width)*100+"%"),this.wrapper.classList.add("--landscape")),this.update()}removeHandlers(){window.removeEventListener("resize",this.onResize),this.distElement.removeEventListener("mousedown",this.onMouseDown),this.distElement.removeEventListener("touchstart",this.onTouchStart),window.removeEventListener("mousemove",this.onMouseMove),window.removeEventListener("touchmove",this.onTouchMove),window.removeEventListener("mouseup",this.onMouseUp),window.removeEventListener("touchend",this.onTouchEnd)}setHandlers(){window.addEventListener("resize",this.onResize,!1),this.app.getSettings().useMouseEvents&&(this.distElement.addEventListener("mousedown",this.onMouseDown),this.distElement.addEventListener("touchstart",this.onTouchStart),window.addEventListener("mousemove",this.onMouseMove),window.addEventListener("touchmove",this.onTouchMove,{passive:!this.app.getSettings().mobileScrollSupport}),window.addEventListener("mouseup",this.onMouseUp),window.addEventListener("touchend",this.onTouchEnd))}getMousePos(t,e){const i=this.distElement.getBoundingClientRect();return{x:t-i.left,y:e-i.top}}checkTarget(t){return!this.app.getSettings().clickEventForward||!["a","button"].includes(t.tagName.toLowerCase())}}class c extends p{constructor(t,e,i,s){super(t,e,i),this.wrapper.insertAdjacentHTML("afterbegin",\'<div class="stf__block"></div>\'),this.distElement=t.querySelector(".stf__block"),this.items=s;for(const t of s)this.distElement.appendChild(t);this.setHandlers()}clear(){for(const t of this.items)this.parentElement.appendChild(t)}updateItems(t){this.removeHandlers(),this.distElement.innerHTML="";for(const e of t)this.distElement.appendChild(e);this.items=t,this.setHandlers()}update(){this.app.getRender().update()}}class u extends p{constructor(t,e,i){super(t,e,i),this.wrapper.innerHTML=\'<canvas class="stf__canvas"></canvas>\',this.canvas=t.querySelectorAll("canvas")[0],this.distElement=this.canvas,this.resizeCanvas(),this.setHandlers()}resizeCanvas(){const t=getComputedStyle(this.canvas),e=parseInt(t.getPropertyValue("width"),10),i=parseInt(t.getPropertyValue("height"),10);this.canvas.width=e,this.canvas.height=i}getCanvas(){return this.canvas}update(){this.resizeCanvas(),this.app.getRender().update()}}class w extends l{constructor(t,e,i){super(t,e),this.outerShadow=null,this.innerShadow=null,this.hardShadow=null,this.hardInnerShadow=null,this.element=i,this.createShadows()}createShadows(){this.element.insertAdjacentHTML("beforeend",\'<div class="stf__outerShadow"></div>\\n             <div class="stf__innerShadow"></div>\\n             <div class="stf__hardShadow"></div>\\n             <div class="stf__hardInnerShadow"></div>\'),this.outerShadow=this.element.querySelector(".stf__outerShadow"),this.innerShadow=this.element.querySelector(".stf__innerShadow"),this.hardShadow=this.element.querySelector(".stf__hardShadow"),this.hardInnerShadow=this.element.querySelector(".stf__hardInnerShadow")}clearShadow(){super.clearShadow(),this.outerShadow.style.cssText="display: none",this.innerShadow.style.cssText="display: none",this.hardShadow.style.cssText="display: none",this.hardInnerShadow.style.cssText="display: none"}reload(){this.element.querySelector(".stf__outerShadow")||this.createShadows()}drawHardInnerShadow(){const t=this.getRect(),e=this.shadow.progress>100?200-this.shadow.progress:this.shadow.progress;let i=(100-e)*(2.5*t.pageWidth)/100+20;i>t.pageWidth&&(i=t.pageWidth);let s=`\\n            display: block;\\n            z-index: ${(this.getSettings().startZIndex+5).toString(10)};\\n            width: ${i}px;\\n            height: ${t.height}px;\\n            background: linear-gradient(to right,\\n                rgba(0, 0, 0, ${this.shadow.opacity*e/100}) 5%,\\n                rgba(0, 0, 0, 0) 100%);\\n            left: ${t.left+t.width/2}px;\\n            transform-origin: 0 0;\\n        `;s+=0===this.getDirection()&&this.shadow.progress>100||1===this.getDirection()&&this.shadow.progress<=100?"transform: translate3d(0, 0, 0);":"transform: translate3d(0, 0, 0) rotateY(180deg);",this.hardInnerShadow.style.cssText=s}drawHardOuterShadow(){const t=this.getRect();let e=(100-(this.shadow.progress>100?200-this.shadow.progress:this.shadow.progress))*(2.5*t.pageWidth)/100+20;e>t.pageWidth&&(e=t.pageWidth);let i=`\\n            display: block;\\n            z-index: ${(this.getSettings().startZIndex+4).toString(10)};\\n            width: ${e}px;\\n            height: ${t.height}px;\\n            background: linear-gradient(to left, rgba(0, 0, 0, ${this.shadow.opacity}) 5%, rgba(0, 0, 0, 0) 100%);\\n            left: ${t.left+t.width/2}px;\\n            transform-origin: 0 0;\\n        `;i+=0===this.getDirection()&&this.shadow.progress>100||1===this.getDirection()&&this.shadow.progress<=100?"transform: translate3d(0, 0, 0) rotateY(180deg);":"transform: translate3d(0, 0, 0);",this.hardShadow.style.cssText=i}drawInnerShadow(){const t=this.getRect(),e=3*this.shadow.width/4,i=0===this.getDirection()?e:0,s=0===this.getDirection()?"to left":"to right",n=this.convertToGlobal(this.shadow.pos),r=this.shadow.angle+3*Math.PI/2,o=[this.pageRect.topLeft,this.pageRect.topRight,this.pageRect.bottomRight,this.pageRect.bottomLeft];let a="polygon( ";for(const t of o){let e=1===this.getDirection()?{x:-t.x+this.shadow.pos.x,y:t.y-this.shadow.pos.y}:{x:t.x-this.shadow.pos.x,y:t.y-this.shadow.pos.y};e=h.GetRotatedPoint(e,{x:i,y:100},r),a+=e.x+"px "+e.y+"px, "}a=a.slice(0,-2),a+=")";const g=`\\n            display: block;\\n            z-index: ${(this.getSettings().startZIndex+10).toString(10)};\\n            width: ${e}px;\\n            height: ${2*t.height}px;\\n            background: linear-gradient(${s},\\n                rgba(0, 0, 0, ${this.shadow.opacity}) 5%,\\n                rgba(0, 0, 0, 0.05) 15%,\\n                rgba(0, 0, 0, ${this.shadow.opacity}) 35%,\\n                rgba(0, 0, 0, 0) 100%);\\n            transform-origin: ${i}px 100px;\\n            transform: translate3d(${n.x-i}px, ${n.y-100}px, 0) rotate(${r}rad);\\n            clip-path: ${a};\\n            -webkit-clip-path: ${a};\\n        `;this.innerShadow.style.cssText=g}drawOuterShadow(){const t=this.getRect(),e=this.convertToGlobal({x:this.shadow.pos.x,y:this.shadow.pos.y}),i=this.shadow.angle+3*Math.PI/2,s=1===this.getDirection()?this.shadow.width:0,n=0===this.getDirection()?"to right":"to left",r=[{x:0,y:0},{x:t.pageWidth,y:0},{x:t.pageWidth,y:t.height},{x:0,y:t.height}];let o="polygon( ";for(const t of r)if(null!==t){let e=1===this.getDirection()?{x:-t.x+this.shadow.pos.x,y:t.y-this.shadow.pos.y}:{x:t.x-this.shadow.pos.x,y:t.y-this.shadow.pos.y};e=h.GetRotatedPoint(e,{x:s,y:100},i),o+=e.x+"px "+e.y+"px, "}o=o.slice(0,-2),o+=")";const a=`\\n            display: block;\\n            z-index: ${(this.getSettings().startZIndex+10).toString(10)};\\n            width: ${this.shadow.width}px;\\n            height: ${2*t.height}px;\\n            background: linear-gradient(${n}, rgba(0, 0, 0, ${this.shadow.opacity}), rgba(0, 0, 0, 0));\\n            transform-origin: ${s}px 100px;\\n            transform: translate3d(${e.x-s}px, ${e.y-100}px, 0) rotate(${i}rad);\\n            clip-path: ${o};\\n            -webkit-clip-path: ${o};\\n        `;this.outerShadow.style.cssText=a}drawLeftPage(){"portrait"!==this.orientation&&null!==this.leftPage&&(1===this.direction&&null!==this.flippingPage&&"hard"===this.flippingPage.getDrawingDensity()?(this.leftPage.getElement().style.zIndex=(this.getSettings().startZIndex+5).toString(10),this.leftPage.setHardDrawingAngle(180+this.flippingPage.getHardAngle()),this.leftPage.draw(this.flippingPage.getDrawingDensity())):this.leftPage.simpleDraw(0))}drawRightPage(){null!==this.rightPage&&(0===this.direction&&null!==this.flippingPage&&"hard"===this.flippingPage.getDrawingDensity()?(this.rightPage.getElement().style.zIndex=(this.getSettings().startZIndex+5).toString(10),this.rightPage.setHardDrawingAngle(180+this.flippingPage.getHardAngle()),this.rightPage.draw(this.flippingPage.getDrawingDensity())):this.rightPage.simpleDraw(1))}drawBottomPage(){if(null===this.bottomPage)return;const t=null!=this.flippingPage?this.flippingPage.getDrawingDensity():null;"portrait"===this.orientation&&1===this.direction||(this.bottomPage.getElement().style.zIndex=(this.getSettings().startZIndex+3).toString(10),this.bottomPage.draw(t))}drawFrame(){this.clear(),this.drawLeftPage(),this.drawRightPage(),this.drawBottomPage(),null!=this.flippingPage&&(this.flippingPage.getElement().style.zIndex=(this.getSettings().startZIndex+5).toString(10),this.flippingPage.draw()),null!=this.shadow&&null!==this.flippingPage&&("soft"===this.flippingPage.getDrawingDensity()?(this.drawOuterShadow(),this.drawInnerShadow()):(this.drawHardOuterShadow(),this.drawHardInnerShadow()))}clear(){for(const t of this.app.getPageCollection().getPages())t!==this.leftPage&&t!==this.rightPage&&t!==this.flippingPage&&t!==this.bottomPage&&(t.getElement().style.cssText="display: none"),t.getTemporaryCopy()!==this.flippingPage&&t.hideTemporaryCopy()}update(){super.update(),null!==this.rightPage&&this.rightPage.setOrientation(1),null!==this.leftPage&&this.leftPage.setOrientation(0)}}class x{constructor(){this._default={startPage:0,size:"fixed",width:0,height:0,minWidth:0,maxWidth:0,minHeight:0,maxHeight:0,drawShadow:!0,flippingTime:1e3,usePortrait:!0,startZIndex:0,autoSize:!0,maxShadowOpacity:1,showCover:!1,mobileScrollSupport:!0,swipeDistance:30,clickEventForward:!0,useMouseEvents:!0,showPageCorners:!0,disableFlipByClick:!1}}getSettings(t){const e=this._default;if(Object.assign(e,t),"stretch"!==e.size&&"fixed"!==e.size)throw new Error(\'Invalid size type. Available only "fixed" and "stretch" value\');if(e.width<=0||e.height<=0)throw new Error("Invalid width or height");if(e.flippingTime<=0)throw new Error("Invalid flipping time");return"stretch"===e.size?(e.minWidth<=0&&(e.minWidth=100),e.maxWidth<e.minWidth&&(e.maxWidth=2e3),e.minHeight<=0&&(e.minHeight=100),e.maxHeight<e.minHeight&&(e.maxHeight=2e3)):(e.minWidth=e.width,e.maxWidth=e.width,e.minHeight=e.height,e.maxHeight=e.height),e}}!function(t,e){void 0===e&&(e={});var i=e.insertAt;if(t&&"undefined"!=typeof document){var s=document.head||document.getElementsByTagName("head")[0],n=document.createElement("style");n.type="text/css","top"===i&&s.firstChild?s.insertBefore(n,s.firstChild):s.appendChild(n),n.styleSheet?n.styleSheet.cssText=t:n.appendChild(document.createTextNode(t))}}(".stf__parent {\\n  position: relative;\\n  display: block;\\n  box-sizing: border-box;\\n  transform: translateZ(0);\\n\\n  -ms-touch-action: pan-y;\\n  touch-action: pan-y;\\n}\\n\\n.sft__wrapper {\\n  position: relative;\\n  width: 100%;\\n  box-sizing: border-box;\\n}\\n\\n.stf__parent canvas {\\n  position: absolute;\\n  width: 100%;\\n  height: 100%;\\n  left: 0;\\n  top: 0;\\n}\\n\\n.stf__block {\\n  position: absolute;\\n  width: 100%;\\n  height: 100%;\\n  box-sizing: border-box;\\n  perspective: 2000px;\\n}\\n\\n.stf__item {\\n  display: none;\\n  position: absolute;\\n  transform-style: preserve-3d;\\n}\\n\\n.stf__outerShadow {\\n  position: absolute;\\n  left: 0;\\n  top: 0;\\n}\\n\\n.stf__innerShadow {\\n  position: absolute;\\n  left: 0;\\n  top: 0;\\n}\\n\\n.stf__hardShadow {\\n  position: absolute;\\n  left: 0;\\n  top: 0;\\n}\\n\\n.stf__hardInnerShadow {\\n  position: absolute;\\n  left: 0;\\n  top: 0;\\n}");t.PageFlip=class extends class{constructor(){this.events=new Map}on(t,e){return this.events.has(t)?this.events.get(t).push(e):this.events.set(t,[e]),this}off(t){this.events.delete(t)}trigger(t,e,i=null){if(this.events.has(t))for(const s of this.events.get(t))s({data:i,object:e})}}{constructor(t,e){super(),this.isUserTouch=!1,this.isUserMove=!1,this.setting=null,this.pages=null,this.setting=(new x).getSettings(e),this.block=t}destroy(){this.ui.destroy(),this.block.remove()}update(){this.render.update(),this.pages.show()}loadFromImages(t){this.ui=new u(this.block,this,this.setting);const e=this.ui.getCanvas();this.render=new d(this,this.setting,e),this.flipController=new g(this.render,this),this.pages=new n(this,this.render,t),this.pages.load(),this.render.start(),this.pages.show(this.setting.startPage),setTimeout(()=>{this.ui.update(),this.trigger("init",this,{page:this.setting.startPage,mode:this.render.getOrientation()})},1)}loadFromHTML(t){this.ui=new c(this.block,this,this.setting,t),this.render=new w(this,this.setting,this.ui.getDistElement()),this.flipController=new g(this.render,this),this.pages=new o(this,this.render,this.ui.getDistElement(),t),this.pages.load(),this.render.start(),this.pages.show(this.setting.startPage),setTimeout(()=>{this.ui.update(),this.trigger("init",this,{page:this.setting.startPage,mode:this.render.getOrientation()})},1)}updateFromImages(t){const e=this.pages.getCurrentPageIndex();this.pages.destroy(),this.pages=new n(this,this.render,t),this.pages.load(),this.pages.show(e),this.trigger("update",this,{page:e,mode:this.render.getOrientation()})}updateFromHtml(t){const e=this.pages.getCurrentPageIndex();this.pages.destroy(),this.pages=new o(this,this.render,this.ui.getDistElement(),t),this.pages.load(),this.ui.updateItems(t),this.render.reload(),this.pages.show(e),this.trigger("update",this,{page:e,mode:this.render.getOrientation()})}clear(){this.pages.destroy(),this.ui.clear()}turnToPrevPage(){this.pages.showPrev()}turnToNextPage(){this.pages.showNext()}turnToPage(t){this.pages.show(t)}flipNext(t="top"){this.flipController.flipNext(t)}flipPrev(t="top"){this.flipController.flipPrev(t)}flip(t,e="top"){this.flipController.flipToPage(t,e)}updateState(t){this.trigger("changeState",this,t)}updatePageIndex(t){this.trigger("flip",this,t)}updateOrientation(t){this.ui.setOrientationStyle(t),this.update(),this.trigger("changeOrientation",this,t)}getPageCount(){return this.pages.getPageCount()}getCurrentPageIndex(){return this.pages.getCurrentPageIndex()}getPage(t){return this.pages.getPage(t)}getRender(){return this.render}getFlipController(){return this.flipController}getOrientation(){return this.render.getOrientation()}getBoundsRect(){return this.render.getRect()}getSettings(){return this.setting}getUI(){return this.ui}getState(){return this.flipController.getState()}getPageCollection(){return this.pages}startUserTouch(t){this.mousePosition=t,this.isUserTouch=!0,this.isUserMove=!1}userMove(t,e){this.isUserTouch||e||!this.setting.showPageCorners?this.isUserTouch&&h.GetDistanceBetweenTwoPoint(this.mousePosition,t)>5&&(this.isUserMove=!0,this.flipController.fold(t)):this.flipController.showCorner(t)}userStop(t,e=!1){this.isUserTouch&&(this.isUserTouch=!1,e||(this.isUserMove?this.flipController.stopMove():this.flipController.flip(t)))}},Object.defineProperty(t,"__esModule",{value:!0})}));\n';
 var NativeModal = ReactNative__namespace.Modal;
 var NativeScrollView = ReactNative__namespace.ScrollView;
 var NativeDimensions = ReactNative__namespace.Dimensions;
@@ -182,9 +185,18 @@ var renderNativeRichText = (html, keyPrefix) => {
       if (["p", "div", "li"].includes(tagName)) {
         pushBreak(tagName === "li" ? 1 : 2);
       }
-      if (["b", "strong", "i", "em", "u", "s", "strike", "del", "span", "font"].includes(
-        tagName
-      ) && styleStack.length > 1) {
+      if ([
+        "b",
+        "strong",
+        "i",
+        "em",
+        "u",
+        "s",
+        "strike",
+        "del",
+        "span",
+        "font"
+      ].includes(tagName) && styleStack.length > 1) {
         styleStack.pop();
       }
       continue;
@@ -196,9 +208,18 @@ var renderNativeRichText = (html, keyPrefix) => {
     if (tagName === "p" || tagName === "div") {
       continue;
     }
-    if (["b", "strong", "i", "em", "u", "s", "strike", "del", "span", "font"].includes(
-      tagName
-    )) {
+    if ([
+      "b",
+      "strong",
+      "i",
+      "em",
+      "u",
+      "s",
+      "strike",
+      "del",
+      "span",
+      "font"
+    ].includes(tagName)) {
       styleStack.push(parseNativeInlineStyle(tagName, token));
     }
   }
@@ -261,7 +282,7 @@ var buildPdfHtml = (pdfUrl, title, targetPage, viewMode, zoomLevel, neighborPage
       }
       .page.active {
         border-color: transparent;
-        box-shadow: inset 0 0 0 3px #f97316;
+        box-shadow: none;
       }
       #pages.continuous .page {
         margin: 0 auto 12px;
@@ -382,7 +403,24 @@ var buildPdfHtml = (pdfUrl, title, targetPage, viewMode, zoomLevel, neighborPage
           postMessage({ type: 'interaction' });
         };
 
+        let pageFlip = null;
+        let pageFlipReady = false;
+        let suppressPageFlipEvent = false;
+
+        const destroyPageFlip = () => {
+          if (!pageFlip) return;
+          try {
+            pageFlip.destroy();
+          } catch {
+            // Fall back to clearing DOM below if the embedded flip engine is already detached.
+          }
+          pageFlip = null;
+          pageFlipReady = false;
+          suppressPageFlipEvent = false;
+        };
+
         const clearPages = () => {
+          destroyPageFlip();
           while (pagesNode.firstChild) {
             pagesNode.removeChild(pagesNode.firstChild);
           }
@@ -866,6 +904,10 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
     minFontSizePx,
     Math.min(typography?.fontSizePx || defaultFontSizePx, maxFontSizePx)
   );
+  const pageFlipBrowserScript = PAGE_FLIP_BROWSER_SCRIPT.replace(
+    /<\/script/gi,
+    "<\\/script"
+  );
   const safeLineHeightEm = 1.45;
   const configuredMaxVersesPerPage = Number(layout?.maxVersesPerPage);
   const layoutConfig = {
@@ -882,9 +924,9 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
     verseLineHeightEm: safeLineHeightEm,
     verseLabelFontSizePx: Math.max(11, Math.round(safeFontSizePx * 0.8)),
     verseGroupFontSizePx: Math.max(10, Math.round(safeFontSizePx * 0.72)),
-    bookSpreadMode: spreadMode,
+    bookSpreadMode: spreadMode || (layout?.bookSpreadMode === "double" ? "double" : "single"),
     enablePageTurnEffect: layout?.enablePageTurnEffect !== false,
-    showSecondPage: showSecondPage,
+    showSecondPage: showSecondPage ?? layout?.showSecondPage !== false,
     viewportWidthPx: Math.max(
       320,
       Math.floor(Number(layout?.viewportWidthPx) || 360)
@@ -923,7 +965,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         min-height: 100%;
         display: flex;
         flex-direction: column;
-        padding: 6px;
+        padding: ${isFullScreen ? 0 : 6}px;
         box-sizing: border-box;
       }
       #pages {
@@ -944,7 +986,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
       }
       .page.active {
         border-color: transparent;
-        box-shadow: inset 0 0 0 3px ${theme.accent};
+        box-shadow: none;
       }
       .book-spread {
         width: 100%;
@@ -954,6 +996,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         align-items: stretch;
         gap: 14px;
         perspective: 1400px;
+        transform-style: preserve-3d;
       }
       .book-spread.single {
         align-items: center;
@@ -966,31 +1009,83 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         width: calc((100% - 14px) / 2);
         height: 100%;
       }
+      .book-spread.double,
+      #page-flip-book.double-spread {
+        position: relative;
+      }
+      .book-spread.double::after,
+      #page-flip-book.double-spread::after {
+        content: '';
+        position: absolute;
+        top: 14px;
+        bottom: 14px;
+        left: 50%;
+        width: 2px;
+        transform: translateX(-1px);
+        pointer-events: none;
+        z-index: 20;
+        background: linear-gradient(
+          to bottom,
+          rgba(120, 53, 15, 0),
+          rgba(120, 53, 15, 0.2) 12%,
+          rgba(120, 53, 15, 0.34) 50%,
+          rgba(120, 53, 15, 0.2) 88%,
+          rgba(120, 53, 15, 0)
+        );
+        box-shadow:
+          -5px 0 12px rgba(120, 53, 15, 0.08),
+          5px 0 12px rgba(255, 255, 255, 0.6);
+      }
+      #page-flip-book {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        margin: 0 auto;
+        position: relative;
+        touch-action: pan-y;
+      }
+      #page-flip-book .stf__parent,
+      #page-flip-book .stf__wrapper,
+      #page-flip-book .stf__block {
+        box-sizing: border-box;
+      }
+      #page-flip-book .stf__wrapper {
+        margin: 0 auto;
+      }
+      .page-flip-source {
+        display: none;
+      }
       .page.book-sheet {
         margin: 0;
         height: 100%;
         border-radius: 8px;
-        border: 0;
+        border: 1px solid rgba(120, 53, 15, 0.22);
         background: ${theme.page};
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+          inset 10px 0 18px rgba(120, 53, 15, 0.045),
+          inset -10px 0 18px rgba(120, 53, 15, 0.035),
+          0 10px 24px rgba(68, 64, 60, 0.12);
         position: relative;
         flex-shrink: 0;
         box-sizing: border-box;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backface-visibility: hidden;
+        transform-origin: center center;
+        will-change: transform, opacity;
       }
       .page.book-sheet.active {
-        border-color: transparent;
-        box-shadow:
-          0 1px 2px rgba(15, 23, 42, 0.09),
-          0 10px 24px rgba(120, 53, 15, 0.08),
-          inset 0 0 0 3px ${theme.accent};
+        border-color: rgba(120, 53, 15, 0.24);
       }
       .page.book-sheet::before {
         content: '';
         position: absolute;
         inset: 0;
         pointer-events: none;
+        z-index: 0;
         background: repeating-linear-gradient(
           to bottom,
           transparent,
@@ -998,16 +1093,83 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
           rgba(148, 163, 184, 0.06) 28px
         );
       }
+      .page.book-sheet::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        border-radius: inherit;
+        background:
+          linear-gradient(
+            90deg,
+            rgba(120, 53, 15, 0.08),
+            rgba(120, 53, 15, 0) 9%,
+            rgba(255, 255, 255, 0) 91%,
+            rgba(120, 53, 15, 0.06)
+          ),
+          linear-gradient(
+            to bottom,
+            rgba(255, 255, 255, 0.58),
+            rgba(255, 255, 255, 0) 18%,
+            rgba(120, 53, 15, 0.035) 100%
+          );
+      }
       .book-spread.turn-next .page.book-sheet {
-        animation: none;
+        animation: bookPageEnterNext 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        transform-origin: right center;
       }
       .book-spread.turn-prev .page.book-sheet {
-        animation: none;
+        animation: bookPageEnterPrev 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        transform-origin: left center;
+      }
+      .book-spread.double.turn-next .page.book-sheet:nth-child(2) {
+        animation-delay: 35ms;
+      }
+      .book-spread.double.turn-prev .page.book-sheet:nth-child(1) {
+        animation-delay: 35ms;
+      }
+      @keyframes bookPageEnterNext {
+        from {
+          opacity: 0.78;
+          transform: translateX(26px) rotateY(-8deg) scale(0.992);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0) rotateY(0deg) scale(1);
+        }
+      }
+      @keyframes bookPageEnterPrev {
+        from {
+          opacity: 0.78;
+          transform: translateX(-26px) rotateY(8deg) scale(0.992);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0) rotateY(0deg) scale(1);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .book-spread.turn-next .page.book-sheet,
+        .book-spread.turn-prev .page.book-sheet {
+          animation: none;
+        }
       }
       .verse-page-content {
         display: flex;
         flex-direction: column;
+        justify-content: center;
+        align-items: center;
         gap: 0;
+        width: 100%;
+        min-height: 100%;
+        max-height: 100%;
+        box-sizing: border-box;
+        overflow-x: hidden;
+        overflow-y: hidden;
+        overscroll-behavior: contain;
+        position: relative;
+        z-index: 2;
       }
       .verse-block {
         border: 0;
@@ -1015,11 +1177,36 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         padding: 10px 12px;
         background: ${theme.page};
         position: relative;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 760px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        max-height: 100%;
+      }
+      .book-spread .verse-page-content {
+        width: fit-content;
+        height: 100%;
+        max-width: 88%;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+      }
+      .page.book-sheet.overflowing-verse .verse-page-content {
+        justify-content: flex-start;
+      }
+      .book-spread .verse-block {
+        width: auto;
+        max-width: 100%;
+      }
+      .book-spread .verse-content {
+        width: auto;
+        max-width: 100%;
       }
       .verse-block.active-verse {
-        border-color: ${theme.accent};
-        box-shadow:
-          inset 0 0 0 2px ${theme.accent};
+        background: ${theme.accentSurface};
       }
       .verse-label {
         margin: 0 0 4px;
@@ -1044,6 +1231,8 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         color: ${theme.text};
         font-weight: 800;
         max-width: 100%;
+        width: 100%;
+        max-height: 100%;
         overflow-wrap: anywhere;
         word-break: break-word;
         white-space: pre-wrap;
@@ -1108,6 +1297,9 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         font-weight: 800;
       }
     </style>
+    <script>
+${pageFlipBrowserScript}
+    </script>
   </head>
   <body>
     <div id="app">
@@ -1176,6 +1368,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
           pagesNode.style.flex = useWindowScroll ? 'none' : '1';
           pagesNode.style.justifyContent = isCompleteMode ? '' : 'flex-start';
           pagesNode.style.alignItems = isCompleteMode ? '' : 'stretch';
+          pagesNode.style.overflowX = isCompleteMode ? 'hidden' : 'hidden';
           pagesNode.style.overflowY = useWindowScroll ? 'visible' : isCompleteMode ? 'auto' : 'hidden';
           pagesNode.style.height = useWindowScroll ? 'auto' : '100%';
           pagesNode.style.webkitOverflowScrolling = isCompleteMode ? 'touch' : 'auto';
@@ -1406,9 +1599,17 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
             return;
           }
 
+          const viewportWidth = Math.max(
+            280,
+            Math.floor(window.innerWidth || layout.viewportWidthPx || 360)
+          );
+          const viewportHeight = Math.max(
+            320,
+            Math.floor(window.innerHeight || layout.readerHeightPx || layout.viewportHeightPx || 640)
+          );
           const availablePageWidth = Math.max(
             280,
-            layout.viewportWidthPx - 12
+            viewportWidth - (layout.fullScreen ? 4 : 12)
           );
           const targetWidth =
             layout.bookSpreadMode === 'double' &&
@@ -1420,17 +1621,26 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
             ? Math.max(0, configuredPagePadding)
             : 18;
           const maxVersesPerPage =
-            Number.isFinite(Number(layout.maxVersesPerPage)) &&
-            Number(layout.maxVersesPerPage) > 0
-              ? Math.max(1, Math.trunc(Number(layout.maxVersesPerPage)))
-              : Number.MAX_SAFE_INTEGER;
-          const referenceHeight = Math.max(
-            320,
-            Math.floor(
-              Number(layout.readerHeightPx) || Number(layout.viewportHeightPx) || 640
-            )
+            currentViewMode === 'book'
+              ? 1
+              : Number.isFinite(Number(layout.maxVersesPerPage)) &&
+                  Number(layout.maxVersesPerPage) > 0
+                ? Math.max(1, Math.trunc(Number(layout.maxVersesPerPage)))
+                : Number.MAX_SAFE_INTEGER;
+          const referenceHeight = layout.fullScreen
+            ? viewportHeight
+            : Math.max(
+                320,
+                Math.floor(
+                  Number(layout.readerHeightPx) ||
+                    Number(layout.viewportHeightPx) ||
+                    640
+                )
+              );
+          const usableHeight = Math.max(
+            220,
+            referenceHeight - (layout.fullScreen ? 4 : 12)
           );
-          const usableHeight = Math.max(220, referenceHeight - 12);
           const maxContentHeight = Math.max(120, usableHeight - pagePadding * 2);
 
           const measureHost = document.createElement('div');
@@ -1496,6 +1706,57 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
           versePages = pages;
         };
 
+        const getBookContentFits = () => {
+          if (currentViewMode !== 'book') return true;
+          const isVisibleBookSheet = (pageNode) => {
+            const rect = pageNode.getBoundingClientRect();
+            return rect.width > 1 && rect.height > 1;
+          };
+          const activePages = Array.from(
+            pagesNode.querySelectorAll('.page.book-sheet')
+          ).filter(isVisibleBookSheet);
+          if (!activePages.length) return true;
+          return activePages.every((pageNode) => {
+            const contentNode = pageNode.querySelector('.verse-page-content');
+            if (!contentNode) return true;
+            return (
+              contentNode.scrollHeight <= contentNode.clientHeight + 2 &&
+              contentNode.scrollWidth <= contentNode.clientWidth + 2
+            );
+          });
+        };
+
+        const updateBookOverflowClasses = () => {
+          if (currentViewMode !== 'book') return;
+          for (const pageNode of Array.from(
+            pagesNode.querySelectorAll('.page.book-sheet')
+          )) {
+            const rect = pageNode.getBoundingClientRect();
+            if (rect.width <= 1 || rect.height <= 1) {
+              pageNode.classList.remove('overflowing-verse');
+              continue;
+            }
+            const contentNode = pageNode.querySelector('.verse-page-content');
+            const overflowing =
+              Boolean(contentNode) &&
+              (contentNode.scrollHeight > contentNode.clientHeight + 2 ||
+                contentNode.scrollWidth > contentNode.clientWidth + 2);
+            pageNode.classList.toggle('overflowing-verse', overflowing);
+          }
+        };
+
+        const postVerseLayoutState = () => {
+          updateBookOverflowClasses();
+          const contentFits = getBookContentFits();
+          postMessage({
+            type: 'verse-layout-state',
+            contentFits,
+            canZoomIn:
+              currentViewMode !== 'book' ||
+              (contentFits && layout.verseFontSizePx < layout.maxFontSizePx),
+          });
+        };
+
         const buildPageNode = (pageNumber, active) => {
           const pageData = versePages[pageNumber - 1] || [];
           const configuredPagePadding = Number(layout.pagePaddingPx);
@@ -1519,7 +1780,56 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
           return wrapper;
         };
 
-        const renderBookPage = (requestedPage, announceReady, directionHint) => {
+        const updateBookActivePage = (pageNumber) => {
+          const activePage = clampPage(pageNumber);
+          for (const pageNode of Array.from(
+            pagesNode.querySelectorAll('.page.book-sheet')
+          )) {
+            pageNode.classList.toggle(
+              'active',
+              Number(pageNode.getAttribute('data-page-number')) === activePage
+            );
+          }
+        };
+
+        const getBookPageDimensions = () => {
+          const bounds = pagesNode.getBoundingClientRect();
+          const viewportWidth = Math.max(
+            280,
+            Math.floor(bounds.width || window.innerWidth || layout.viewportWidthPx || 360)
+          );
+          const viewportHeight = Math.max(
+            320,
+            Math.floor(bounds.height || window.innerHeight || layout.readerHeightPx || layout.viewportHeightPx || 640)
+          );
+          const isDouble =
+            layout.bookSpreadMode === 'double' && layout.showSecondPage !== false;
+          const spreadGap = isDouble ? 14 : 0;
+          const pageWidth = Math.max(
+            isDouble ? 220 : 280,
+            Math.floor((viewportWidth - spreadGap) / (isDouble ? 2 : 1))
+          );
+
+          return {
+            isDouble,
+            pageWidth,
+            pageHeight: viewportHeight,
+            bookWidth: isDouble ? pageWidth * 2 : pageWidth,
+            bookHeight: viewportHeight,
+          };
+        };
+
+        const buildPageFlipPageNode = (pageNumber, active, dimensions) => {
+          const pageNode = buildPageNode(pageNumber, active);
+          pageNode.classList.add('book-sheet');
+          pageNode.classList.add('page-flip-page');
+          pageNode.setAttribute('data-density', 'soft');
+          pageNode.style.width = dimensions.pageWidth + 'px';
+          pageNode.style.height = dimensions.pageHeight + 'px';
+          return pageNode;
+        };
+
+        const renderSimpleBookPage = (requestedPage, announceReady, directionHint) => {
           const targetPage = getSpreadAnchor(requestedPage);
           const direction =
             directionHint ||
@@ -1558,11 +1868,231 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
 
           pagesNode.appendChild(spreadNode);
           currentPage = targetPage;
+          updateBookOverflowClasses();
           postMessage({ type: 'page-change', pageNumber: currentPage });
+          postVerseLayoutState();
           if (announceReady !== false) {
             postMessage({ type: 'ready' });
           }
           scheduleContentHeightUpdates();
+        };
+
+        const renderPageFlipBook = (requestedPage, announceReady) => {
+          if (!window.St || !window.St.PageFlip) {
+            return false;
+          }
+
+          const targetPage = getSpreadAnchor(requestedPage);
+          const dimensions = getBookPageDimensions();
+          clearPages();
+
+          const bookNode = document.createElement('div');
+          bookNode.id = 'page-flip-book';
+          bookNode.className = dimensions.isDouble ? 'double-spread' : 'single-spread';
+          bookNode.style.width = dimensions.bookWidth + 'px';
+          bookNode.style.height = dimensions.bookHeight + 'px';
+          bookNode.style.minWidth = dimensions.bookWidth + 'px';
+          bookNode.style.minHeight = dimensions.bookHeight + 'px';
+          bookNode.style.maxWidth = '100%';
+          bookNode.style.maxHeight = '100%';
+
+          const pageNodes = [];
+          for (let pageNumber = 1; pageNumber <= versePages.length; pageNumber += 1) {
+            const pageNode = buildPageFlipPageNode(
+              pageNumber,
+              pageNumber === targetPage,
+              dimensions
+            );
+            pageNodes.push(pageNode);
+            bookNode.appendChild(pageNode);
+          }
+
+          pagesNode.appendChild(bookNode);
+
+          try {
+            suppressPageFlipEvent = true;
+            pageFlip = new window.St.PageFlip(bookNode, {
+              width: dimensions.pageWidth,
+              height: dimensions.pageHeight,
+              size: 'fixed',
+              minWidth: dimensions.pageWidth,
+              maxWidth: dimensions.pageWidth,
+              minHeight: dimensions.pageHeight,
+              maxHeight: dimensions.pageHeight,
+              startPage: Math.max(0, targetPage - 1),
+              drawShadow: true,
+              flippingTime: 420,
+              usePortrait: !dimensions.isDouble,
+              startZIndex: 0,
+              autoSize: false,
+              maxShadowOpacity: 0.24,
+              showCover: false,
+              mobileScrollSupport: true,
+              swipeDistance: 30,
+              clickEventForward: true,
+              useMouseEvents: true,
+              showPageCorners: false,
+              disableFlipByClick: false,
+            });
+
+            if (typeof pageFlip.userStop === 'function') {
+              const originalUserStop = pageFlip.userStop.bind(pageFlip);
+              pageFlip.userStop = (point, isSwipe) => {
+                if (isSwipe || pageFlip.isUserMove) {
+                  originalUserStop(point, isSwipe);
+                  return;
+                }
+                originalUserStop(point, true);
+              };
+            }
+
+            pageFlip.on('flip', (event) => {
+              if (suppressPageFlipEvent) return;
+              const flippedPage = clampPage((Number(event?.data) || 0) + 1);
+              currentPage = getSpreadAnchor(flippedPage);
+              updateBookActivePage(currentPage);
+              updateBookOverflowClasses();
+              postMessage({ type: 'page-change', pageNumber: currentPage });
+              postVerseLayoutState();
+              scheduleContentHeightUpdates();
+            });
+
+            pageFlip.loadFromHTML(pageNodes);
+            currentPage = targetPage;
+            updateBookActivePage(currentPage);
+            updateBookOverflowClasses();
+            pageFlipReady = true;
+            window.setTimeout(() => {
+              suppressPageFlipEvent = false;
+            }, 60);
+            postMessage({ type: 'page-change', pageNumber: currentPage });
+            postVerseLayoutState();
+            if (announceReady !== false) {
+              postMessage({ type: 'ready' });
+            }
+            scheduleContentHeightUpdates();
+            return true;
+          } catch {
+            destroyPageFlip();
+            clearPages();
+            return false;
+          }
+        };
+
+        const renderBookPage = (requestedPage, announceReady, directionHint) => {
+          if (
+            layout.enablePageTurnEffect !== false &&
+            renderPageFlipBook(requestedPage, announceReady)
+          ) {
+            return;
+          }
+
+          renderSimpleBookPage(requestedPage, announceReady, directionHint);
+        };
+
+        const postBookPageChange = (pageNumber) => {
+          currentPage = getSpreadAnchor(pageNumber);
+          updateBookActivePage(currentPage);
+          updateBookOverflowClasses();
+          postMessage({ type: 'page-change', pageNumber: currentPage });
+          postVerseLayoutState();
+          scheduleContentHeightUpdates();
+        };
+
+        const forcePageFlipPage = (pageNumber) => {
+          const targetPage = getSpreadAnchor(pageNumber);
+          if (!pageFlip || !pageFlip.turnToPage) {
+            renderBookPage(targetPage, false, 'none');
+            return;
+          }
+          try {
+            suppressPageFlipEvent = true;
+            pageFlip.turnToPage(Math.max(0, targetPage - 1));
+            postBookPageChange(targetPage);
+          } catch {
+            renderBookPage(targetPage, false, 'none');
+          } finally {
+            window.setTimeout(() => {
+              suppressPageFlipEvent = false;
+            }, 40);
+          }
+        };
+
+        const turnPageFlipToPage = (targetPage) => {
+          if (!window.St || !window.St.PageFlip) return false;
+
+          const anchoredTarget = getSpreadAnchor(targetPage);
+          const anchoredCurrent = getSpreadAnchor(currentPage);
+          if (anchoredTarget === anchoredCurrent) return true;
+
+          const step = getSpreadStep();
+          const isAdjacent =
+            Math.abs(anchoredTarget - anchoredCurrent) <= step;
+          if (!isAdjacent) {
+            forcePageFlipPage(anchoredTarget);
+            return true;
+          }
+
+          const direction = anchoredTarget > anchoredCurrent ? 'next' : 'prev';
+          const initialized = renderPageFlipBook(anchoredCurrent, false);
+          if (!initialized) return false;
+
+          window.setTimeout(() => {
+            try {
+              if (direction === 'next' && pageFlip && pageFlip.flipNext) {
+                pageFlip.flipNext('bottom');
+              } else if (direction === 'prev' && pageFlip && pageFlip.flipPrev) {
+                pageFlip.flipPrev('bottom');
+              } else {
+                forcePageFlipPage(anchoredTarget);
+                return;
+              }
+
+              window.setTimeout(() => {
+                renderBookPage(anchoredTarget, false, 'none');
+              }, 900);
+            } catch {
+              forcePageFlipPage(anchoredTarget);
+            }
+          }, 90);
+
+          return true;
+        };
+
+        const turnRelativeBookPage = (direction) => {
+          if (currentViewMode !== 'book') return;
+          const step = getSpreadStep();
+          const targetPage =
+            direction === 'next'
+              ? clampPage(currentPage + step)
+              : clampPage(currentPage - step);
+          if (targetPage === currentPage) return;
+
+          if (layout.enablePageTurnEffect !== false && pageFlip && pageFlipReady) {
+            try {
+              if (pageFlip.getState && pageFlip.getState() !== 'read') return;
+              if (direction === 'next' && pageFlip.flipNext) {
+                pageFlip.flipNext('bottom');
+              } else if (direction === 'prev' && pageFlip.flipPrev) {
+                pageFlip.flipPrev('bottom');
+              } else {
+                renderBookPage(targetPage, false, 'none');
+                return;
+              }
+
+              const startingPage = currentPage;
+              window.setTimeout(() => {
+                if (currentPage === startingPage) {
+                  renderBookPage(targetPage, false, 'none');
+                }
+              }, 520);
+              return;
+            } catch {
+              pageFlipReady = false;
+            }
+          }
+
+          renderBookPage(targetPage, false, direction);
         };
 
         const findVerseNode = (verseId) => {
@@ -1662,6 +2192,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
           } else {
             renderBookPage(requestedPage, true, 'none');
           }
+          postVerseLayoutState();
         };
 
         const goToPage = (requestedPage) => {
@@ -1676,6 +2207,12 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
             return;
           }
           if (targetPage === currentPage) return;
+          if (
+            layout.enablePageTurnEffect !== false &&
+            turnPageFlipToPage(targetPage)
+          ) {
+            return;
+          }
           renderBookPage(targetPage, false, targetPage > currentPage ? 'next' : 'prev');
         };
 
@@ -1691,8 +2228,10 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
               currentViewMode = payload.mode;
               applyViewModeLayout(currentViewMode);
               if (currentViewMode === 'continuous') {
+                paginateVerses();
                 renderAllPages(nextPage);
               } else {
+                paginateVerses();
                 const anchored = getSpreadAnchor(nextPage);
                 const direction =
                   previousMode === 'book'
@@ -1722,6 +2261,30 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
             if (!Number.isInteger(requested) || requested <= 0) return;
             goToPage(requested);
           },
+          showMappedVerse: (pageNumber, verseId, isPlaying) => {
+            const requested = Number(pageNumber);
+            if (!Number.isInteger(requested) || requested <= 0) return;
+            const targetPage = clampPage(requested);
+            if (currentViewMode === 'book') {
+              renderBookPage(targetPage, false, 'none');
+              postMessage({ type: 'page-change', pageNumber: targetPage });
+            } else {
+              goToPage(targetPage);
+            }
+            window.requestAnimationFrame(() => {
+              window.__PDF_READER_BRIDGE__.setActiveVerse(
+                verseId,
+                isPlaying,
+                false
+              );
+            });
+          },
+          goToNextPage: () => {
+            turnRelativeBookPage('next');
+          },
+          goToPreviousPage: () => {
+            turnRelativeBookPage('prev');
+          },
           setViewMode: (mode, page, anchorVerseId, zoom) => {
             if (mode !== 'book' && mode !== 'continuous') return;
             const requestedPage = (Number.isInteger(Number(page)) && Number(page) > 0) ? Number(page) : currentPage;
@@ -1745,6 +2308,8 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
               }
               if (zoomChanged) {
                 rerender(requestedPage);
+              } else if (mode === 'book') {
+                renderBookPage(requestedPage, false, 'none');
               } else {
                 goToPage(requestedPage);
               }
@@ -1773,6 +2338,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
               : requestedClampedPage;
             currentViewMode = mode;
             applyViewModeLayout(currentViewMode);
+            paginateVerses();
             if (currentViewMode === 'continuous') {
               renderAllPages(
                 effectiveRequestedPage,
@@ -1915,8 +2481,14 @@ function PdfDocumentViewer({
     [readerTheme]
   );
   const verseZoomConfig = react.useMemo(() => {
-    const min = Math.max(1, Math.round(Number(verseLayout?.minFontSizePx) || 18));
-    const max = Math.max(min, Math.round(Number(verseLayout?.maxFontSizePx) || 36));
+    const min = Math.max(
+      1,
+      Math.round(Number(verseLayout?.minFontSizePx) || 18)
+    );
+    const max = Math.max(
+      min,
+      Math.round(Number(verseLayout?.maxFontSizePx) || 36)
+    );
     const defaultSize = Math.max(
       min,
       Math.min(max, Math.round(Number(verseLayout?.defaultFontSizePx) || 22))
@@ -1981,14 +2553,21 @@ function PdfDocumentViewer({
   const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = react.useState(null);
   const [pendingVerseAudioSeekMs, setPendingVerseAudioSeekMs] = react.useState(null);
   const pendingVerseAudioAutoplayRef = react.useRef(true);
-  const [versePageById, setVersePageById] = react.useState({});
+  const pendingAudioSeekTargetRef = react.useRef(null);
+  const [versePageById, setVersePageById] = react.useState(
+    {}
+  );
   const [verseIdsByPage, setVerseIdsByPage] = react.useState({});
   const [audioSliderWidth, setAudioSliderWidth] = react.useState(1);
   const [viewerWrapHeight, setViewerWrapHeight] = react.useState(0);
   const [pdfBookViewerHeight, setPdfBookViewerHeight] = react.useState(480);
+  const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = react.useState(true);
   const effectiveVerseLayout = react.useMemo(() => {
     return verseLayout;
   }, [verseLayout]);
+  const [bookSpreadMode, setBookSpreadMode] = react.useState(
+    () => verseLayout?.bookSpreadMode === "double" && verseLayout?.showSecondPage !== false ? "double" : "single"
+  );
   const visibleViewportHeight = Math.max(
     320,
     Math.floor(
@@ -2015,12 +2594,13 @@ function PdfDocumentViewer({
   const completeViewerHeight = isVerseFullScreen ? visibleViewportHeight : verseViewerHeight;
   const webViewRef = react.useRef(null);
   const fullScreenWebViewRef = react.useRef(null);
-  react.useRef(false);
   const completeScrollRef = react.useRef(null);
   const completeVerseYByIdRef = react.useRef({});
   const pendingCompleteScrollVerseIdRef = react.useRef(null);
   const userDraggingCompleteScrollRef = react.useRef(false);
-  const completeRestoreTimerRef = react.useRef(null);
+  const completeRestoreTimerRef = react.useRef(
+    null
+  );
   const completeRestoreGuardUntilRef = react.useRef(0);
   const staticServerRef = react.useRef(null);
   const overlayTimerRef = react.useRef(null);
@@ -2029,6 +2609,8 @@ function PdfDocumentViewer({
   const programmaticViewerSyncRef = react.useRef(null);
   const lastSyncedViewModeRef = react.useRef(null);
   const lastInjectedViewerStateRef = react.useRef(null);
+  const lastAudioVerseWebSyncRef = react.useRef(null);
+  const lastEmittedFullScreenRef = react.useRef(null);
   const pageCountRef = react.useRef(0);
   const lastNativeReadyPageCountRef = react.useRef(0);
   const onReadyRef = react.useRef(onReady);
@@ -2043,6 +2625,9 @@ function PdfDocumentViewer({
   const hasVerseContent = Boolean(verses?.length);
   const contentMode = mode === "verse" ? "verse" : mode === "pdf" ? "pdf" : hasVerseContent ? "verse" : "pdf";
   const useNativeFullScreenOverlay = contentMode === "verse" && isVerseFullScreen;
+  const useFullScreenBookWebView = useNativeFullScreenOverlay && viewMode === "book";
+  const useNativeFullScreenBookView = useNativeFullScreenOverlay && viewMode === "book" && !useFullScreenBookWebView;
+  const suppressInlineReaderSurface = useNativeFullScreenBookView || ReactNative.Platform.OS === "ios" && useFullScreenBookWebView;
   const inlineFullScreenActive = contentMode === "verse" && isVerseFullScreen && !useNativeFullScreenOverlay;
   const viewerHeight = contentMode === "pdf" && viewMode === "book" ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight) : completeViewerHeight;
   const useNativeCompleteVerseView = contentMode === "verse" && viewMode === "continuous" && !isVerseFullScreen;
@@ -2051,6 +2636,16 @@ function PdfDocumentViewer({
   const useNativeVersePaging = useNativeVerseView || useNativeFullScreenOverlay;
   const autoAlignCurrentVerse = effectiveVerseLayout?.autoAlignCurrentVerse !== false;
   const highlightCurrentVerse = effectiveVerseLayout?.highlightCurrentVerse !== false;
+  const allowBookDoubleSpread = effectiveVerseLayout?.allowDoubleSpread !== false;
+  const activeBookSpreadMode = allowBookDoubleSpread && bookSpreadMode === "double" ? "double" : "single";
+  const effectiveBookVerseLayout = react.useMemo(() => {
+    if (contentMode !== "verse") return effectiveVerseLayout;
+    return {
+      ...effectiveVerseLayout,
+      bookSpreadMode: activeBookSpreadMode,
+      showSecondPage: activeBookSpreadMode === "double"
+    };
+  }, [activeBookSpreadMode, contentMode, effectiveVerseLayout]);
   const playableVerseMappings = react.useMemo(
     () => (verseAudioMappings || []).filter((mapping) => {
       const startMs = Number(mapping.segmentStartMs);
@@ -2062,7 +2657,10 @@ function PdfDocumentViewer({
       verseId: String(mapping.verseId),
       audioAssetUrl: String(mapping.audioAssetUrl),
       label: mapping.label || `Verse ${index + 1}`,
-      segmentStartMs: Math.max(0, Math.floor(Number(mapping.segmentStartMs))),
+      segmentStartMs: Math.max(
+        0,
+        Math.floor(Number(mapping.segmentStartMs))
+      ),
       segmentEndMs: Math.max(0, Math.floor(Number(mapping.segmentEndMs))),
       sortOrder: Number.isFinite(Number(mapping.sortOrder)) ? Number(mapping.sortOrder) : index
     })).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
@@ -2104,7 +2702,24 @@ function PdfDocumentViewer({
     setIsVerseFullScreen(verseLayout?.fullScreen === true);
   }, [verseLayout?.fullScreen]);
   react.useEffect(() => {
-    onFullScreenChange?.(contentMode === "verse" && isVerseFullScreen);
+    if (contentMode !== "verse") return;
+    if (viewMode === "book") {
+      setIsVerseFullScreen(true);
+      return;
+    }
+    if (verseLayout?.fullScreen !== true) {
+      setIsVerseFullScreen(false);
+    }
+  }, [contentMode, verseLayout?.fullScreen, viewMode]);
+  react.useEffect(() => {
+    if (allowBookDoubleSpread) return;
+    setBookSpreadMode("single");
+  }, [allowBookDoubleSpread]);
+  react.useEffect(() => {
+    const nextFullScreen = contentMode === "verse" && isVerseFullScreen;
+    if (lastEmittedFullScreenRef.current === nextFullScreen) return;
+    lastEmittedFullScreenRef.current = nextFullScreen;
+    onFullScreenChange?.(nextFullScreen);
   }, [contentMode, isVerseFullScreen, onFullScreenChange]);
   react.useEffect(() => {
     if (contentMode === "verse" && showShareOverlay) {
@@ -2162,31 +2777,34 @@ function PdfDocumentViewer({
   react.useEffect(() => {
     onReadyRef.current = onReady;
   }, [onReady]);
-  const scrollCompleteToVerse = react.useCallback((verseId, animated = false) => {
-    if (!verseId) return false;
-    const y = completeVerseYByIdRef.current[verseId];
-    if (!Number.isFinite(y)) {
-      pendingCompleteScrollVerseIdRef.current = verseId;
-      return false;
-    }
-    completeRestoreGuardUntilRef.current = Date.now() + 700;
-    completeScrollRef.current?.scrollTo({
-      y: Math.max(0, y - 12),
-      animated
-    });
-    setTimeout(() => {
+  const scrollCompleteToVerse = react.useCallback(
+    (verseId, animated = false) => {
+      if (!verseId) return false;
+      const y = completeVerseYByIdRef.current[verseId];
+      if (!Number.isFinite(y)) {
+        pendingCompleteScrollVerseIdRef.current = verseId;
+        return false;
+      }
+      completeRestoreGuardUntilRef.current = Date.now() + 700;
       completeScrollRef.current?.scrollTo({
         y: Math.max(0, y - 12),
-        animated: false
+        animated
       });
-    }, 120);
-    setTimeout(() => {
-      if (pendingCompleteScrollVerseIdRef.current === verseId) {
-        pendingCompleteScrollVerseIdRef.current = null;
-      }
-    }, 760);
-    return true;
-  }, []);
+      setTimeout(() => {
+        completeScrollRef.current?.scrollTo({
+          y: Math.max(0, y - 12),
+          animated: false
+        });
+      }, 120);
+      setTimeout(() => {
+        if (pendingCompleteScrollVerseIdRef.current === verseId) {
+          pendingCompleteScrollVerseIdRef.current = null;
+        }
+      }, 760);
+      return true;
+    },
+    []
+  );
   const getNativeVersePage = react.useCallback(
     (verseId) => {
       if (!verseId) return 0;
@@ -2200,26 +2818,33 @@ function PdfDocumentViewer({
     },
     [completeVerses, useNativeVersePaging, versePageById]
   );
-  const updateCompleteAnchorFromOffset = react.useCallback((offsetY) => {
-    let bestVerseId = null;
-    let bestDistance = Infinity;
-    const targetY = Math.max(0, offsetY + 24);
-    for (const [verseId, y] of Object.entries(completeVerseYByIdRef.current)) {
-      const distance = Math.abs(y - targetY);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestVerseId = verseId;
+  const updateCompleteAnchorFromOffset = react.useCallback(
+    (offsetY) => {
+      let bestVerseId = null;
+      let bestDistance = Infinity;
+      const targetY = Math.max(0, offsetY + 24);
+      for (const [verseId, y] of Object.entries(
+        completeVerseYByIdRef.current
+      )) {
+        const distance = Math.abs(y - targetY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestVerseId = verseId;
+        }
       }
-    }
-    if (bestVerseId) {
-      setReaderVerseId((current) => current === bestVerseId ? current : bestVerseId);
-      const pageForVerse = getNativeVersePage(bestVerseId);
-      if (pageForVerse && pageForVerse !== pageNumber) {
-        pageNumberRef.current = pageForVerse;
-        void setPageNumber(pageForVerse);
+      if (bestVerseId) {
+        setReaderVerseId(
+          (current) => current === bestVerseId ? current : bestVerseId
+        );
+        const pageForVerse = getNativeVersePage(bestVerseId);
+        if (pageForVerse && pageForVerse !== pageNumber) {
+          pageNumberRef.current = pageForVerse;
+          void setPageNumber(pageForVerse);
+        }
       }
-    }
-  }, [getNativeVersePage, pageNumber, setPageNumber]);
+    },
+    [getNativeVersePage, pageNumber, setPageNumber]
+  );
   const handleCompleteScrollBeginDrag = react.useCallback(() => {
     userDraggingCompleteScrollRef.current = true;
     pendingCompleteScrollVerseIdRef.current = null;
@@ -2244,7 +2869,9 @@ function PdfDocumentViewer({
     const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
-    setReaderVerseId((current) => current === firstVerseId ? current : firstVerseId);
+    setReaderVerseId(
+      (current) => current === firstVerseId ? current : firstVerseId
+    );
   }, [
     completeVerses,
     contentMode,
@@ -2317,27 +2944,6 @@ function PdfDocumentViewer({
     setViewMode((value) => value === nextMode ? value : nextMode);
   }, [controlledViewMode]);
   react.useEffect(() => {
-    const requestedPage = Number(currentPage);
-    if (!Number.isInteger(requestedPage) || requestedPage <= 0) return;
-    const knownPageCount = pageCountRef.current || pageCount;
-    const nextPage = knownPageCount ? Math.min(Math.trunc(requestedPage), knownPageCount) : Math.trunc(requestedPage);
-    pageNumberRef.current = nextPage;
-    if ((useNativeCompleteVerseView || useNativeFullScreenOverlay) && nextPage > 1) {
-      const targetVerseId = completeVerses[nextPage - 1]?.id || null;
-      if (targetVerseId) {
-        pendingCompleteScrollVerseIdRef.current = targetVerseId;
-        completeRestoreGuardUntilRef.current = Date.now() + 900;
-      }
-    }
-    setPageNumber((value) => value === nextPage ? value : nextPage);
-  }, [
-    completeVerses,
-    currentPage,
-    pageCount,
-    useNativeCompleteVerseView,
-    useNativeFullScreenOverlay
-  ]);
-  react.useEffect(() => {
     if (!Number.isFinite(Number(controlledZoomLevel))) return;
     const nextZoom = Math.max(
       MIN_ZOOM_LEVEL,
@@ -2379,10 +2985,7 @@ function PdfDocumentViewer({
       pageNumberRef.current = nextPageCount;
       void setPageNumber(nextPageCount);
     }
-  }, [
-    completeVerses.length,
-    useNativeVersePaging
-  ]);
+  }, [completeVerses.length, useNativeVersePaging]);
   react.useEffect(() => {
     setVerseFontSizePx((value) => {
       const next = Math.max(
@@ -2398,14 +3001,14 @@ function PdfDocumentViewer({
   }, [label]);
   const effectivePdfUrl = localPdfUrl || pdfUrl;
   const usesLocalFileFallback = Boolean(localPdfUrl?.startsWith("file://"));
-  const verseLayoutSignature = JSON.stringify(effectiveVerseLayout || null);
+  const verseLayoutSignature = JSON.stringify(effectiveBookVerseLayout || null);
   const pdfHtml = react.useMemo(
     () => contentMode === "verse" ? buildVerseHtml(
       verses || [],
       label,
-      externalInitialPageNumber || 1,
-      initialViewModeRef.current,
-      effectiveVerseLayout,
+      pageNumberRef.current || externalInitialPageNumber || 1,
+      viewMode,
+      effectiveBookVerseLayout,
       {
         fontSizePx: Math.round(
           verseZoomConfig.defaultSize * initialZoomLevelRef.current
@@ -2451,10 +3054,10 @@ function PdfDocumentViewer({
     () => contentMode === "verse" ? buildVerseHtml(
       verses || [],
       label,
-      externalInitialPageNumber || 1,
-      initialViewModeRef.current,
+      pageNumberRef.current || externalInitialPageNumber || 1,
+      viewMode,
       {
-        ...effectiveVerseLayout,
+        ...effectiveBookVerseLayout,
         fullScreen: true,
         readerHeightPx: visibleViewportHeight
       },
@@ -2465,13 +3068,14 @@ function PdfDocumentViewer({
         maxFontSizePx: verseZoomConfig.max
       },
       mappedVerseIds,
-      "single",
-      false,
+      activeBookSpreadMode,
+      activeBookSpreadMode === "double",
       resolvedReaderTheme
     ) : "",
     [
       contentMode,
-      effectiveVerseLayout,
+      activeBookSpreadMode,
+      effectiveBookVerseLayout,
       externalInitialPageNumber,
       label,
       mappedVerseIds,
@@ -2481,10 +3085,11 @@ function PdfDocumentViewer({
       verseZoomConfig.min,
       verses,
       visibleViewportHeight,
+      viewMode,
       resolvedReaderTheme
     ]
   );
-  react.useMemo(
+  const fullScreenWebViewSource = react.useMemo(
     () => ({ html: fullScreenVerseHtml }),
     [fullScreenVerseHtml]
   );
@@ -2497,9 +3102,10 @@ function PdfDocumentViewer({
       setShowOverlayControls(false);
     }, 2600);
   }, []);
-  const syncActiveVerseToWebView = react.useCallback((verseId, isPlaying = false, shouldScroll = false) => {
-    const safeVerseId = verseId ? escapeJsString(verseId) : "";
-    const script = `
+  const syncActiveVerseToWebView = react.useCallback(
+    (verseId, isPlaying = false, shouldScroll = false) => {
+      const safeVerseId = verseId ? escapeJsString(verseId) : "";
+      const script = `
       (function() {
         if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.setActiveVerse === 'function') {
           window.__PDF_READER_BRIDGE__.setActiveVerse('${safeVerseId}', ${isPlaying ? "true" : "false"}, ${shouldScroll ? "true" : "false"});
@@ -2507,24 +3113,61 @@ function PdfDocumentViewer({
       })();
       true;
     `;
-    webViewRef.current?.injectJavaScript(script);
-    fullScreenWebViewRef.current?.injectJavaScript(script);
-  }, []);
+      webViewRef.current?.injectJavaScript(script);
+      fullScreenWebViewRef.current?.injectJavaScript(script);
+    },
+    []
+  );
+  const showMappedVerse = react.useCallback(
+    (verseId, options) => {
+      const pageForVerse = getNativeVersePage(verseId);
+      if (!pageForVerse) return;
+      pageNumberRef.current = pageForVerse;
+      pendingModeSwitchPageRef.current = pageForVerse;
+      pendingCompleteScrollVerseIdRef.current = verseId;
+      void setPageNumber(pageForVerse);
+      setReaderVerseId((current) => current === verseId ? current : verseId);
+      setActiveVerseId((current) => current === verseId ? current : verseId);
+      const bridgeMethod = viewMode === "book" ? "showMappedVerse" : "goToPage";
+      const bridgeArgs = viewMode === "book" ? `${pageForVerse}, '${escapeJsString(verseId)}', ${options?.isPlaying ? "true" : "false"}` : String(pageForVerse);
+      const script = `
+        (function() {
+          if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.${bridgeMethod} === 'function') {
+            window.__PDF_READER_BRIDGE__.${bridgeMethod}(${bridgeArgs});
+          }
+        })();
+        true;
+      `;
+      webViewRef.current?.injectJavaScript(script);
+      fullScreenWebViewRef.current?.injectJavaScript(script);
+      if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
+        void scrollCompleteToVerse(verseId, options?.animated ?? true);
+      }
+      syncActiveVerseToWebView(verseId, options?.isPlaying ?? false, true);
+    },
+    [
+      getNativeVersePage,
+      scrollCompleteToVerse,
+      setPageNumber,
+      syncActiveVerseToWebView,
+      useNativeCompleteVerseView,
+      useNativeFullScreenOverlay,
+      viewMode
+    ]
+  );
   const activateVerseAudioIndex = react.useCallback(
     (targetIndex, options) => {
       const item = playableVerseMappings[targetIndex];
       if (!item) return;
       const autoplay = options?.autoplay ?? true;
       const verseId = String(item.verseId);
-      const pageForVerse = getNativeVersePage(verseId);
+      pendingAudioSeekTargetRef.current = {
+        index: targetIndex,
+        audioAssetUrl: item.audioAssetUrl,
+        expiresAt: Date.now() + 2500
+      };
       setActiveVerseAudioIndex(targetIndex);
-      setActiveVerseId(verseId);
-      setReaderVerseId((current) => current === verseId ? current : verseId);
-      syncActiveVerseToWebView(verseId, autoplay, true);
-      if (pageForVerse && pageForVerse !== pageNumber) {
-        pageNumberRef.current = pageForVerse;
-        void setPageNumber(pageForVerse);
-      }
+      showMappedVerse(verseId, { isPlaying: autoplay, animated: true });
       const startPlayback = () => {
         setPendingVerseAudioSeekMs(null);
         void verseAudioPlayer.seekTo(item.segmentStartMs / 1e3).then(() => {
@@ -2554,12 +3197,9 @@ function PdfDocumentViewer({
     },
     [
       currentVerseAudioUrl,
-      getNativeVersePage,
-      pageNumber,
       playableVerseMappings,
-      setPageNumber,
+      showMappedVerse,
       showOverlay,
-      syncActiveVerseToWebView,
       verseAudioPlayer
     ]
   );
@@ -2582,14 +3222,24 @@ function PdfDocumentViewer({
         setReaderVerseId(
           (current) => current === activeVerseId2 ? current : activeVerseId2
         );
-        if (pageForVerse && pageForVerse !== pageNumber) {
+        if (viewMode !== "book" && pageForVerse && pageForVerse !== pageNumber) {
           pageNumberRef.current = pageForVerse;
           void setPageNumber(pageForVerse);
+          const script = `
+            (function() {
+              if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.goToPage === 'function') {
+                window.__PDF_READER_BRIDGE__.goToPage(${pageForVerse});
+              }
+            })();
+            true;
+          `;
+          webViewRef.current?.injectJavaScript(script);
+          fullScreenWebViewRef.current?.injectJavaScript(script);
         }
         if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
           void scrollCompleteToVerse(activeVerseId2, true);
         }
-        syncActiveVerseToWebView(activeVerseId2, true, true);
+        syncActiveVerseToWebView(activeVerseId2, true, viewMode !== "book");
       }
       try {
         verseAudioPlayer.play();
@@ -2613,7 +3263,8 @@ function PdfDocumentViewer({
     useNativeCompleteVerseView,
     useNativeFullScreenOverlay,
     verseAudioPlayer,
-    verseAudioStatus.playing
+    verseAudioStatus.playing,
+    viewMode
   ]);
   const seekActiveVerseAudioToRatio = react.useCallback(
     (ratio) => {
@@ -2627,14 +3278,38 @@ function PdfDocumentViewer({
           verseAudioStatus.duration ?? verseAudioStatus.durationSeconds ?? 0
         )
       );
-      const mappedTrackDurationMs = playableVerseMappings.filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl).reduce((maxEndMs, mapping) => Math.max(maxEndMs, mapping.segmentEndMs), 0);
+      const mappedTrackDurationMs = playableVerseMappings.filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl).reduce(
+        (maxEndMs, mapping) => Math.max(maxEndMs, mapping.segmentEndMs),
+        0
+      );
       const loadedTrackDurationMs = Math.max(
         0,
         Math.floor(statusTrackDurationSeconds * 1e3)
       );
-      const trackDurationMs = Math.max(loadedTrackDurationMs, mappedTrackDurationMs);
+      const trackDurationMs = Math.max(
+        loadedTrackDurationMs,
+        mappedTrackDurationMs
+      );
       if (trackDurationMs <= 0) return;
       const nextMs = Math.floor(trackDurationMs * boundedRatio);
+      const matchedSeekIndex = playableVerseMappings.findIndex((mapping) => {
+        if (mapping.audioAssetUrl !== item.audioAssetUrl) return false;
+        return nextMs >= mapping.segmentStartMs && nextMs < mapping.segmentEndMs;
+      });
+      if (matchedSeekIndex >= 0) {
+        const matchedSeek = playableVerseMappings[matchedSeekIndex];
+        const verseId = String(matchedSeek.verseId);
+        pendingAudioSeekTargetRef.current = {
+          index: matchedSeekIndex,
+          audioAssetUrl: matchedSeek.audioAssetUrl,
+          expiresAt: Date.now() + 2500
+        };
+        setActiveVerseAudioIndex(matchedSeekIndex);
+        showMappedVerse(verseId, {
+          isPlaying: verseAudioStatus.playing,
+          animated: true
+        });
+      }
       void verseAudioPlayer.seekTo(nextMs / 1e3);
       showOverlay();
     },
@@ -2642,6 +3317,7 @@ function PdfDocumentViewer({
       activeVerseAudioIndex,
       hasVerseAudio,
       playableVerseMappings,
+      showMappedVerse,
       showOverlay,
       verseAudioPlayer,
       verseAudioStatus
@@ -2653,6 +3329,7 @@ function PdfDocumentViewer({
       setActiveVerseId(null);
       setCurrentVerseAudioUrl(null);
       setPendingVerseAudioSeekMs(null);
+      lastAudioVerseWebSyncRef.current = null;
       syncActiveVerseToWebView(null, false);
       return;
     }
@@ -2683,8 +3360,23 @@ function PdfDocumentViewer({
     verseAudioStatus.isLoaded
   ]);
   react.useEffect(() => {
-    if (!hasVerseAudio || !verseAudioStatus.isLoaded || !currentVerseAudioUrl) return;
-    const currentMs = Math.max(0, Math.floor((verseAudioStatus.currentTime || 0) * 1e3));
+    if (!hasVerseAudio || !verseAudioStatus.isLoaded || !currentVerseAudioUrl)
+      return;
+    const currentMs = Math.max(
+      0,
+      Math.floor((verseAudioStatus.currentTime || 0) * 1e3)
+    );
+    const pendingAudioSeekTarget = pendingAudioSeekTargetRef.current;
+    if (pendingAudioSeekTarget) {
+      const pendingItem = playableVerseMappings[pendingAudioSeekTarget.index];
+      const isSameAudio = pendingItem && pendingAudioSeekTarget.audioAssetUrl === currentVerseAudioUrl && pendingItem.audioAssetUrl === currentVerseAudioUrl;
+      const isWithinPendingSegment = isSameAudio && currentMs >= pendingItem.segmentStartMs && currentMs < pendingItem.segmentEndMs;
+      if (isWithinPendingSegment || Date.now() >= pendingAudioSeekTarget.expiresAt) {
+        pendingAudioSeekTargetRef.current = null;
+      } else if (isSameAudio) {
+        return;
+      }
+    }
     const matchedIndex = playableVerseMappings.findIndex((item) => {
       if (item.audioAssetUrl !== currentVerseAudioUrl) return false;
       return currentMs >= item.segmentStartMs && currentMs < item.segmentEndMs;
@@ -2703,19 +3395,42 @@ function PdfDocumentViewer({
       if (readerVerseId !== verseId) {
         setReaderVerseId(verseId);
       }
-      if (pageForVerse && pageForVerse !== pageNumber) {
-        pageNumberRef.current = pageForVerse;
-        void setPageNumber(pageForVerse);
+      const shouldFollowAudioPage = viewMode !== "book" || verseChanged || activeVerseAudioIndex === null;
+      if (shouldFollowAudioPage && pageForVerse && (viewMode === "book" || pageForVerse !== pageNumber)) {
+        const bridgeMethod = viewMode === "book" ? "showMappedVerse" : "goToPage";
+        const bridgeArgs = viewMode === "book" ? `${pageForVerse}, '${escapeJsString(verseId)}', ${verseAudioStatus.playing ? "true" : "false"}` : String(pageForVerse);
+        const script = `
+          (function() {
+            if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.${bridgeMethod} === 'function') {
+              window.__PDF_READER_BRIDGE__.${bridgeMethod}(${bridgeArgs});
+            }
+          })();
+          true;
+        `;
+        webViewRef.current?.injectJavaScript(script);
+        fullScreenWebViewRef.current?.injectJavaScript(script);
+        if (viewMode !== "book") {
+          pageNumberRef.current = pageForVerse;
+          void setPageNumber(pageForVerse);
+        }
       }
       if (verseChanged && (useNativeCompleteVerseView || useNativeFullScreenOverlay)) {
         void scrollCompleteToVerse(verseId, true);
       }
-      syncActiveVerseToWebView(verseId, verseAudioStatus.playing, verseChanged);
+      if (verseChanged || lastAudioVerseWebSyncRef.current !== verseId) {
+        lastAudioVerseWebSyncRef.current = verseId;
+        syncActiveVerseToWebView(
+          verseId,
+          verseAudioStatus.playing,
+          verseChanged
+        );
+      }
       return;
     }
     if (activeVerseAudioIndex === null) return;
     const activeItem = playableVerseMappings[activeVerseAudioIndex];
-    if (!activeItem || activeItem.audioAssetUrl !== currentVerseAudioUrl) return;
+    if (!activeItem || activeItem.audioAssetUrl !== currentVerseAudioUrl)
+      return;
     if (currentMs < activeItem.segmentEndMs) return;
     const nextIndex = activeVerseAudioIndex + 1;
     if (nextIndex < playableVerseMappings.length) {
@@ -2745,35 +3460,53 @@ function PdfDocumentViewer({
     verseAudioPlayer,
     verseAudioStatus.currentTime,
     verseAudioStatus.isLoaded,
-    verseAudioStatus.playing
+    verseAudioStatus.playing,
+    viewMode
   ]);
   react.useEffect(() => {
     if (!viewerReady || contentMode !== "verse") return;
     syncActiveVerseToWebView(activeVerseId, verseAudioStatus.playing, false);
-  }, [activeVerseId, contentMode, pageNumber, syncActiveVerseToWebView, verseAudioStatus.playing, viewerReady, viewMode]);
-  const adjustVerseFontSize = react.useCallback((deltaSteps) => {
-    if (!Number.isFinite(deltaSteps) || deltaSteps === 0) return;
-    setVerseFontSizePx((value) => {
-      const next = Math.max(
-        verseZoomConfig.min,
-        Math.min(
-          verseZoomConfig.max,
-          value + deltaSteps * VERSE_GESTURE_ZOOM_STEP_PX
-        )
-      );
-      const nextZoom = next / verseZoomConfig.defaultSize;
-      zoomLevelRef.current = nextZoom;
-      setZoomLevel(nextZoom);
-      return next;
-    });
-    showOverlay();
   }, [
-    showOverlay,
-    verseZoomConfig.defaultSize,
-    verseZoomConfig.max,
-    verseZoomConfig.min
+    activeVerseId,
+    contentMode,
+    syncActiveVerseToWebView,
+    verseAudioStatus.playing,
+    viewerReady,
+    viewMode
   ]);
+  const adjustVerseFontSize = react.useCallback(
+    (deltaSteps) => {
+      if (!Number.isFinite(deltaSteps) || deltaSteps === 0) return;
+      if (deltaSteps > 0 && viewMode === "book" && bookVerseCanZoomIn === false) {
+        showOverlay();
+        return;
+      }
+      setVerseFontSizePx((value) => {
+        const next = Math.max(
+          verseZoomConfig.min,
+          Math.min(
+            verseZoomConfig.max,
+            value + deltaSteps * VERSE_GESTURE_ZOOM_STEP_PX
+          )
+        );
+        const nextZoom = next / verseZoomConfig.defaultSize;
+        zoomLevelRef.current = nextZoom;
+        setZoomLevel(nextZoom);
+        return next;
+      });
+      showOverlay();
+    },
+    [
+      bookVerseCanZoomIn,
+      showOverlay,
+      verseZoomConfig.defaultSize,
+      verseZoomConfig.max,
+      verseZoomConfig.min,
+      viewMode
+    ]
+  );
   const zoomOutVerse = react.useCallback(() => {
+    setBookVerseCanZoomIn(true);
     setVerseFontSizePx((value) => {
       const next = Math.max(verseZoomConfig.min, value - verseZoomConfig.step);
       const nextZoom = next / verseZoomConfig.defaultSize;
@@ -2789,6 +3522,10 @@ function PdfDocumentViewer({
     verseZoomConfig.step
   ]);
   const zoomInVerse = react.useCallback(() => {
+    if (viewMode === "book" && bookVerseCanZoomIn === false) {
+      showOverlay();
+      return;
+    }
     setVerseFontSizePx((value) => {
       const next = Math.min(verseZoomConfig.max, value + verseZoomConfig.step);
       const nextZoom = next / verseZoomConfig.defaultSize;
@@ -2798,10 +3535,12 @@ function PdfDocumentViewer({
     });
     showOverlay();
   }, [
+    bookVerseCanZoomIn,
     showOverlay,
     verseZoomConfig.defaultSize,
     verseZoomConfig.max,
-    verseZoomConfig.step
+    verseZoomConfig.step,
+    viewMode
   ]);
   const adjustPdfZoom = react.useCallback(
     (delta) => {
@@ -2817,6 +3556,81 @@ function PdfDocumentViewer({
     },
     [showOverlay]
   );
+  const handleFullScreenWebViewMessage = react.useCallback(
+    (event) => {
+      try {
+        const payload = JSON.parse(event.nativeEvent.data || "{}");
+        if (payload?.type === "document-meta") {
+          const nextPageCount = Number(payload.pageCount);
+          if (Number.isInteger(nextPageCount) && nextPageCount > 0) {
+            pageCountRef.current = nextPageCount;
+            setPageCount(
+              (current) => current === nextPageCount ? current : nextPageCount
+            );
+          }
+          return;
+        }
+        if (payload?.type === "verse-pages") {
+          const nextPageById = {};
+          const nextIdsByPage = {};
+          const pages = Array.isArray(payload.pages) ? payload.pages : [];
+          const nextSignature = JSON.stringify(pages);
+          if (versePagesSignatureRef.current === nextSignature) return;
+          versePagesSignatureRef.current = nextSignature;
+          for (const page of pages) {
+            const pageNumberValue = Number(page?.pageNumber);
+            if (!Number.isInteger(pageNumberValue) || pageNumberValue <= 0) {
+              continue;
+            }
+            const verseIds = Array.isArray(page?.verseIds) ? page.verseIds : [];
+            nextIdsByPage[pageNumberValue] = verseIds.map(
+              (verseId) => String(verseId)
+            );
+            for (const verseId of verseIds) {
+              nextPageById[String(verseId)] = pageNumberValue;
+            }
+          }
+          setVersePageById(nextPageById);
+          setVerseIdsByPage(nextIdsByPage);
+          return;
+        }
+        if (payload?.type === "interaction") {
+          showOverlay();
+          return;
+        }
+        if (payload?.type === "ready") {
+          setLoadingPdf(false);
+          setViewerReady(true);
+          onReady?.({ pageCount: pageCountRef.current });
+          return;
+        }
+        if (payload?.type === "verse-zoom") {
+          const deltaSteps = Number(payload.deltaSteps || 0);
+          adjustVerseFontSize(deltaSteps);
+          return;
+        }
+        if (payload?.type === "verse-layout-state") {
+          setBookVerseCanZoomIn(payload.canZoomIn !== false);
+          return;
+        }
+        if (payload?.type === "error") {
+          const message = typeof payload.message === "string" && payload.message ? payload.message : "Failed to load reader content.";
+          setLoadingError(message);
+          setLoadingPdf(false);
+          onError?.({ message, code: payload.code });
+          return;
+        }
+        if (payload?.type !== "page-change") return;
+        const nextPage = Number(payload.pageNumber);
+        if (!Number.isInteger(nextPage) || nextPage <= 0) return;
+        if (nextPage === pageNumberRef.current) return;
+        pageNumberRef.current = nextPage;
+        void setPageNumber(nextPage);
+      } catch {
+      }
+    },
+    [adjustVerseFontSize, onError, onReady, setPageNumber, showOverlay]
+  );
   const enterVerseFullScreen = react.useCallback(() => {
     if (contentMode !== "verse") return;
     setIsVerseFullScreen(true);
@@ -2824,9 +3638,23 @@ function PdfDocumentViewer({
   }, [contentMode, showOverlay]);
   const exitVerseFullScreen = react.useCallback(() => {
     if (contentMode !== "verse") return;
+    const activeMapping = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
+    if (activeMapping) {
+      showMappedVerse(String(activeMapping.verseId), {
+        isPlaying: verseAudioStatus.playing,
+        animated: false
+      });
+    }
     setIsVerseFullScreen(false);
     showOverlay();
-  }, [contentMode, showOverlay]);
+  }, [
+    activeVerseAudioIndex,
+    contentMode,
+    playableVerseMappings,
+    showMappedVerse,
+    showOverlay,
+    verseAudioStatus.playing
+  ]);
   const toggleVerseFullScreen = react.useCallback(() => {
     if (isVerseFullScreen) {
       exitVerseFullScreen();
@@ -2841,26 +3669,85 @@ function PdfDocumentViewer({
       }
     };
   }, []);
+  const requestBookPageChange = react.useCallback(
+    (direction) => {
+      const methodName = direction === "next" ? "goToNextPage" : "goToPreviousPage";
+      const script = `
+        (function() {
+          if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.${methodName} === 'function') {
+            window.__PDF_READER_BRIDGE__.${methodName}();
+          }
+        })();
+        true;
+      `;
+      webViewRef.current?.injectJavaScript(script);
+      fullScreenWebViewRef.current?.injectJavaScript(script);
+    },
+    []
+  );
   const goToPreviousPage = react.useCallback(() => {
     const currentPage2 = pageNumberRef.current || pageNumber;
-    const previousPage = Math.max(1, currentPage2 - 1);
-    pageNumberRef.current = previousPage;
-    void setPageNumber(previousPage);
+    const currentAnchor = activeBookSpreadMode === "double" && currentPage2 % 2 === 0 ? currentPage2 - 1 : currentPage2;
+    const pageStep = viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1;
+    const previousPage = Math.max(1, currentAnchor - pageStep);
+    if (viewMode === "book") {
+      if (useFullScreenBookWebView) {
+        requestBookPageChange("prev");
+      } else {
+        pageNumberRef.current = previousPage;
+        pendingModeSwitchPageRef.current = previousPage;
+        void setPageNumber(previousPage);
+      }
+    } else {
+      pageNumberRef.current = previousPage;
+      void setPageNumber(previousPage);
+    }
     showOverlay();
-  }, [pageNumber, setPageNumber, showOverlay, verseIdsByPage]);
+  }, [
+    activeBookSpreadMode,
+    pageNumber,
+    requestBookPageChange,
+    setPageNumber,
+    showOverlay,
+    useFullScreenBookWebView,
+    viewMode
+  ]);
   const goToNextPage = react.useCallback(() => {
     const currentPage2 = pageNumberRef.current || pageNumber;
-    const nextPage = pageCount ? Math.min(currentPage2 + 1, pageCount) : currentPage2 + 1;
-    pageNumberRef.current = nextPage;
-    void setPageNumber(nextPage);
+    const currentAnchor = activeBookSpreadMode === "double" && currentPage2 % 2 === 0 ? currentPage2 - 1 : currentPage2;
+    const pageStep = viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1;
+    const nextPage = pageCount ? Math.min(currentAnchor + pageStep, pageCount) : currentAnchor + pageStep;
+    if (viewMode === "book") {
+      if (useFullScreenBookWebView) {
+        requestBookPageChange("next");
+      } else {
+        pageNumberRef.current = nextPage;
+        pendingModeSwitchPageRef.current = nextPage;
+        void setPageNumber(nextPage);
+      }
+    } else {
+      pageNumberRef.current = nextPage;
+      void setPageNumber(nextPage);
+    }
     showOverlay();
-  }, [pageCount, pageNumber, setPageNumber, showOverlay, verseIdsByPage]);
+  }, [
+    activeBookSpreadMode,
+    pageCount,
+    pageNumber,
+    requestBookPageChange,
+    setPageNumber,
+    showOverlay,
+    useFullScreenBookWebView,
+    viewMode
+  ]);
   react.useCallback(() => {
     const firstVerseId = completeVerses[0]?.id || null;
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
     void setPageNumber(1);
-    setReaderVerseId((current) => current === firstVerseId ? current : firstVerseId);
+    setReaderVerseId(
+      (current) => current === firstVerseId ? current : firstVerseId
+    );
     if (viewMode === "continuous") {
       pendingCompleteScrollVerseIdRef.current = firstVerseId;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
@@ -2948,9 +3835,16 @@ function PdfDocumentViewer({
       pendingModeSwitchPageRef.current = targetPage;
       pageNumberRef.current = targetPage;
       viewModeRef.current = mode2;
-      setReaderVerseId((current) => current === targetVerseId ? current : targetVerseId);
+      setReaderVerseId(
+        (current) => current === targetVerseId ? current : targetVerseId
+      );
       void setPageNumber(targetPage);
       setViewMode(mode2);
+      if (contentMode === "verse") {
+        setIsVerseFullScreen(
+          mode2 === "book" || verseLayout?.fullScreen === true
+        );
+      }
       setShowShareOverlay(false);
       suppressCompleteModeSyncRef.current = false;
       if (viewerReady && !loadingError) {
@@ -2967,8 +3861,10 @@ function PdfDocumentViewer({
       setPageNumber,
       showOverlay,
       syncViewerStateToWebView,
+      contentMode,
       completeVerses,
       useNativeVersePaging,
+      verseLayout?.fullScreen,
       versePageById,
       verseIdsByPage,
       viewerReady,
@@ -2984,14 +3880,14 @@ function PdfDocumentViewer({
     const syncSignature = JSON.stringify({
       viewMode,
       pageNumber: syncPage,
-      readerVerseId: readerVerseId || "",
+      readerVerseId: viewMode === "book" ? "" : readerVerseId || "",
       zoomLevel: Math.round(zoomLevel * 100) / 100
     });
     if (lastInjectedViewerStateRef.current === syncSignature) return;
     syncViewerStateToWebView(
       viewMode,
       syncPage,
-      readerVerseId,
+      viewMode === "book" ? null : readerVerseId,
       zoomLevel
     );
     lastInjectedViewerStateRef.current = syncSignature;
@@ -3091,17 +3987,28 @@ ${shareUrl}`;
     void openShareUrl(shareLinks.systemUrl);
   }, [openShareUrl, shareLinks.systemUrl]);
   const zoomOutDisabled = contentMode === "verse" ? verseFontSizePx <= verseZoomConfig.min : zoomLevel <= MIN_ZOOM_LEVEL;
-  const zoomInDisabled = contentMode === "verse" ? verseFontSizePx >= verseZoomConfig.max : zoomLevel >= MAX_ZOOM_LEVEL;
+  const zoomInDisabled = contentMode === "verse" ? verseFontSizePx >= verseZoomConfig.max || viewMode === "book" && bookVerseCanZoomIn === false : zoomLevel >= MAX_ZOOM_LEVEL;
   const pageBadgeText = contentMode === "verse" && viewMode === "continuous" ? `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ""}` : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ""}`;
   const activeVerseAudio = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
+  const nativeBookPageNumber = pageNumberRef.current || pageNumber;
   const nativeBookVerse = (useNativeBookVerseView || useNativeFullScreenOverlay && viewMode === "book") && completeVerses.length ? completeVerses[Math.max(
     0,
     Math.min(
       completeVerses.length - 1,
-      (pageNumberRef.current || pageNumber) - 1
+      nativeBookPageNumber - 1
     )
   )] : null;
-  const verseAudioCurrentSeconds = Math.max(0, verseAudioStatus.currentTime || 0);
+  const nativeSecondBookVerse = nativeBookVerse && activeBookSpreadMode === "double" && completeVerses.length ? completeVerses[Math.max(
+    0,
+    Math.min(completeVerses.length - 1, nativeBookPageNumber)
+  )] || null : null;
+  const nativeBookVerses = [nativeBookVerse, nativeSecondBookVerse].filter(
+    (verse) => verse !== null
+  );
+  const verseAudioCurrentSeconds = Math.max(
+    0,
+    verseAudioStatus.currentTime || 0
+  );
   const activeTrackDurationSeconds = react.useMemo(() => {
     if (!activeVerseAudio) return 0;
     const statusTrackDurationSeconds = Math.max(
@@ -3110,19 +4017,142 @@ ${shareUrl}`;
         verseAudioStatus.duration ?? verseAudioStatus.durationSeconds ?? 0
       )
     );
-    const mappedTrackDurationSeconds = playableVerseMappings.filter((mapping) => mapping.audioAssetUrl === activeVerseAudio.audioAssetUrl).reduce((maxEndSeconds, mapping) => Math.max(maxEndSeconds, mapping.segmentEndMs / 1e3), 0);
+    const mappedTrackDurationSeconds = playableVerseMappings.filter(
+      (mapping) => mapping.audioAssetUrl === activeVerseAudio.audioAssetUrl
+    ).reduce(
+      (maxEndSeconds, mapping) => Math.max(maxEndSeconds, mapping.segmentEndMs / 1e3),
+      0
+    );
     return Math.max(statusTrackDurationSeconds, mappedTrackDurationSeconds);
   }, [activeVerseAudio, playableVerseMappings, verseAudioStatus]);
   const verseAudioTimeText = activeVerseAudio ? `${formatTime(Math.max(0, verseAudioCurrentSeconds))} / ${formatTime(Math.max(0, activeTrackDurationSeconds))}` : "";
-  const activeVerseAudioDurationSeconds = Math.max(0, activeTrackDurationSeconds);
+  const activeVerseAudioDurationSeconds = Math.max(
+    0,
+    activeTrackDurationSeconds
+  );
   const activeVerseAudioElapsedSeconds = activeVerseAudio ? Math.max(
     0,
-    Math.min(
-      activeVerseAudioDurationSeconds,
-      verseAudioCurrentSeconds
-    )
+    Math.min(activeVerseAudioDurationSeconds, verseAudioCurrentSeconds)
   ) : 0;
   const activeVerseAudioProgress = activeVerseAudioDurationSeconds > 0 ? activeVerseAudioElapsedSeconds / activeVerseAudioDurationSeconds : 0;
+  const visibleBookVerseIds = react.useMemo(() => {
+    const ids = [
+      ...verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : [])
+    ];
+    if (activeBookSpreadMode === "double") {
+      ids.push(
+        ...verseIdsByPage[pageNumber + 1] || (useNativeVersePaging && completeVerses[pageNumber]?.id ? [completeVerses[pageNumber].id] : [])
+      );
+    }
+    return ids.map((id) => String(id));
+  }, [
+    activeBookSpreadMode,
+    completeVerses,
+    pageNumber,
+    useNativeVersePaging,
+    verseIdsByPage
+  ]);
+  const visibleMappedVerseAudioIndex = react.useMemo(
+    () => playableVerseMappings.findIndex(
+      (mapping) => visibleBookVerseIds.includes(String(mapping.verseId))
+    ),
+    [playableVerseMappings, visibleBookVerseIds]
+  );
+  const previousMappedVerseAudioIndex = react.useMemo(() => {
+    if (!hasVerseAudio || !playableVerseMappings.length) return -1;
+    const currentIndex = activeVerseAudioIndex !== null ? activeVerseAudioIndex : visibleMappedVerseAudioIndex;
+    if (currentIndex < 0) return -1;
+    return currentIndex > 0 ? currentIndex - 1 : -1;
+  }, [
+    activeVerseAudioIndex,
+    hasVerseAudio,
+    playableVerseMappings.length,
+    visibleMappedVerseAudioIndex
+  ]);
+  const currentMappedVerseAudioIndex = react.useMemo(() => {
+    if (!hasVerseAudio || !playableVerseMappings.length) return -1;
+    if (activeVerseAudioIndex !== null) return activeVerseAudioIndex;
+    return visibleMappedVerseAudioIndex;
+  }, [
+    activeVerseAudioIndex,
+    hasVerseAudio,
+    playableVerseMappings.length,
+    visibleMappedVerseAudioIndex
+  ]);
+  const nextMappedVerseAudioIndex = react.useMemo(() => {
+    if (!hasVerseAudio || !playableVerseMappings.length) return -1;
+    const currentIndex = activeVerseAudioIndex !== null ? activeVerseAudioIndex : visibleMappedVerseAudioIndex;
+    if (currentIndex < 0) return 0;
+    return currentIndex + 1 < playableVerseMappings.length ? currentIndex + 1 : -1;
+  }, [
+    activeVerseAudioIndex,
+    hasVerseAudio,
+    playableVerseMappings.length,
+    visibleMappedVerseAudioIndex
+  ]);
+  const canPlayPreviousMappedVerse = previousMappedVerseAudioIndex >= 0;
+  const canRestartMappedVerse = currentMappedVerseAudioIndex >= 0;
+  const canPlayNextMappedVerse = nextMappedVerseAudioIndex >= 0;
+  const playPreviousMappedVerse = react.useCallback(() => {
+    if (!canPlayPreviousMappedVerse) return;
+    activateVerseAudioIndex(previousMappedVerseAudioIndex, { autoplay: true });
+  }, [
+    activateVerseAudioIndex,
+    canPlayPreviousMappedVerse,
+    previousMappedVerseAudioIndex
+  ]);
+  const restartMappedVerse = react.useCallback(() => {
+    if (!canRestartMappedVerse) return;
+    activateVerseAudioIndex(currentMappedVerseAudioIndex, { autoplay: true });
+  }, [
+    activateVerseAudioIndex,
+    canRestartMappedVerse,
+    currentMappedVerseAudioIndex
+  ]);
+  const playNextMappedVerse = react.useCallback(() => {
+    if (!canPlayNextMappedVerse) return;
+    activateVerseAudioIndex(nextMappedVerseAudioIndex, { autoplay: true });
+  }, [
+    activateVerseAudioIndex,
+    canPlayNextMappedVerse,
+    nextMappedVerseAudioIndex
+  ]);
+  const seekAudioByLocationX = react.useCallback(
+    (locationX) => {
+      seekActiveVerseAudioToRatio(
+        Math.max(0, locationX || 0) / audioSliderWidth
+      );
+    },
+    [audioSliderWidth, seekActiveVerseAudioToRatio]
+  );
+  const audioSliderPanResponder = react.useMemo(
+    () => ReactNative.PanResponder.create({
+      onStartShouldSetPanResponder: () => Boolean(activeVerseAudio),
+      onMoveShouldSetPanResponder: () => Boolean(activeVerseAudio),
+      onPanResponderGrant: (event) => {
+        seekAudioByLocationX(event.nativeEvent.locationX || 0);
+      },
+      onPanResponderMove: (event) => {
+        seekAudioByLocationX(event.nativeEvent.locationX || 0);
+      }
+    }),
+    [activeVerseAudio, seekAudioByLocationX]
+  );
+  const toggleBookSpreadMode = react.useCallback(() => {
+    setBookSpreadMode((current) => {
+      const next = current === "double" ? "single" : "double";
+      const safeNext = allowBookDoubleSpread ? next : "single";
+      const currentPage2 = pageNumberRef.current || pageNumber;
+      const anchoredPage = safeNext === "double" && currentPage2 % 2 === 0 ? Math.max(1, currentPage2 - 1) : currentPage2;
+      pageNumberRef.current = anchoredPage;
+      pendingModeSwitchPageRef.current = anchoredPage;
+      lastInjectedViewerStateRef.current = null;
+      void setPageNumber(anchoredPage);
+      setBookVerseCanZoomIn(true);
+      return safeNext;
+    });
+    showOverlay();
+  }, [allowBookDoubleSpread, pageNumber, setPageNumber, showOverlay]);
   const nativeFullScreenControls = /* @__PURE__ */ jsxRuntime.jsxs(
     ReactNative.View,
     {
@@ -3132,6 +4162,116 @@ ${shareUrl}`;
         isFullScreenLandscape ? styles.nativeFullScreenControlsLandscape : null
       ],
       children: [
+        hasVerseAudio ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            ReactNative.Pressable,
+            {
+              onPress: playPreviousMappedVerse,
+              disabled: !canPlayPreviousMappedVerse,
+              style: [
+                styles.overlayAudioButton,
+                styles.overlayAudioPlayButton,
+                !canPlayPreviousMappedVerse ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Play previous mapped verse",
+              children: /* @__PURE__ */ jsxRuntime.jsx(
+                Ionicons__default.default,
+                {
+                  name: "play-skip-back-outline",
+                  size: 20,
+                  color: "#fff"
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            ReactNative.Pressable,
+            {
+              onPress: restartMappedVerse,
+              disabled: !canRestartMappedVerse,
+              style: [
+                styles.overlayAudioButton,
+                styles.overlayAudioPlayButton,
+                !canRestartMappedVerse ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Restart mapped verse",
+              children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "refresh-outline", size: 20, color: "#fff" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            ReactNative.Pressable,
+            {
+              onPress: toggleVerseAudio,
+              style: [styles.overlayAudioButton, styles.overlayAudioPlayButton],
+              accessibilityLabel: verseAudioStatus.playing ? "Pause audio" : "Play audio",
+              children: /* @__PURE__ */ jsxRuntime.jsx(
+                Ionicons__default.default,
+                {
+                  name: verseAudioStatus.playing ? "pause-outline" : "play-outline",
+                  size: 20,
+                  color: "#fff"
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            ReactNative.Pressable,
+            {
+              onPress: playNextMappedVerse,
+              disabled: !canPlayNextMappedVerse,
+              style: [
+                styles.overlayAudioButton,
+                styles.overlayAudioPlayButton,
+                !canPlayNextMappedVerse ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Play next mapped verse",
+              children: /* @__PURE__ */ jsxRuntime.jsx(
+                Ionicons__default.default,
+                {
+                  name: "play-skip-forward-outline",
+                  size: 20,
+                  color: "#fff"
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            ReactNative.Pressable,
+            {
+              onLayout: (event) => {
+                const nextWidth = Math.max(
+                  1,
+                  Math.round(event.nativeEvent.layout.width || 1)
+                );
+                setAudioSliderWidth(
+                  (current) => current === nextWidth ? current : nextWidth
+                );
+              },
+              onPress: (event) => {
+                seekAudioByLocationX(event.nativeEvent.locationX || 0);
+              },
+              disabled: !activeVerseAudio,
+              style: [
+                styles.overlayAudioSlider,
+                !activeVerseAudio ? styles.overlayButtonDisabled : null
+              ],
+              accessibilityLabel: "Seek mapped audio",
+              ...audioSliderPanResponder.panHandlers,
+              children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayAudioSliderTrack, children: /* @__PURE__ */ jsxRuntime.jsx(
+                ReactNative.View,
+                {
+                  style: [
+                    styles.overlayAudioSliderFill,
+                    {
+                      width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%`
+                    }
+                  ]
+                }
+              ) })
+            }
+          ),
+          verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
+        ] }) }) : null,
         /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
           viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
             ReactNative.Pressable,
@@ -3186,6 +4326,22 @@ ${shareUrl}`;
               )
             }
           ),
+          viewMode === "book" && allowBookDoubleSpread ? /* @__PURE__ */ jsxRuntime.jsx(
+            ReactNative.Pressable,
+            {
+              onPress: toggleBookSpreadMode,
+              style: styles.overlayZoomButton,
+              accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
+              children: /* @__PURE__ */ jsxRuntime.jsx(
+                Ionicons__default.default,
+                {
+                  name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
+                  size: 20,
+                  color: "#fff"
+                }
+              )
+            }
+          ) : null,
           /* @__PURE__ */ jsxRuntime.jsx(
             ReactNative.Pressable,
             {
@@ -3218,9 +4374,9 @@ ${shareUrl}`;
     {
       visible: true,
       transparent: false,
-      animationType: "slide",
+      animationType: ReactNative.Platform.OS === "ios" ? "none" : "slide",
       presentationStyle: "fullScreen",
-      statusBarTranslucent: true,
+      statusBarTranslucent: ReactNative.Platform.OS === "android",
       onRequestClose: exitVerseFullScreen,
       children: /* @__PURE__ */ jsxRuntime.jsxs(
         ReactNative.View,
@@ -3230,33 +4386,78 @@ ${shareUrl}`;
             { backgroundColor: resolvedReaderTheme.background }
           ],
           children: [
-            viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
-              NativeScrollView,
+            useFullScreenBookWebView ? /* @__PURE__ */ jsxRuntime.jsx(
+              ReactNative.View,
               {
-                style: styles.nativeFullScreenScroll,
-                contentContainerStyle: [
-                  styles.nativeFullScreenScrollContent,
-                  isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null
-                ],
-                showsVerticalScrollIndicator: false,
+                style: styles.nativeFullScreenBookSurface,
                 onTouchStart: showOverlay,
                 children: /* @__PURE__ */ jsxRuntime.jsx(
+                  reactNativeWebview.WebView,
+                  {
+                    ref: fullScreenWebViewRef,
+                    originWhitelist: ["about:blank"],
+                    source: fullScreenWebViewSource,
+                    style: styles.nativeFullScreenWebView,
+                    javaScriptEnabled: true,
+                    domStorageEnabled: true,
+                    startInLoadingState: false,
+                    setSupportMultipleWindows: false,
+                    mixedContentMode: "never",
+                    scrollEnabled: true,
+                    nestedScrollEnabled: true,
+                    bounces: false,
+                    showsVerticalScrollIndicator: false,
+                    showsHorizontalScrollIndicator: false,
+                    scalesPageToFit: false,
+                    setBuiltInZoomControls: false,
+                    setDisplayZoomControls: false,
+                    onLoadStart: () => {
+                      setLoadingPdf(true);
+                      setViewerReady(false);
+                      setLoadingError(null);
+                    },
+                    onLoadEnd: () => {
+                      setLoadingPdf(false);
+                      setViewerReady(true);
+                    },
+                    onMessage: handleFullScreenWebViewMessage
+                  },
+                  `fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`
+                )
+              }
+            ) : useNativeFullScreenBookView ? /* @__PURE__ */ jsxRuntime.jsx(
+              NativeScrollView,
+              {
+                style: [
+                  styles.nativeFullScreenScroll,
+                  { backgroundColor: resolvedReaderTheme.background }
+                ],
+                contentContainerStyle: [
+                  styles.nativeFullScreenBookContent,
+                  activeBookSpreadMode === "double" ? styles.nativeFullScreenBookContentDouble : null
+                ],
+                nestedScrollEnabled: true,
+                showsVerticalScrollIndicator: false,
+                onTouchStart: showOverlay,
+                children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsx(
                   ReactNative.View,
                   {
                     style: [
-                      styles.nativeFullScreenPage,
+                      styles.nativeBookPage,
+                      styles.nativeFullScreenBookPage,
+                      activeBookSpreadMode === "double" ? styles.nativeFullScreenBookPageDouble : null,
                       {
                         borderColor: resolvedReaderTheme.accent,
                         backgroundColor: resolvedReaderTheme.page,
                         shadowColor: resolvedReaderTheme.shadow
                       }
                     ],
-                    children: nativeBookVerse ? /* @__PURE__ */ jsxRuntime.jsx(
+                    children: /* @__PURE__ */ jsxRuntime.jsx(
                       ReactNative.Text,
                       {
                         style: [
-                          styles.nativeFullScreenVerseText,
-                          COMPLETE_VERSE_STYLE_MAP[nativeBookVerse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                          styles.nativeBookVerseText,
+                          COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
                           { color: resolvedReaderTheme.text },
                           {
                             fontSize: verseFontSizePx,
@@ -3264,13 +4465,14 @@ ${shareUrl}`;
                           }
                         ],
                         children: renderNativeRichText(
-                          nativeBookVerse.contentHtml,
-                          `fullscreen-book-${nativeBookVerse.id}`
+                          verse.contentHtml,
+                          `fullscreen-book-${verse.id}`
                         )
                       }
-                    ) : null
-                  }
-                )
+                    )
+                  },
+                  `fullscreen-book-${verse.id}`
+                ))
               }
             ) : /* @__PURE__ */ jsxRuntime.jsx(
               NativeScrollView,
@@ -3290,9 +4492,12 @@ ${shareUrl}`;
                 onScroll: (event) => {
                   if (!userDraggingCompleteScrollRef.current) {
                     if (pendingCompleteScrollVerseIdRef.current) return;
-                    if (Date.now() < completeRestoreGuardUntilRef.current) return;
+                    if (Date.now() < completeRestoreGuardUntilRef.current)
+                      return;
                   }
-                  updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+                  updateCompleteAnchorFromOffset(
+                    event.nativeEvent.contentOffset.y
+                  );
                 },
                 onContentSizeChange: () => {
                   if (!autoAlignCurrentVerse) return;
@@ -3355,7 +4560,7 @@ ${shareUrl}`;
                 })
               }
             ),
-            nativeFullScreenControls
+            showOverlayControls ? nativeFullScreenControls : null
           ]
         }
       )
@@ -3631,7 +4836,9 @@ ${shareUrl}`;
               useNativeCompleteVerseView || useNativeBookVerseView ? { height: viewerHeight } : inlineFullScreenActive ? styles.viewerWrapFullScreen : { height: viewerHeight }
             ],
             onLayout: contentMode === "verse" ? (event) => {
-              const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
+              const nextHeight = Math.round(
+                event.nativeEvent.layout.height || 0
+              );
               if (nextHeight > 0 && nextHeight !== viewerWrapHeight) {
                 setViewerWrapHeight(nextHeight);
               }
@@ -3679,31 +4886,42 @@ ${shareUrl}`;
                     ReactNative.View,
                     {
                       style: [
-                        styles.nativeBookPage,
-                        {
-                          borderColor: resolvedReaderTheme.accent,
-                          backgroundColor: resolvedReaderTheme.page,
-                          shadowColor: resolvedReaderTheme.shadow
-                        }
+                        styles.nativeBookPages,
+                        activeBookSpreadMode === "double" ? styles.nativeBookPagesDouble : null
                       ],
-                      children: nativeBookVerse ? /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Text,
+                      children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.View,
                         {
                           style: [
-                            styles.nativeBookVerseText,
-                            COMPLETE_VERSE_STYLE_MAP[nativeBookVerse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
-                            { color: resolvedReaderTheme.text },
+                            styles.nativeBookPage,
+                            activeBookSpreadMode === "double" ? styles.nativeBookPageDouble : null,
                             {
-                              fontSize: verseFontSizePx,
-                              lineHeight: Math.round(verseFontSizePx * 1.45)
+                              borderColor: resolvedReaderTheme.accent,
+                              backgroundColor: resolvedReaderTheme.page,
+                              shadowColor: resolvedReaderTheme.shadow
                             }
                           ],
-                          children: renderNativeRichText(
-                            nativeBookVerse.contentHtml,
-                            `book-${nativeBookVerse.id}`
+                          children: /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.Text,
+                            {
+                              style: [
+                                styles.nativeBookVerseText,
+                                COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                                { color: resolvedReaderTheme.text },
+                                {
+                                  fontSize: verseFontSizePx,
+                                  lineHeight: Math.round(verseFontSizePx * 1.45)
+                                }
+                              ],
+                              children: renderNativeRichText(
+                                verse.contentHtml,
+                                `book-${verse.id}`
+                              )
+                            }
                           )
-                        }
-                      ) : null
+                        },
+                        `book-${verse.id}`
+                      ))
                     }
                   )
                 }
@@ -3731,7 +4949,9 @@ ${shareUrl}`;
                       if (pendingCompleteScrollVerseIdRef.current) return;
                       if (Date.now() < completeRestoreGuardUntilRef.current) return;
                     }
-                    updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+                    updateCompleteAnchorFromOffset(
+                      event.nativeEvent.contentOffset.y
+                    );
                   },
                   onContentSizeChange: () => {
                     if (!autoAlignCurrentVerse) return;
@@ -3858,13 +5078,17 @@ ${shareUrl}`;
                         const nextIdsByPage = {};
                         const pages = Array.isArray(payload.pages) ? payload.pages : [];
                         const nextSignature = JSON.stringify(pages);
-                        if (versePagesSignatureRef.current === nextSignature) return;
+                        if (versePagesSignatureRef.current === nextSignature)
+                          return;
                         versePagesSignatureRef.current = nextSignature;
                         for (const page of pages) {
                           const pageNumberValue = Number(page?.pageNumber);
-                          if (!Number.isInteger(pageNumberValue) || pageNumberValue <= 0) continue;
+                          if (!Number.isInteger(pageNumberValue) || pageNumberValue <= 0)
+                            continue;
                           const verseIds = Array.isArray(page?.verseIds) ? page.verseIds : [];
-                          nextIdsByPage[pageNumberValue] = verseIds.map((verseId) => String(verseId));
+                          nextIdsByPage[pageNumberValue] = verseIds.map(
+                            (verseId) => String(verseId)
+                          );
                           for (const verseId of verseIds) {
                             nextPageById[String(verseId)] = pageNumberValue;
                           }
@@ -3918,7 +5142,9 @@ ${shareUrl}`;
                                 { idempotent: true }
                               );
                               if (!downloaded.uri) {
-                                setLoadingError(`Downloaded fallback file does not exist at: ${downloaded.uri}`);
+                                setLoadingError(
+                                  `Downloaded fallback file does not exist at: ${downloaded.uri}`
+                                );
                                 setLoadingPdf(false);
                                 return;
                               }
@@ -3931,9 +5157,17 @@ ${shareUrl}`;
                                   setLoadingPdf(false);
                                   return;
                                 }
-                                const filePath = downloaded.uri.replace("file://", "");
-                                const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
-                                const fileBase = filePath.substring(filePath.lastIndexOf("/") + 1);
+                                const filePath = downloaded.uri.replace(
+                                  "file://",
+                                  ""
+                                );
+                                const dirPath = filePath.substring(
+                                  0,
+                                  filePath.lastIndexOf("/")
+                                );
+                                const fileBase = filePath.substring(
+                                  filePath.lastIndexOf("/") + 1
+                                );
                                 let ServerClass = null;
                                 try {
                                   const mod = await import('react-native-static-server');
@@ -3942,11 +5176,15 @@ ${shareUrl}`;
                                   ServerClass = null;
                                 }
                                 if (!ServerClass) {
-                                  setLoadingError("In-app local PDF fallback is unavailable in this build. Please use Download PDF.");
+                                  setLoadingError(
+                                    "In-app local PDF fallback is unavailable in this build. Please use Download PDF."
+                                  );
                                   setLoadingPdf(false);
                                   return;
                                 }
-                                const server = new ServerClass(0, dirPath, { localOnly: true });
+                                const server = new ServerClass(0, dirPath, {
+                                  localOnly: true
+                                });
                                 if (!server || typeof server.start !== "function") {
                                   setLocalPdfUrl(downloaded.uri);
                                 } else {
@@ -3955,7 +5193,9 @@ ${shareUrl}`;
                                     setLocalPdfUrl(downloaded.uri);
                                   } else {
                                     staticServerRef.current = server;
-                                    setLocalPdfUrl(`${serverUrl}/${encodeURIComponent(fileBase)}`);
+                                    setLocalPdfUrl(
+                                      `${serverUrl}/${encodeURIComponent(fileBase)}`
+                                    );
                                   }
                                 }
                               } else {
@@ -3978,8 +5218,8 @@ ${shareUrl}`;
                         return;
                       }
                       if (payload?.type !== "page-change") return;
-                      if (viewMode === "book") return;
-                      if (viewMode === "continuous" && payload?.isAutoScroll !== true) return;
+                      if (viewMode === "continuous" && payload?.isAutoScroll !== true)
+                        return;
                       const nextPage = Number(payload.pageNumber);
                       if (!Number.isInteger(nextPage) || nextPage <= 0) return;
                       const pendingSync = programmaticViewerSyncRef.current;
@@ -4024,149 +5264,208 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && showOverlayControls ? /* @__PURE__ */ jsxRuntime.jsx(
-                ReactNative.View,
-                {
-                  pointerEvents: "box-none",
-                  style: styles.viewerOverlay,
-                  children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayBottomCenter, children: [
-                    hasVerseAudio ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
-                      /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Pressable,
+              !loadingError && showOverlayControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayBottomCenter, children: [
+                hasVerseAudio ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: playPreviousMappedVerse,
+                      disabled: !canPlayPreviousMappedVerse,
+                      style: [
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton,
+                        !canPlayPreviousMappedVerse ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Play previous mapped verse",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                        Ionicons__default.default,
                         {
-                          onPress: toggleVerseAudio,
-                          style: [styles.overlayAudioButton, styles.overlayAudioPlayButton],
-                          accessibilityLabel: verseAudioStatus.playing ? "Pause audio" : "Play audio",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(
-                            Ionicons__default.default,
-                            {
-                              name: verseAudioStatus.playing ? "pause-outline" : "play-outline",
-                              size: 20,
-                              color: "#fff"
-                            }
-                          )
+                          name: "play-skip-back-outline",
+                          size: 20,
+                          color: "#fff"
                         }
-                      ),
-                      /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Pressable,
+                      )
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: restartMappedVerse,
+                      disabled: !canRestartMappedVerse,
+                      style: [
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton,
+                        !canRestartMappedVerse ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Restart mapped verse",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "refresh-outline", size: 20, color: "#fff" })
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: toggleVerseAudio,
+                      style: [
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton
+                      ],
+                      accessibilityLabel: verseAudioStatus.playing ? "Pause audio" : "Play audio",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                        Ionicons__default.default,
                         {
-                          onLayout: (event) => {
-                            const nextWidth = Math.max(1, Math.round(event.nativeEvent.layout.width || 1));
-                            setAudioSliderWidth(
-                              (current) => current === nextWidth ? current : nextWidth
-                            );
-                          },
-                          onPress: (event) => {
-                            const locationX = Math.max(0, event.nativeEvent.locationX || 0);
-                            seekActiveVerseAudioToRatio(locationX / audioSliderWidth);
-                          },
-                          disabled: !activeVerseAudio,
+                          name: verseAudioStatus.playing ? "pause-outline" : "play-outline",
+                          size: 20,
+                          color: "#fff"
+                        }
+                      )
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: playNextMappedVerse,
+                      disabled: !canPlayNextMappedVerse,
+                      style: [
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton,
+                        !canPlayNextMappedVerse ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Play next mapped verse",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                        Ionicons__default.default,
+                        {
+                          name: "play-skip-forward-outline",
+                          size: 20,
+                          color: "#fff"
+                        }
+                      )
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onLayout: (event) => {
+                        const nextWidth = Math.max(
+                          1,
+                          Math.round(event.nativeEvent.layout.width || 1)
+                        );
+                        setAudioSliderWidth(
+                          (current) => current === nextWidth ? current : nextWidth
+                        );
+                      },
+                      onPress: (event) => {
+                        seekAudioByLocationX(
+                          event.nativeEvent.locationX || 0
+                        );
+                      },
+                      disabled: !activeVerseAudio,
+                      style: [
+                        styles.overlayAudioSlider,
+                        !activeVerseAudio ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Seek mapped audio",
+                      ...audioSliderPanResponder.panHandlers,
+                      children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayAudioSliderTrack, children: /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.View,
+                        {
                           style: [
-                            styles.overlayAudioSlider,
-                            !activeVerseAudio ? styles.overlayButtonDisabled : null
-                          ],
-                          accessibilityLabel: "Seek mapped audio",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayAudioSliderTrack, children: /* @__PURE__ */ jsxRuntime.jsx(
-                            ReactNative.View,
+                            styles.overlayAudioSliderFill,
                             {
-                              style: [
-                                styles.overlayAudioSliderFill,
-                                { width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%` }
-                              ]
+                              width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%`
                             }
-                          ) })
+                          ]
                         }
-                      ),
-                      verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
-                    ] }) }) : null,
-                    /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
-                      viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Pressable,
+                      ) })
+                    }
+                  ),
+                  verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
+                ] }) }) : null,
+                /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
+                  viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: goToPreviousPage,
+                      disabled: pageNumber <= 1,
+                      style: [
+                        styles.overlayZoomButton,
+                        pageNumber <= 1 ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Previous page",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
+                    }
+                  ) : null,
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
+                      disabled: zoomOutDisabled,
+                      style: [
+                        styles.overlayZoomButton,
+                        zoomOutDisabled ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Zoom out",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                        Ionicons__default.default,
                         {
-                          onPress: goToPreviousPage,
-                          disabled: pageNumber <= 1,
-                          style: [
-                            styles.overlayZoomButton,
-                            pageNumber <= 1 ? styles.overlayButtonDisabled : null
-                          ],
-                          accessibilityLabel: "Previous page",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
+                          name: "remove-outline",
+                          size: 20,
+                          color: zoomOutDisabled ? "#d4d4d8" : "#fff"
                         }
-                      ) : null,
-                      /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Pressable,
+                      )
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: () => contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
+                      disabled: zoomInDisabled,
+                      style: [
+                        styles.overlayZoomButton,
+                        zoomInDisabled ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Zoom in",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                        Ionicons__default.default,
                         {
-                          onPress: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
-                          disabled: zoomOutDisabled,
-                          style: [
-                            styles.overlayZoomButton,
-                            zoomOutDisabled ? styles.overlayButtonDisabled : null
-                          ],
-                          accessibilityLabel: "Zoom out",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(
-                            Ionicons__default.default,
-                            {
-                              name: "remove-outline",
-                              size: 20,
-                              color: zoomOutDisabled ? "#d4d4d8" : "#fff"
-                            }
-                          )
+                          name: "add-outline",
+                          size: 20,
+                          color: zoomInDisabled ? "#d4d4d8" : "#fff"
                         }
-                      ),
-                      /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Pressable,
+                      )
+                    }
+                  ),
+                  contentMode === "verse" ? /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: toggleVerseFullScreen,
+                      style: styles.overlayZoomButton,
+                      accessibilityLabel: isVerseFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                        Ionicons__default.default,
                         {
-                          onPress: () => contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
-                          disabled: zoomInDisabled,
-                          style: [
-                            styles.overlayZoomButton,
-                            zoomInDisabled ? styles.overlayButtonDisabled : null
-                          ],
-                          accessibilityLabel: "Zoom in",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(
-                            Ionicons__default.default,
-                            {
-                              name: "add-outline",
-                              size: 20,
-                              color: zoomInDisabled ? "#d4d4d8" : "#fff"
-                            }
-                          )
+                          name: isVerseFullScreen ? "contract-outline" : "expand-outline",
+                          size: 20,
+                          color: "#fff"
                         }
-                      ),
-                      contentMode === "verse" ? /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Pressable,
-                        {
-                          onPress: toggleVerseFullScreen,
-                          style: styles.overlayZoomButton,
-                          accessibilityLabel: isVerseFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(
-                            Ionicons__default.default,
-                            {
-                              name: isVerseFullScreen ? "contract-outline" : "expand-outline",
-                              size: 20,
-                              color: "#fff"
-                            }
-                          )
-                        }
-                      ) : null,
-                      viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Pressable,
-                        {
-                          onPress: goToNextPage,
-                          disabled: Boolean(pageCount && pageNumber >= pageCount),
-                          style: [
-                            styles.overlayZoomButton,
-                            pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
-                          ],
-                          accessibilityLabel: "Next page",
-                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Next" })
-                        }
-                      ) : null
-                    ] }),
-                    /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) })
-                  ] })
-                }
-              ) : null
+                      )
+                    }
+                  ) : null,
+                  viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Pressable,
+                    {
+                      onPress: goToNextPage,
+                      disabled: Boolean(pageCount && pageNumber >= pageCount),
+                      style: [
+                        styles.overlayZoomButton,
+                        pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
+                      ],
+                      accessibilityLabel: "Next page",
+                      children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Next" })
+                    }
+                  ) : null
+                ] }),
+                /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) })
+              ] }) }) : null
             ]
           }
         ),
@@ -4175,7 +5474,7 @@ ${shareUrl}`;
     }
   );
   return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
-    readerContent,
+    suppressInlineReaderSurface ? null : readerContent,
     nativeFullScreenOverlay
   ] });
 }
@@ -4204,6 +5503,14 @@ var styles = ReactNative.StyleSheet.create({
   nativeFullScreenWebView: {
     flex: 1,
     backgroundColor: "transparent"
+  },
+  nativeFullScreenBookSurface: {
+    flex: 1,
+    backgroundColor: "transparent",
+    overflow: "hidden",
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0
   },
   nativeFullScreenScroll: {
     flex: 1,
@@ -4434,6 +5741,15 @@ var styles = ReactNative.StyleSheet.create({
   nativeBookScrollContentCompact: {
     paddingBottom: 82
   },
+  nativeBookPages: {
+    width: "100%",
+    flexDirection: "column",
+    gap: 10
+  },
+  nativeBookPagesDouble: {
+    flexDirection: "row",
+    alignItems: "stretch"
+  },
   completeVerseBlock: {
     borderRadius: 12,
     borderWidth: 1,
@@ -4491,6 +5807,27 @@ var styles = ReactNative.StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1
+  },
+  nativeBookPageDouble: {
+    flex: 1,
+    width: void 0
+  },
+  nativeFullScreenBookContent: {
+    minHeight: "100%",
+    padding: 10,
+    paddingBottom: 104
+  },
+  nativeFullScreenBookContentDouble: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "stretch"
+  },
+  nativeFullScreenBookPage: {
+    minHeight: "100%"
+  },
+  nativeFullScreenBookPageDouble: {
+    flex: 1,
+    width: void 0
   },
   nativeBookVerseText: {
     color: "#111827",
@@ -4603,6 +5940,15 @@ var styles = ReactNative.StyleSheet.create({
     borderRadius: 20,
     width: 40,
     height: 40,
+    backgroundColor: "rgba(24, 24, 27, 0.85)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  overlayTextButton: {
+    borderRadius: 18,
+    minWidth: 112,
+    height: 36,
+    paddingHorizontal: 12,
     backgroundColor: "rgba(24, 24, 27, 0.85)",
     alignItems: "center",
     justifyContent: "center"

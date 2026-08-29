@@ -18,6 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { WebView } from 'react-native-webview';
 import type { VerseAudioMapping } from '../../types/contracts';
+import { PAGE_FLIP_BROWSER_SCRIPT } from './assets/pageFlipBrowserScript';
 
 const NativeModal = (ReactNative as any).Modal;
 const NativeScrollView = (ReactNative as any).ScrollView;
@@ -137,6 +138,12 @@ type VerseTypographyConfig = {
 type SwipeGestureState = {
   dx: number;
   dy: number;
+};
+
+type LocationTouchEvent = {
+  nativeEvent: {
+    locationX?: number;
+  };
 };
 
 type CompleteVerseTextStyle = Record<string, unknown>;
@@ -345,9 +352,18 @@ const renderNativeRichText = (html: string, keyPrefix: string) => {
         pushBreak(tagName === 'li' ? 1 : 2);
       }
       if (
-        ['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'span', 'font'].includes(
-          tagName
-        ) &&
+        [
+          'b',
+          'strong',
+          'i',
+          'em',
+          'u',
+          's',
+          'strike',
+          'del',
+          'span',
+          'font',
+        ].includes(tagName) &&
         styleStack.length > 1
       ) {
         styleStack.pop();
@@ -362,9 +378,18 @@ const renderNativeRichText = (html: string, keyPrefix: string) => {
       continue;
     }
     if (
-      ['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'span', 'font'].includes(
-        tagName
-      )
+      [
+        'b',
+        'strong',
+        'i',
+        'em',
+        'u',
+        's',
+        'strike',
+        'del',
+        'span',
+        'font',
+      ].includes(tagName)
     ) {
       styleStack.push(parseNativeInlineStyle(tagName, token));
     }
@@ -446,7 +471,7 @@ const buildPdfHtml = (
       }
       .page.active {
         border-color: transparent;
-        box-shadow: inset 0 0 0 3px #f97316;
+        box-shadow: none;
       }
       #pages.continuous .page {
         margin: 0 auto 12px;
@@ -567,7 +592,24 @@ const buildPdfHtml = (
           postMessage({ type: 'interaction' });
         };
 
+        let pageFlip = null;
+        let pageFlipReady = false;
+        let suppressPageFlipEvent = false;
+
+        const destroyPageFlip = () => {
+          if (!pageFlip) return;
+          try {
+            pageFlip.destroy();
+          } catch {
+            // Fall back to clearing DOM below if the embedded flip engine is already detached.
+          }
+          pageFlip = null;
+          pageFlipReady = false;
+          suppressPageFlipEvent = false;
+        };
+
         const clearPages = () => {
+          destroyPageFlip();
           while (pagesNode.firstChild) {
             pagesNode.removeChild(pagesNode.firstChild);
           }
@@ -1063,6 +1105,10 @@ const buildVerseHtml = (
     minFontSizePx,
     Math.min(typography?.fontSizePx || defaultFontSizePx, maxFontSizePx)
   );
+  const pageFlipBrowserScript = PAGE_FLIP_BROWSER_SCRIPT.replace(
+    /<\/script/gi,
+    '<\\/script'
+  );
   const safeLineHeightEm = 1.45;
   const configuredMaxVersesPerPage = Number(layout?.maxVersesPerPage);
   const layoutConfig = {
@@ -1084,10 +1130,9 @@ const buildVerseHtml = (
     verseLabelFontSizePx: Math.max(11, Math.round(safeFontSizePx * 0.8)),
     verseGroupFontSizePx: Math.max(10, Math.round(safeFontSizePx * 0.72)),
     bookSpreadMode:
-      spreadMode ||
-      (layout?.bookSpreadMode === 'double' ? 'double' : 'single'),
+      spreadMode || (layout?.bookSpreadMode === 'double' ? 'double' : 'single'),
     enablePageTurnEffect: layout?.enablePageTurnEffect !== false,
-    showSecondPage: showSecondPage ?? (layout?.showSecondPage !== false),
+    showSecondPage: showSecondPage ?? layout?.showSecondPage !== false,
     viewportWidthPx: Math.max(
       320,
       Math.floor(Number(layout?.viewportWidthPx) || 360)
@@ -1100,8 +1145,8 @@ const buildVerseHtml = (
       320,
       Math.floor(
         Number(layout?.readerHeightPx) ||
-        Number(layout?.viewportHeightPx) ||
-        640
+          Number(layout?.viewportHeightPx) ||
+          640
       )
     ),
   };
@@ -1129,7 +1174,7 @@ const buildVerseHtml = (
         min-height: 100%;
         display: flex;
         flex-direction: column;
-        padding: 6px;
+        padding: ${isFullScreen ? 0 : 6}px;
         box-sizing: border-box;
       }
       #pages {
@@ -1150,7 +1195,7 @@ const buildVerseHtml = (
       }
       .page.active {
         border-color: transparent;
-        box-shadow: inset 0 0 0 3px ${theme.accent};
+        box-shadow: none;
       }
       .book-spread {
         width: 100%;
@@ -1160,6 +1205,7 @@ const buildVerseHtml = (
         align-items: stretch;
         gap: 14px;
         perspective: 1400px;
+        transform-style: preserve-3d;
       }
       .book-spread.single {
         align-items: center;
@@ -1172,31 +1218,83 @@ const buildVerseHtml = (
         width: calc((100% - 14px) / 2);
         height: 100%;
       }
+      .book-spread.double,
+      #page-flip-book.double-spread {
+        position: relative;
+      }
+      .book-spread.double::after,
+      #page-flip-book.double-spread::after {
+        content: '';
+        position: absolute;
+        top: 14px;
+        bottom: 14px;
+        left: 50%;
+        width: 2px;
+        transform: translateX(-1px);
+        pointer-events: none;
+        z-index: 20;
+        background: linear-gradient(
+          to bottom,
+          rgba(120, 53, 15, 0),
+          rgba(120, 53, 15, 0.2) 12%,
+          rgba(120, 53, 15, 0.34) 50%,
+          rgba(120, 53, 15, 0.2) 88%,
+          rgba(120, 53, 15, 0)
+        );
+        box-shadow:
+          -5px 0 12px rgba(120, 53, 15, 0.08),
+          5px 0 12px rgba(255, 255, 255, 0.6);
+      }
+      #page-flip-book {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        margin: 0 auto;
+        position: relative;
+        touch-action: pan-y;
+      }
+      #page-flip-book .stf__parent,
+      #page-flip-book .stf__wrapper,
+      #page-flip-book .stf__block {
+        box-sizing: border-box;
+      }
+      #page-flip-book .stf__wrapper {
+        margin: 0 auto;
+      }
+      .page-flip-source {
+        display: none;
+      }
       .page.book-sheet {
         margin: 0;
         height: 100%;
         border-radius: 8px;
-        border: 0;
+        border: 1px solid rgba(120, 53, 15, 0.22);
         background: ${theme.page};
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+          inset 10px 0 18px rgba(120, 53, 15, 0.045),
+          inset -10px 0 18px rgba(120, 53, 15, 0.035),
+          0 10px 24px rgba(68, 64, 60, 0.12);
         position: relative;
         flex-shrink: 0;
         box-sizing: border-box;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backface-visibility: hidden;
+        transform-origin: center center;
+        will-change: transform, opacity;
       }
       .page.book-sheet.active {
-        border-color: transparent;
-        box-shadow:
-          0 1px 2px rgba(15, 23, 42, 0.09),
-          0 10px 24px rgba(120, 53, 15, 0.08),
-          inset 0 0 0 3px ${theme.accent};
+        border-color: rgba(120, 53, 15, 0.24);
       }
       .page.book-sheet::before {
         content: '';
         position: absolute;
         inset: 0;
         pointer-events: none;
+        z-index: 0;
         background: repeating-linear-gradient(
           to bottom,
           transparent,
@@ -1204,16 +1302,83 @@ const buildVerseHtml = (
           rgba(148, 163, 184, 0.06) 28px
         );
       }
+      .page.book-sheet::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        border-radius: inherit;
+        background:
+          linear-gradient(
+            90deg,
+            rgba(120, 53, 15, 0.08),
+            rgba(120, 53, 15, 0) 9%,
+            rgba(255, 255, 255, 0) 91%,
+            rgba(120, 53, 15, 0.06)
+          ),
+          linear-gradient(
+            to bottom,
+            rgba(255, 255, 255, 0.58),
+            rgba(255, 255, 255, 0) 18%,
+            rgba(120, 53, 15, 0.035) 100%
+          );
+      }
       .book-spread.turn-next .page.book-sheet {
-        animation: none;
+        animation: bookPageEnterNext 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        transform-origin: right center;
       }
       .book-spread.turn-prev .page.book-sheet {
-        animation: none;
+        animation: bookPageEnterPrev 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        transform-origin: left center;
+      }
+      .book-spread.double.turn-next .page.book-sheet:nth-child(2) {
+        animation-delay: 35ms;
+      }
+      .book-spread.double.turn-prev .page.book-sheet:nth-child(1) {
+        animation-delay: 35ms;
+      }
+      @keyframes bookPageEnterNext {
+        from {
+          opacity: 0.78;
+          transform: translateX(26px) rotateY(-8deg) scale(0.992);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0) rotateY(0deg) scale(1);
+        }
+      }
+      @keyframes bookPageEnterPrev {
+        from {
+          opacity: 0.78;
+          transform: translateX(-26px) rotateY(8deg) scale(0.992);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0) rotateY(0deg) scale(1);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .book-spread.turn-next .page.book-sheet,
+        .book-spread.turn-prev .page.book-sheet {
+          animation: none;
+        }
       }
       .verse-page-content {
         display: flex;
         flex-direction: column;
+        justify-content: center;
+        align-items: center;
         gap: 0;
+        width: 100%;
+        min-height: 100%;
+        max-height: 100%;
+        box-sizing: border-box;
+        overflow-x: hidden;
+        overflow-y: hidden;
+        overscroll-behavior: contain;
+        position: relative;
+        z-index: 2;
       }
       .verse-block {
         border: 0;
@@ -1221,11 +1386,36 @@ const buildVerseHtml = (
         padding: 10px 12px;
         background: ${theme.page};
         position: relative;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 760px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        max-height: 100%;
+      }
+      .book-spread .verse-page-content {
+        width: fit-content;
+        height: 100%;
+        max-width: 88%;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+      }
+      .page.book-sheet.overflowing-verse .verse-page-content {
+        justify-content: flex-start;
+      }
+      .book-spread .verse-block {
+        width: auto;
+        max-width: 100%;
+      }
+      .book-spread .verse-content {
+        width: auto;
+        max-width: 100%;
       }
       .verse-block.active-verse {
-        border-color: ${theme.accent};
-        box-shadow:
-          inset 0 0 0 2px ${theme.accent};
+        background: ${theme.accentSurface};
       }
       .verse-label {
         margin: 0 0 4px;
@@ -1250,6 +1440,8 @@ const buildVerseHtml = (
         color: ${theme.text};
         font-weight: 800;
         max-width: 100%;
+        width: 100%;
+        max-height: 100%;
         overflow-wrap: anywhere;
         word-break: break-word;
         white-space: pre-wrap;
@@ -1318,6 +1510,9 @@ const buildVerseHtml = (
         font-weight: 800;
       }
     </style>
+    <script>
+${pageFlipBrowserScript}
+    </script>
   </head>
   <body>
     <div id="app">
@@ -1386,6 +1581,7 @@ const buildVerseHtml = (
           pagesNode.style.flex = useWindowScroll ? 'none' : '1';
           pagesNode.style.justifyContent = isCompleteMode ? '' : 'flex-start';
           pagesNode.style.alignItems = isCompleteMode ? '' : 'stretch';
+          pagesNode.style.overflowX = isCompleteMode ? 'hidden' : 'hidden';
           pagesNode.style.overflowY = useWindowScroll ? 'visible' : isCompleteMode ? 'auto' : 'hidden';
           pagesNode.style.height = useWindowScroll ? 'auto' : '100%';
           pagesNode.style.webkitOverflowScrolling = isCompleteMode ? 'touch' : 'auto';
@@ -1616,9 +1812,17 @@ const buildVerseHtml = (
             return;
           }
 
+          const viewportWidth = Math.max(
+            280,
+            Math.floor(window.innerWidth || layout.viewportWidthPx || 360)
+          );
+          const viewportHeight = Math.max(
+            320,
+            Math.floor(window.innerHeight || layout.readerHeightPx || layout.viewportHeightPx || 640)
+          );
           const availablePageWidth = Math.max(
             280,
-            layout.viewportWidthPx - 12
+            viewportWidth - (layout.fullScreen ? 4 : 12)
           );
           const targetWidth =
             layout.bookSpreadMode === 'double' &&
@@ -1630,17 +1834,26 @@ const buildVerseHtml = (
             ? Math.max(0, configuredPagePadding)
             : 18;
           const maxVersesPerPage =
-            Number.isFinite(Number(layout.maxVersesPerPage)) &&
-            Number(layout.maxVersesPerPage) > 0
-              ? Math.max(1, Math.trunc(Number(layout.maxVersesPerPage)))
-              : Number.MAX_SAFE_INTEGER;
-          const referenceHeight = Math.max(
-            320,
-            Math.floor(
-              Number(layout.readerHeightPx) || Number(layout.viewportHeightPx) || 640
-            )
+            currentViewMode === 'book'
+              ? 1
+              : Number.isFinite(Number(layout.maxVersesPerPage)) &&
+                  Number(layout.maxVersesPerPage) > 0
+                ? Math.max(1, Math.trunc(Number(layout.maxVersesPerPage)))
+                : Number.MAX_SAFE_INTEGER;
+          const referenceHeight = layout.fullScreen
+            ? viewportHeight
+            : Math.max(
+                320,
+                Math.floor(
+                  Number(layout.readerHeightPx) ||
+                    Number(layout.viewportHeightPx) ||
+                    640
+                )
+              );
+          const usableHeight = Math.max(
+            220,
+            referenceHeight - (layout.fullScreen ? 4 : 12)
           );
-          const usableHeight = Math.max(220, referenceHeight - 12);
           const maxContentHeight = Math.max(120, usableHeight - pagePadding * 2);
 
           const measureHost = document.createElement('div');
@@ -1706,6 +1919,57 @@ const buildVerseHtml = (
           versePages = pages;
         };
 
+        const getBookContentFits = () => {
+          if (currentViewMode !== 'book') return true;
+          const isVisibleBookSheet = (pageNode) => {
+            const rect = pageNode.getBoundingClientRect();
+            return rect.width > 1 && rect.height > 1;
+          };
+          const activePages = Array.from(
+            pagesNode.querySelectorAll('.page.book-sheet')
+          ).filter(isVisibleBookSheet);
+          if (!activePages.length) return true;
+          return activePages.every((pageNode) => {
+            const contentNode = pageNode.querySelector('.verse-page-content');
+            if (!contentNode) return true;
+            return (
+              contentNode.scrollHeight <= contentNode.clientHeight + 2 &&
+              contentNode.scrollWidth <= contentNode.clientWidth + 2
+            );
+          });
+        };
+
+        const updateBookOverflowClasses = () => {
+          if (currentViewMode !== 'book') return;
+          for (const pageNode of Array.from(
+            pagesNode.querySelectorAll('.page.book-sheet')
+          )) {
+            const rect = pageNode.getBoundingClientRect();
+            if (rect.width <= 1 || rect.height <= 1) {
+              pageNode.classList.remove('overflowing-verse');
+              continue;
+            }
+            const contentNode = pageNode.querySelector('.verse-page-content');
+            const overflowing =
+              Boolean(contentNode) &&
+              (contentNode.scrollHeight > contentNode.clientHeight + 2 ||
+                contentNode.scrollWidth > contentNode.clientWidth + 2);
+            pageNode.classList.toggle('overflowing-verse', overflowing);
+          }
+        };
+
+        const postVerseLayoutState = () => {
+          updateBookOverflowClasses();
+          const contentFits = getBookContentFits();
+          postMessage({
+            type: 'verse-layout-state',
+            contentFits,
+            canZoomIn:
+              currentViewMode !== 'book' ||
+              (contentFits && layout.verseFontSizePx < layout.maxFontSizePx),
+          });
+        };
+
         const buildPageNode = (pageNumber, active) => {
           const pageData = versePages[pageNumber - 1] || [];
           const configuredPagePadding = Number(layout.pagePaddingPx);
@@ -1729,7 +1993,56 @@ const buildVerseHtml = (
           return wrapper;
         };
 
-        const renderBookPage = (requestedPage, announceReady, directionHint) => {
+        const updateBookActivePage = (pageNumber) => {
+          const activePage = clampPage(pageNumber);
+          for (const pageNode of Array.from(
+            pagesNode.querySelectorAll('.page.book-sheet')
+          )) {
+            pageNode.classList.toggle(
+              'active',
+              Number(pageNode.getAttribute('data-page-number')) === activePage
+            );
+          }
+        };
+
+        const getBookPageDimensions = () => {
+          const bounds = pagesNode.getBoundingClientRect();
+          const viewportWidth = Math.max(
+            280,
+            Math.floor(bounds.width || window.innerWidth || layout.viewportWidthPx || 360)
+          );
+          const viewportHeight = Math.max(
+            320,
+            Math.floor(bounds.height || window.innerHeight || layout.readerHeightPx || layout.viewportHeightPx || 640)
+          );
+          const isDouble =
+            layout.bookSpreadMode === 'double' && layout.showSecondPage !== false;
+          const spreadGap = isDouble ? 14 : 0;
+          const pageWidth = Math.max(
+            isDouble ? 220 : 280,
+            Math.floor((viewportWidth - spreadGap) / (isDouble ? 2 : 1))
+          );
+
+          return {
+            isDouble,
+            pageWidth,
+            pageHeight: viewportHeight,
+            bookWidth: isDouble ? pageWidth * 2 : pageWidth,
+            bookHeight: viewportHeight,
+          };
+        };
+
+        const buildPageFlipPageNode = (pageNumber, active, dimensions) => {
+          const pageNode = buildPageNode(pageNumber, active);
+          pageNode.classList.add('book-sheet');
+          pageNode.classList.add('page-flip-page');
+          pageNode.setAttribute('data-density', 'soft');
+          pageNode.style.width = dimensions.pageWidth + 'px';
+          pageNode.style.height = dimensions.pageHeight + 'px';
+          return pageNode;
+        };
+
+        const renderSimpleBookPage = (requestedPage, announceReady, directionHint) => {
           const targetPage = getSpreadAnchor(requestedPage);
           const direction =
             directionHint ||
@@ -1768,11 +2081,231 @@ const buildVerseHtml = (
 
           pagesNode.appendChild(spreadNode);
           currentPage = targetPage;
+          updateBookOverflowClasses();
           postMessage({ type: 'page-change', pageNumber: currentPage });
+          postVerseLayoutState();
           if (announceReady !== false) {
             postMessage({ type: 'ready' });
           }
           scheduleContentHeightUpdates();
+        };
+
+        const renderPageFlipBook = (requestedPage, announceReady) => {
+          if (!window.St || !window.St.PageFlip) {
+            return false;
+          }
+
+          const targetPage = getSpreadAnchor(requestedPage);
+          const dimensions = getBookPageDimensions();
+          clearPages();
+
+          const bookNode = document.createElement('div');
+          bookNode.id = 'page-flip-book';
+          bookNode.className = dimensions.isDouble ? 'double-spread' : 'single-spread';
+          bookNode.style.width = dimensions.bookWidth + 'px';
+          bookNode.style.height = dimensions.bookHeight + 'px';
+          bookNode.style.minWidth = dimensions.bookWidth + 'px';
+          bookNode.style.minHeight = dimensions.bookHeight + 'px';
+          bookNode.style.maxWidth = '100%';
+          bookNode.style.maxHeight = '100%';
+
+          const pageNodes = [];
+          for (let pageNumber = 1; pageNumber <= versePages.length; pageNumber += 1) {
+            const pageNode = buildPageFlipPageNode(
+              pageNumber,
+              pageNumber === targetPage,
+              dimensions
+            );
+            pageNodes.push(pageNode);
+            bookNode.appendChild(pageNode);
+          }
+
+          pagesNode.appendChild(bookNode);
+
+          try {
+            suppressPageFlipEvent = true;
+            pageFlip = new window.St.PageFlip(bookNode, {
+              width: dimensions.pageWidth,
+              height: dimensions.pageHeight,
+              size: 'fixed',
+              minWidth: dimensions.pageWidth,
+              maxWidth: dimensions.pageWidth,
+              minHeight: dimensions.pageHeight,
+              maxHeight: dimensions.pageHeight,
+              startPage: Math.max(0, targetPage - 1),
+              drawShadow: true,
+              flippingTime: 420,
+              usePortrait: !dimensions.isDouble,
+              startZIndex: 0,
+              autoSize: false,
+              maxShadowOpacity: 0.24,
+              showCover: false,
+              mobileScrollSupport: true,
+              swipeDistance: 30,
+              clickEventForward: true,
+              useMouseEvents: true,
+              showPageCorners: false,
+              disableFlipByClick: false,
+            });
+
+            if (typeof pageFlip.userStop === 'function') {
+              const originalUserStop = pageFlip.userStop.bind(pageFlip);
+              pageFlip.userStop = (point, isSwipe) => {
+                if (isSwipe || pageFlip.isUserMove) {
+                  originalUserStop(point, isSwipe);
+                  return;
+                }
+                originalUserStop(point, true);
+              };
+            }
+
+            pageFlip.on('flip', (event) => {
+              if (suppressPageFlipEvent) return;
+              const flippedPage = clampPage((Number(event?.data) || 0) + 1);
+              currentPage = getSpreadAnchor(flippedPage);
+              updateBookActivePage(currentPage);
+              updateBookOverflowClasses();
+              postMessage({ type: 'page-change', pageNumber: currentPage });
+              postVerseLayoutState();
+              scheduleContentHeightUpdates();
+            });
+
+            pageFlip.loadFromHTML(pageNodes);
+            currentPage = targetPage;
+            updateBookActivePage(currentPage);
+            updateBookOverflowClasses();
+            pageFlipReady = true;
+            window.setTimeout(() => {
+              suppressPageFlipEvent = false;
+            }, 60);
+            postMessage({ type: 'page-change', pageNumber: currentPage });
+            postVerseLayoutState();
+            if (announceReady !== false) {
+              postMessage({ type: 'ready' });
+            }
+            scheduleContentHeightUpdates();
+            return true;
+          } catch {
+            destroyPageFlip();
+            clearPages();
+            return false;
+          }
+        };
+
+        const renderBookPage = (requestedPage, announceReady, directionHint) => {
+          if (
+            layout.enablePageTurnEffect !== false &&
+            renderPageFlipBook(requestedPage, announceReady)
+          ) {
+            return;
+          }
+
+          renderSimpleBookPage(requestedPage, announceReady, directionHint);
+        };
+
+        const postBookPageChange = (pageNumber) => {
+          currentPage = getSpreadAnchor(pageNumber);
+          updateBookActivePage(currentPage);
+          updateBookOverflowClasses();
+          postMessage({ type: 'page-change', pageNumber: currentPage });
+          postVerseLayoutState();
+          scheduleContentHeightUpdates();
+        };
+
+        const forcePageFlipPage = (pageNumber) => {
+          const targetPage = getSpreadAnchor(pageNumber);
+          if (!pageFlip || !pageFlip.turnToPage) {
+            renderBookPage(targetPage, false, 'none');
+            return;
+          }
+          try {
+            suppressPageFlipEvent = true;
+            pageFlip.turnToPage(Math.max(0, targetPage - 1));
+            postBookPageChange(targetPage);
+          } catch {
+            renderBookPage(targetPage, false, 'none');
+          } finally {
+            window.setTimeout(() => {
+              suppressPageFlipEvent = false;
+            }, 40);
+          }
+        };
+
+        const turnPageFlipToPage = (targetPage) => {
+          if (!window.St || !window.St.PageFlip) return false;
+
+          const anchoredTarget = getSpreadAnchor(targetPage);
+          const anchoredCurrent = getSpreadAnchor(currentPage);
+          if (anchoredTarget === anchoredCurrent) return true;
+
+          const step = getSpreadStep();
+          const isAdjacent =
+            Math.abs(anchoredTarget - anchoredCurrent) <= step;
+          if (!isAdjacent) {
+            forcePageFlipPage(anchoredTarget);
+            return true;
+          }
+
+          const direction = anchoredTarget > anchoredCurrent ? 'next' : 'prev';
+          const initialized = renderPageFlipBook(anchoredCurrent, false);
+          if (!initialized) return false;
+
+          window.setTimeout(() => {
+            try {
+              if (direction === 'next' && pageFlip && pageFlip.flipNext) {
+                pageFlip.flipNext('bottom');
+              } else if (direction === 'prev' && pageFlip && pageFlip.flipPrev) {
+                pageFlip.flipPrev('bottom');
+              } else {
+                forcePageFlipPage(anchoredTarget);
+                return;
+              }
+
+              window.setTimeout(() => {
+                renderBookPage(anchoredTarget, false, 'none');
+              }, 900);
+            } catch {
+              forcePageFlipPage(anchoredTarget);
+            }
+          }, 90);
+
+          return true;
+        };
+
+        const turnRelativeBookPage = (direction) => {
+          if (currentViewMode !== 'book') return;
+          const step = getSpreadStep();
+          const targetPage =
+            direction === 'next'
+              ? clampPage(currentPage + step)
+              : clampPage(currentPage - step);
+          if (targetPage === currentPage) return;
+
+          if (layout.enablePageTurnEffect !== false && pageFlip && pageFlipReady) {
+            try {
+              if (pageFlip.getState && pageFlip.getState() !== 'read') return;
+              if (direction === 'next' && pageFlip.flipNext) {
+                pageFlip.flipNext('bottom');
+              } else if (direction === 'prev' && pageFlip.flipPrev) {
+                pageFlip.flipPrev('bottom');
+              } else {
+                renderBookPage(targetPage, false, 'none');
+                return;
+              }
+
+              const startingPage = currentPage;
+              window.setTimeout(() => {
+                if (currentPage === startingPage) {
+                  renderBookPage(targetPage, false, 'none');
+                }
+              }, 520);
+              return;
+            } catch {
+              pageFlipReady = false;
+            }
+          }
+
+          renderBookPage(targetPage, false, direction);
         };
 
         const findVerseNode = (verseId) => {
@@ -1872,6 +2405,7 @@ const buildVerseHtml = (
           } else {
             renderBookPage(requestedPage, true, 'none');
           }
+          postVerseLayoutState();
         };
 
         const goToPage = (requestedPage) => {
@@ -1886,6 +2420,12 @@ const buildVerseHtml = (
             return;
           }
           if (targetPage === currentPage) return;
+          if (
+            layout.enablePageTurnEffect !== false &&
+            turnPageFlipToPage(targetPage)
+          ) {
+            return;
+          }
           renderBookPage(targetPage, false, targetPage > currentPage ? 'next' : 'prev');
         };
 
@@ -1901,8 +2441,10 @@ const buildVerseHtml = (
               currentViewMode = payload.mode;
               applyViewModeLayout(currentViewMode);
               if (currentViewMode === 'continuous') {
+                paginateVerses();
                 renderAllPages(nextPage);
               } else {
+                paginateVerses();
                 const anchored = getSpreadAnchor(nextPage);
                 const direction =
                   previousMode === 'book'
@@ -1932,6 +2474,30 @@ const buildVerseHtml = (
             if (!Number.isInteger(requested) || requested <= 0) return;
             goToPage(requested);
           },
+          showMappedVerse: (pageNumber, verseId, isPlaying) => {
+            const requested = Number(pageNumber);
+            if (!Number.isInteger(requested) || requested <= 0) return;
+            const targetPage = clampPage(requested);
+            if (currentViewMode === 'book') {
+              renderBookPage(targetPage, false, 'none');
+              postMessage({ type: 'page-change', pageNumber: targetPage });
+            } else {
+              goToPage(targetPage);
+            }
+            window.requestAnimationFrame(() => {
+              window.__PDF_READER_BRIDGE__.setActiveVerse(
+                verseId,
+                isPlaying,
+                false
+              );
+            });
+          },
+          goToNextPage: () => {
+            turnRelativeBookPage('next');
+          },
+          goToPreviousPage: () => {
+            turnRelativeBookPage('prev');
+          },
           setViewMode: (mode, page, anchorVerseId, zoom) => {
             if (mode !== 'book' && mode !== 'continuous') return;
             const requestedPage = (Number.isInteger(Number(page)) && Number(page) > 0) ? Number(page) : currentPage;
@@ -1955,6 +2521,8 @@ const buildVerseHtml = (
               }
               if (zoomChanged) {
                 rerender(requestedPage);
+              } else if (mode === 'book') {
+                renderBookPage(requestedPage, false, 'none');
               } else {
                 goToPage(requestedPage);
               }
@@ -1983,6 +2551,7 @@ const buildVerseHtml = (
               : requestedClampedPage;
             currentViewMode = mode;
             applyViewModeLayout(currentViewMode);
+            paginateVerses();
             if (currentViewMode === 'continuous') {
               renderAllPages(
                 effectiveRequestedPage,
@@ -2106,8 +2675,8 @@ export default function PdfDocumentViewer({
   onFullScreenChange,
   readerTheme,
 }: PdfDocumentViewerProps) {
-  const [windowSize, setWindowSize] = useState(() =>
-    NativeDimensions?.get?.('window') || { width: 0, height: 0 }
+  const [windowSize, setWindowSize] = useState(
+    () => NativeDimensions?.get?.('window') || { width: 0, height: 0 }
   );
   const windowWidth = windowSize.width || 0;
   useEffect(() => {
@@ -2126,8 +2695,14 @@ export default function PdfDocumentViewer({
     [readerTheme]
   );
   const verseZoomConfig = useMemo(() => {
-    const min = Math.max(1, Math.round(Number(verseLayout?.minFontSizePx) || 18));
-    const max = Math.max(min, Math.round(Number(verseLayout?.maxFontSizePx) || 36));
+    const min = Math.max(
+      1,
+      Math.round(Number(verseLayout?.minFontSizePx) || 18)
+    );
+    const max = Math.max(
+      min,
+      Math.round(Number(verseLayout?.maxFontSizePx) || 36)
+    );
     const defaultSize = Math.max(
       min,
       Math.min(max, Math.round(Number(verseLayout?.defaultFontSizePx) || 22))
@@ -2188,20 +2763,43 @@ export default function PdfDocumentViewer({
       )
     );
   });
-  const [activeVerseAudioIndex, setActiveVerseAudioIndex] = useState<number | null>(null);
+  const [activeVerseAudioIndex, setActiveVerseAudioIndex] = useState<
+    number | null
+  >(null);
   const [activeVerseId, setActiveVerseId] = useState<string | null>(null);
   const [readerVerseId, setReaderVerseId] = useState<string | null>(null);
-  const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = useState<string | null>(null);
-  const [pendingVerseAudioSeekMs, setPendingVerseAudioSeekMs] = useState<number | null>(null);
+  const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = useState<
+    string | null
+  >(null);
+  const [pendingVerseAudioSeekMs, setPendingVerseAudioSeekMs] = useState<
+    number | null
+  >(null);
   const pendingVerseAudioAutoplayRef = useRef(true);
-  const [versePageById, setVersePageById] = useState<Record<string, number>>({});
-  const [verseIdsByPage, setVerseIdsByPage] = useState<Record<number, string[]>>({});
+  const pendingAudioSeekTargetRef = useRef<{
+    index: number;
+    audioAssetUrl: string;
+    expiresAt: number;
+  } | null>(null);
+  const [versePageById, setVersePageById] = useState<Record<string, number>>(
+    {}
+  );
+  const [verseIdsByPage, setVerseIdsByPage] = useState<
+    Record<number, string[]>
+  >({});
   const [audioSliderWidth, setAudioSliderWidth] = useState(1);
   const [viewerWrapHeight, setViewerWrapHeight] = useState(0);
   const [pdfBookViewerHeight, setPdfBookViewerHeight] = useState(480);
+  const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = useState(true);
   const effectiveVerseLayout = useMemo<VerseLayoutConfig | undefined>(() => {
     return verseLayout;
   }, [verseLayout]);
+  const [bookSpreadMode, setBookSpreadMode] = useState<'single' | 'double'>(
+    () =>
+      verseLayout?.bookSpreadMode === 'double' &&
+      verseLayout?.showSecondPage !== false
+        ? 'double'
+        : 'single'
+  );
   const visibleViewportHeight = Math.max(
     320,
     Math.floor(
@@ -2245,12 +2843,13 @@ export default function PdfDocumentViewer({
     : verseViewerHeight;
   const webViewRef = useRef<WebView | null>(null);
   const fullScreenWebViewRef = useRef<WebView | null>(null);
-  const fullScreenAcceptPageEventsRef = useRef(false);
   const completeScrollRef = useRef<any>(null);
   const completeVerseYByIdRef = useRef<Record<string, number>>({});
   const pendingCompleteScrollVerseIdRef = useRef<string | null>(null);
   const userDraggingCompleteScrollRef = useRef(false);
-  const completeRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completeRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const completeRestoreGuardUntilRef = useRef(0);
   const staticServerRef = useRef<any>(null);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2263,6 +2862,8 @@ export default function PdfDocumentViewer({
   } | null>(null);
   const lastSyncedViewModeRef = useRef<ReaderViewMode | null>(null);
   const lastInjectedViewerStateRef = useRef<string | null>(null);
+  const lastAudioVerseWebSyncRef = useRef<string | null>(null);
+  const lastEmittedFullScreenRef = useRef<boolean | null>(null);
   const pageCountRef = useRef(0);
   const lastNativeReadyPageCountRef = useRef(0);
   const onReadyRef = useRef(onReady);
@@ -2278,9 +2879,24 @@ export default function PdfDocumentViewer({
   const lastEmittedReaderStateRef = useRef<string | null>(null);
   const hasVerseContent = Boolean(verses?.length);
   const contentMode: ReaderContentMode =
-    mode === 'verse' ? 'verse' : mode === 'pdf' ? 'pdf' : hasVerseContent ? 'verse' : 'pdf';
+    mode === 'verse'
+      ? 'verse'
+      : mode === 'pdf'
+        ? 'pdf'
+        : hasVerseContent
+          ? 'verse'
+          : 'pdf';
   const useNativeFullScreenOverlay =
     contentMode === 'verse' && isVerseFullScreen;
+  const useFullScreenBookWebView =
+    useNativeFullScreenOverlay && viewMode === 'book';
+  const useNativeFullScreenBookView =
+    useNativeFullScreenOverlay &&
+    viewMode === 'book' &&
+    !useFullScreenBookWebView;
+  const suppressInlineReaderSurface =
+    useNativeFullScreenBookView ||
+    (Platform.OS === 'ios' && useFullScreenBookWebView);
   const inlineFullScreenActive =
     contentMode === 'verse' && isVerseFullScreen && !useNativeFullScreenOverlay;
   const viewerHeight =
@@ -2291,10 +2907,27 @@ export default function PdfDocumentViewer({
     contentMode === 'verse' && viewMode === 'continuous' && !isVerseFullScreen;
   const useNativeBookVerseView =
     contentMode === 'verse' && viewMode === 'book' && !isVerseFullScreen;
-  const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
+  const useNativeVerseView =
+    useNativeCompleteVerseView || useNativeBookVerseView;
   const useNativeVersePaging = useNativeVerseView || useNativeFullScreenOverlay;
-  const autoAlignCurrentVerse = effectiveVerseLayout?.autoAlignCurrentVerse !== false;
-  const highlightCurrentVerse = effectiveVerseLayout?.highlightCurrentVerse !== false;
+  const autoAlignCurrentVerse =
+    effectiveVerseLayout?.autoAlignCurrentVerse !== false;
+  const highlightCurrentVerse =
+    effectiveVerseLayout?.highlightCurrentVerse !== false;
+  const allowBookDoubleSpread =
+    effectiveVerseLayout?.allowDoubleSpread !== false;
+  const activeBookSpreadMode =
+    allowBookDoubleSpread && bookSpreadMode === 'double' ? 'double' : 'single';
+  const effectiveBookVerseLayout = useMemo<
+    VerseLayoutConfig | undefined
+  >(() => {
+    if (contentMode !== 'verse') return effectiveVerseLayout;
+    return {
+      ...effectiveVerseLayout,
+      bookSpreadMode: activeBookSpreadMode,
+      showSecondPage: activeBookSpreadMode === 'double',
+    };
+  }, [activeBookSpreadMode, contentMode, effectiveVerseLayout]);
   const playableVerseMappings = useMemo(
     () =>
       (verseAudioMappings || [])
@@ -2316,7 +2949,10 @@ export default function PdfDocumentViewer({
           verseId: String(mapping.verseId),
           audioAssetUrl: String(mapping.audioAssetUrl),
           label: mapping.label || `Verse ${index + 1}`,
-          segmentStartMs: Math.max(0, Math.floor(Number(mapping.segmentStartMs))),
+          segmentStartMs: Math.max(
+            0,
+            Math.floor(Number(mapping.segmentStartMs))
+          ),
           segmentEndMs: Math.max(0, Math.floor(Number(mapping.segmentEndMs))),
           sortOrder: Number.isFinite(Number(mapping.sortOrder))
             ? Number(mapping.sortOrder)
@@ -2325,7 +2961,8 @@ export default function PdfDocumentViewer({
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     [verseAudioMappings]
   );
-  const hasVerseAudio = contentMode === 'verse' && playableVerseMappings.length > 0;
+  const hasVerseAudio =
+    contentMode === 'verse' && playableVerseMappings.length > 0;
   const mappedVerseIds = useMemo(
     () => playableVerseMappings.map((mapping) => String(mapping.verseId)),
     [playableVerseMappings]
@@ -2360,13 +2997,14 @@ export default function PdfDocumentViewer({
     }
   }
   const resolvedDownloadUrl = downloadUrl || pdfUrl || '';
-  const label = filename?.trim() || title?.trim() || (contentMode === 'verse' ? 'Verse document' : 'PDF document');
+  const label =
+    filename?.trim() ||
+    title?.trim() ||
+    (contentMode === 'verse' ? 'Verse document' : 'PDF document');
   const shareUrl = (downloadUrl || pdfUrl || '').trim();
   const readerDocumentId =
     documentId?.trim() ||
-    (contentMode === 'verse'
-      ? `verse:${label}`
-      : pdfUrl || label);
+    (contentMode === 'verse' ? `verse:${label}` : pdfUrl || label);
   const showHeaderControls = !isVerseFullScreen;
   const initialPageRef = useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0
@@ -2380,7 +3018,26 @@ export default function PdfDocumentViewer({
   }, [verseLayout?.fullScreen]);
 
   useEffect(() => {
-    onFullScreenChange?.(contentMode === 'verse' && isVerseFullScreen);
+    if (contentMode !== 'verse') return;
+    if (viewMode === 'book') {
+      setIsVerseFullScreen(true);
+      return;
+    }
+    if (verseLayout?.fullScreen !== true) {
+      setIsVerseFullScreen(false);
+    }
+  }, [contentMode, verseLayout?.fullScreen, viewMode]);
+
+  useEffect(() => {
+    if (allowBookDoubleSpread) return;
+    setBookSpreadMode('single');
+  }, [allowBookDoubleSpread]);
+
+  useEffect(() => {
+    const nextFullScreen = contentMode === 'verse' && isVerseFullScreen;
+    if (lastEmittedFullScreenRef.current === nextFullScreen) return;
+    lastEmittedFullScreenRef.current = nextFullScreen;
+    onFullScreenChange?.(nextFullScreen);
   }, [contentMode, isVerseFullScreen, onFullScreenChange]);
 
   useEffect(() => {
@@ -2390,7 +3047,9 @@ export default function PdfDocumentViewer({
   }, [contentMode, showShareOverlay]);
 
   const stopStaticServer = useCallback(async () => {
-    const current = staticServerRef.current as { stop?: (() => Promise<void>) | (() => void) } | null;
+    const current = staticServerRef.current as {
+      stop?: (() => Promise<void>) | (() => void);
+    } | null;
     if (!current || typeof current.stop !== 'function') {
       staticServerRef.current = null;
       return;
@@ -2452,31 +3111,34 @@ export default function PdfDocumentViewer({
     onReadyRef.current = onReady;
   }, [onReady]);
 
-  const scrollCompleteToVerse = useCallback((verseId: string | null, animated = false) => {
-    if (!verseId) return false;
-    const y = completeVerseYByIdRef.current[verseId];
-    if (!Number.isFinite(y)) {
-      pendingCompleteScrollVerseIdRef.current = verseId;
-      return false;
-    }
-    completeRestoreGuardUntilRef.current = Date.now() + 700;
-    completeScrollRef.current?.scrollTo({
-      y: Math.max(0, y - 12),
-      animated,
-    });
-    setTimeout(() => {
+  const scrollCompleteToVerse = useCallback(
+    (verseId: string | null, animated = false) => {
+      if (!verseId) return false;
+      const y = completeVerseYByIdRef.current[verseId];
+      if (!Number.isFinite(y)) {
+        pendingCompleteScrollVerseIdRef.current = verseId;
+        return false;
+      }
+      completeRestoreGuardUntilRef.current = Date.now() + 700;
       completeScrollRef.current?.scrollTo({
         y: Math.max(0, y - 12),
-        animated: false,
+        animated,
       });
-    }, 120);
-    setTimeout(() => {
-      if (pendingCompleteScrollVerseIdRef.current === verseId) {
-        pendingCompleteScrollVerseIdRef.current = null;
-      }
-    }, 760);
-    return true;
-  }, []);
+      setTimeout(() => {
+        completeScrollRef.current?.scrollTo({
+          y: Math.max(0, y - 12),
+          animated: false,
+        });
+      }, 120);
+      setTimeout(() => {
+        if (pendingCompleteScrollVerseIdRef.current === verseId) {
+          pendingCompleteScrollVerseIdRef.current = null;
+        }
+      }, 760);
+      return true;
+    },
+    []
+  );
 
   const getNativeVersePage = useCallback(
     (verseId: string | null) => {
@@ -2492,28 +3154,35 @@ export default function PdfDocumentViewer({
     [completeVerses, useNativeVersePaging, versePageById]
   );
 
-  const updateCompleteAnchorFromOffset = useCallback((offsetY: number) => {
-    let bestVerseId: string | null = null;
-    let bestDistance = Infinity;
-    const targetY = Math.max(0, offsetY + 24);
+  const updateCompleteAnchorFromOffset = useCallback(
+    (offsetY: number) => {
+      let bestVerseId: string | null = null;
+      let bestDistance = Infinity;
+      const targetY = Math.max(0, offsetY + 24);
 
-    for (const [verseId, y] of Object.entries(completeVerseYByIdRef.current)) {
-      const distance = Math.abs(y - targetY);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestVerseId = verseId;
+      for (const [verseId, y] of Object.entries(
+        completeVerseYByIdRef.current
+      )) {
+        const distance = Math.abs(y - targetY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestVerseId = verseId;
+        }
       }
-    }
 
-    if (bestVerseId) {
-      setReaderVerseId((current) => (current === bestVerseId ? current : bestVerseId));
-      const pageForVerse = getNativeVersePage(bestVerseId);
-      if (pageForVerse && pageForVerse !== pageNumber) {
-        pageNumberRef.current = pageForVerse;
-        void setPageNumber(pageForVerse);
+      if (bestVerseId) {
+        setReaderVerseId((current) =>
+          current === bestVerseId ? current : bestVerseId
+        );
+        const pageForVerse = getNativeVersePage(bestVerseId);
+        if (pageForVerse && pageForVerse !== pageNumber) {
+          pageNumberRef.current = pageForVerse;
+          void setPageNumber(pageForVerse);
+        }
       }
-    }
-  }, [getNativeVersePage, pageNumber, setPageNumber]);
+    },
+    [getNativeVersePage, pageNumber, setPageNumber]
+  );
 
   const handleCompleteScrollBeginDrag = useCallback(() => {
     userDraggingCompleteScrollRef.current = true;
@@ -2547,7 +3216,9 @@ export default function PdfDocumentViewer({
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
 
-    setReaderVerseId((current) => (current === firstVerseId ? current : firstVerseId));
+    setReaderVerseId((current) =>
+      current === firstVerseId ? current : firstVerseId
+    );
   }, [
     completeVerses,
     contentMode,
@@ -2578,12 +3249,9 @@ export default function PdfDocumentViewer({
 
     const readerVerseBelongsToPage =
       readerVerseId && pageVerses?.includes(readerVerseId);
-    const targetVerseId =
-      readerVerseBelongsToPage
-        ? readerVerseId
-        : pageVerses?.[0] ||
-          completeVerses[0]?.id ||
-          null;
+    const targetVerseId = readerVerseBelongsToPage
+      ? readerVerseId
+      : pageVerses?.[0] || completeVerses[0]?.id || null;
     if (!targetVerseId) return;
 
     if (completeRestoreTimerRef.current) {
@@ -2649,30 +3317,6 @@ export default function PdfDocumentViewer({
   }, [controlledViewMode]);
 
   useEffect(() => {
-    const requestedPage = Number(currentPage);
-    if (!Number.isInteger(requestedPage) || requestedPage <= 0) return;
-    const knownPageCount = pageCountRef.current || pageCount;
-    const nextPage = knownPageCount
-      ? Math.min(Math.trunc(requestedPage), knownPageCount)
-      : Math.trunc(requestedPage);
-    pageNumberRef.current = nextPage;
-    if ((useNativeCompleteVerseView || useNativeFullScreenOverlay) && nextPage > 1) {
-      const targetVerseId = completeVerses[nextPage - 1]?.id || null;
-      if (targetVerseId) {
-        pendingCompleteScrollVerseIdRef.current = targetVerseId;
-        completeRestoreGuardUntilRef.current = Date.now() + 900;
-      }
-    }
-    setPageNumber((value) => (value === nextPage ? value : nextPage));
-  }, [
-    completeVerses,
-    currentPage,
-    pageCount,
-    useNativeCompleteVerseView,
-    useNativeFullScreenOverlay,
-  ]);
-
-  useEffect(() => {
     if (!Number.isFinite(Number(controlledZoomLevel))) return;
     const nextZoom = Math.max(
       MIN_ZOOM_LEVEL,
@@ -2715,10 +3359,7 @@ export default function PdfDocumentViewer({
       pageNumberRef.current = nextPageCount;
       void setPageNumber(nextPageCount);
     }
-  }, [
-    completeVerses.length,
-    useNativeVersePaging,
-  ]);
+  }, [completeVerses.length, useNativeVersePaging]);
 
   useEffect(() => {
     setVerseFontSizePx((value) => {
@@ -2739,7 +3380,7 @@ export default function PdfDocumentViewer({
 
   const effectivePdfUrl = localPdfUrl || pdfUrl;
   const usesLocalFileFallback = Boolean(localPdfUrl?.startsWith('file://'));
-  const verseLayoutSignature = JSON.stringify(effectiveVerseLayout || null);
+  const verseLayoutSignature = JSON.stringify(effectiveBookVerseLayout || null);
 
   const pdfHtml = useMemo(
     () =>
@@ -2747,9 +3388,9 @@ export default function PdfDocumentViewer({
         ? buildVerseHtml(
             verses || [],
             label,
-            externalInitialPageNumber || 1,
-            initialViewModeRef.current,
-            effectiveVerseLayout,
+            pageNumberRef.current || externalInitialPageNumber || 1,
+            viewMode,
+            effectiveBookVerseLayout,
             {
               fontSizePx: Math.round(
                 verseZoomConfig.defaultSize * initialZoomLevelRef.current
@@ -2800,10 +3441,10 @@ export default function PdfDocumentViewer({
         ? buildVerseHtml(
             verses || [],
             label,
-            externalInitialPageNumber || 1,
-            initialViewModeRef.current,
+            pageNumberRef.current || externalInitialPageNumber || 1,
+            viewMode,
             {
-              ...effectiveVerseLayout,
+              ...effectiveBookVerseLayout,
               fullScreen: true,
               readerHeightPx: visibleViewportHeight,
             },
@@ -2814,14 +3455,15 @@ export default function PdfDocumentViewer({
               maxFontSizePx: verseZoomConfig.max,
             },
             mappedVerseIds,
-            'single',
-            false,
+            activeBookSpreadMode,
+            activeBookSpreadMode === 'double',
             resolvedReaderTheme
           )
         : '',
     [
       contentMode,
-      effectiveVerseLayout,
+      activeBookSpreadMode,
+      effectiveBookVerseLayout,
       externalInitialPageNumber,
       label,
       mappedVerseIds,
@@ -2831,6 +3473,7 @@ export default function PdfDocumentViewer({
       verseZoomConfig.min,
       verses,
       visibleViewportHeight,
+      viewMode,
       resolvedReaderTheme,
     ]
   );
@@ -2850,13 +3493,10 @@ export default function PdfDocumentViewer({
     }, 2600);
   }, []);
 
-  const syncActiveVerseToWebView = useCallback((
-    verseId: string | null,
-    isPlaying = false,
-    shouldScroll = false
-  ) => {
-    const safeVerseId = verseId ? escapeJsString(verseId) : '';
-    const script = `
+  const syncActiveVerseToWebView = useCallback(
+    (verseId: string | null, isPlaying = false, shouldScroll = false) => {
+      const safeVerseId = verseId ? escapeJsString(verseId) : '';
+      const script = `
       (function() {
         if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.setActiveVerse === 'function') {
           window.__PDF_READER_BRIDGE__.setActiveVerse('${safeVerseId}', ${isPlaying ? 'true' : 'false'}, ${shouldScroll ? 'true' : 'false'});
@@ -2864,9 +3504,55 @@ export default function PdfDocumentViewer({
       })();
       true;
     `;
-    webViewRef.current?.injectJavaScript(script);
-    fullScreenWebViewRef.current?.injectJavaScript(script);
-  }, []);
+      webViewRef.current?.injectJavaScript(script);
+      fullScreenWebViewRef.current?.injectJavaScript(script);
+    },
+    []
+  );
+
+  const showMappedVerse = useCallback(
+    (verseId: string, options?: { isPlaying?: boolean; animated?: boolean }) => {
+      const pageForVerse = getNativeVersePage(verseId);
+      if (!pageForVerse) return;
+
+      pageNumberRef.current = pageForVerse;
+      pendingModeSwitchPageRef.current = pageForVerse;
+      pendingCompleteScrollVerseIdRef.current = verseId;
+      void setPageNumber(pageForVerse);
+      setReaderVerseId((current) => (current === verseId ? current : verseId));
+      setActiveVerseId((current) => (current === verseId ? current : verseId));
+
+      const bridgeMethod = viewMode === 'book' ? 'showMappedVerse' : 'goToPage';
+      const bridgeArgs =
+        viewMode === 'book'
+          ? `${pageForVerse}, '${escapeJsString(verseId)}', ${options?.isPlaying ? 'true' : 'false'}`
+          : String(pageForVerse);
+      const script = `
+        (function() {
+          if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.${bridgeMethod} === 'function') {
+            window.__PDF_READER_BRIDGE__.${bridgeMethod}(${bridgeArgs});
+          }
+        })();
+        true;
+      `;
+      webViewRef.current?.injectJavaScript(script);
+      fullScreenWebViewRef.current?.injectJavaScript(script);
+
+      if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
+        void scrollCompleteToVerse(verseId, options?.animated ?? true);
+      }
+      syncActiveVerseToWebView(verseId, options?.isPlaying ?? false, true);
+    },
+    [
+      getNativeVersePage,
+      scrollCompleteToVerse,
+      setPageNumber,
+      syncActiveVerseToWebView,
+      useNativeCompleteVerseView,
+      useNativeFullScreenOverlay,
+      viewMode,
+    ]
+  );
 
   const activateVerseAudioIndex = useCallback(
     (targetIndex: number, options?: { autoplay?: boolean }) => {
@@ -2875,16 +3561,14 @@ export default function PdfDocumentViewer({
 
       const autoplay = options?.autoplay ?? true;
       const verseId = String(item.verseId);
-      const pageForVerse = getNativeVersePage(verseId);
 
+      pendingAudioSeekTargetRef.current = {
+        index: targetIndex,
+        audioAssetUrl: item.audioAssetUrl,
+        expiresAt: Date.now() + 2500,
+      };
       setActiveVerseAudioIndex(targetIndex);
-      setActiveVerseId(verseId);
-      setReaderVerseId((current) => (current === verseId ? current : verseId));
-      syncActiveVerseToWebView(verseId, autoplay, true);
-      if (pageForVerse && pageForVerse !== pageNumber) {
-        pageNumberRef.current = pageForVerse;
-        void setPageNumber(pageForVerse);
-      }
+      showMappedVerse(verseId, { isPlaying: autoplay, animated: true });
 
       const startPlayback = () => {
         setPendingVerseAudioSeekMs(null);
@@ -2918,12 +3602,9 @@ export default function PdfDocumentViewer({
     },
     [
       currentVerseAudioUrl,
-      getNativeVersePage,
-      pageNumber,
       playableVerseMappings,
-      setPageNumber,
+      showMappedVerse,
       showOverlay,
-      syncActiveVerseToWebView,
       verseAudioPlayer,
     ]
   );
@@ -2949,14 +3630,24 @@ export default function PdfDocumentViewer({
         setReaderVerseId((current) =>
           current === activeVerseId ? current : activeVerseId
         );
-        if (pageForVerse && pageForVerse !== pageNumber) {
+        if (viewMode !== 'book' && pageForVerse && pageForVerse !== pageNumber) {
           pageNumberRef.current = pageForVerse;
           void setPageNumber(pageForVerse);
+          const script = `
+            (function() {
+              if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.goToPage === 'function') {
+                window.__PDF_READER_BRIDGE__.goToPage(${pageForVerse});
+              }
+            })();
+            true;
+          `;
+          webViewRef.current?.injectJavaScript(script);
+          fullScreenWebViewRef.current?.injectJavaScript(script);
         }
         if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
           void scrollCompleteToVerse(activeVerseId, true);
         }
-        syncActiveVerseToWebView(activeVerseId, true, true);
+        syncActiveVerseToWebView(activeVerseId, true, viewMode !== 'book');
       }
       try {
         verseAudioPlayer.play();
@@ -2983,6 +3674,7 @@ export default function PdfDocumentViewer({
     useNativeFullScreenOverlay,
     verseAudioPlayer,
     verseAudioStatus.playing,
+    viewMode,
   ]);
 
   const seekActiveVerseAudioToRatio = useCallback(
@@ -2994,23 +3686,55 @@ export default function PdfDocumentViewer({
       const statusTrackDurationSeconds = Math.max(
         0,
         Number(
-          (verseAudioStatus as unknown as { duration?: number; durationSeconds?: number })
-            .duration ??
-            (verseAudioStatus as unknown as { duration?: number; durationSeconds?: number })
-              .durationSeconds ??
+          (
+            verseAudioStatus as unknown as {
+              duration?: number;
+              durationSeconds?: number;
+            }
+          ).duration ??
+            (
+              verseAudioStatus as unknown as {
+                duration?: number;
+                durationSeconds?: number;
+              }
+            ).durationSeconds ??
             0
         )
       );
       const mappedTrackDurationMs = playableVerseMappings
         .filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl)
-        .reduce((maxEndMs, mapping) => Math.max(maxEndMs, mapping.segmentEndMs), 0);
+        .reduce(
+          (maxEndMs, mapping) => Math.max(maxEndMs, mapping.segmentEndMs),
+          0
+        );
       const loadedTrackDurationMs = Math.max(
         0,
         Math.floor(statusTrackDurationSeconds * 1000)
       );
-      const trackDurationMs = Math.max(loadedTrackDurationMs, mappedTrackDurationMs);
+      const trackDurationMs = Math.max(
+        loadedTrackDurationMs,
+        mappedTrackDurationMs
+      );
       if (trackDurationMs <= 0) return;
       const nextMs = Math.floor(trackDurationMs * boundedRatio);
+      const matchedSeekIndex = playableVerseMappings.findIndex((mapping) => {
+        if (mapping.audioAssetUrl !== item.audioAssetUrl) return false;
+        return nextMs >= mapping.segmentStartMs && nextMs < mapping.segmentEndMs;
+      });
+      if (matchedSeekIndex >= 0) {
+        const matchedSeek = playableVerseMappings[matchedSeekIndex];
+        const verseId = String(matchedSeek.verseId);
+        pendingAudioSeekTargetRef.current = {
+          index: matchedSeekIndex,
+          audioAssetUrl: matchedSeek.audioAssetUrl,
+          expiresAt: Date.now() + 2500,
+        };
+        setActiveVerseAudioIndex(matchedSeekIndex);
+        showMappedVerse(verseId, {
+          isPlaying: verseAudioStatus.playing,
+          animated: true,
+        });
+      }
       void verseAudioPlayer.seekTo(nextMs / 1000);
       showOverlay();
     },
@@ -3018,6 +3742,7 @@ export default function PdfDocumentViewer({
       activeVerseAudioIndex,
       hasVerseAudio,
       playableVerseMappings,
+      showMappedVerse,
       showOverlay,
       verseAudioPlayer,
       verseAudioStatus,
@@ -3030,6 +3755,7 @@ export default function PdfDocumentViewer({
       setActiveVerseId(null);
       setCurrentVerseAudioUrl(null);
       setPendingVerseAudioSeekMs(null);
+      lastAudioVerseWebSyncRef.current = null;
       syncActiveVerseToWebView(null, false);
       return;
     }
@@ -3066,9 +3792,33 @@ export default function PdfDocumentViewer({
   ]);
 
   useEffect(() => {
-    if (!hasVerseAudio || !verseAudioStatus.isLoaded || !currentVerseAudioUrl) return;
+    if (!hasVerseAudio || !verseAudioStatus.isLoaded || !currentVerseAudioUrl)
+      return;
 
-    const currentMs = Math.max(0, Math.floor((verseAudioStatus.currentTime || 0) * 1000));
+    const currentMs = Math.max(
+      0,
+      Math.floor((verseAudioStatus.currentTime || 0) * 1000)
+    );
+    const pendingAudioSeekTarget = pendingAudioSeekTargetRef.current;
+    if (pendingAudioSeekTarget) {
+      const pendingItem = playableVerseMappings[pendingAudioSeekTarget.index];
+      const isSameAudio =
+        pendingItem &&
+        pendingAudioSeekTarget.audioAssetUrl === currentVerseAudioUrl &&
+        pendingItem.audioAssetUrl === currentVerseAudioUrl;
+      const isWithinPendingSegment =
+        isSameAudio &&
+        currentMs >= pendingItem.segmentStartMs &&
+        currentMs < pendingItem.segmentEndMs;
+      if (
+        isWithinPendingSegment ||
+        Date.now() >= pendingAudioSeekTarget.expiresAt
+      ) {
+        pendingAudioSeekTargetRef.current = null;
+      } else if (isSameAudio) {
+        return;
+      }
+    }
     const matchedIndex = playableVerseMappings.findIndex((item) => {
       if (item.audioAssetUrl !== currentVerseAudioUrl) return false;
       return currentMs >= item.segmentStartMs && currentMs < item.segmentEndMs;
@@ -3088,9 +3838,33 @@ export default function PdfDocumentViewer({
       if (readerVerseId !== verseId) {
         setReaderVerseId(verseId);
       }
-      if (pageForVerse && pageForVerse !== pageNumber) {
-        pageNumberRef.current = pageForVerse;
-        void setPageNumber(pageForVerse);
+      const shouldFollowAudioPage =
+        viewMode !== 'book' || verseChanged || activeVerseAudioIndex === null;
+      if (
+        shouldFollowAudioPage &&
+        pageForVerse &&
+        (viewMode === 'book' || pageForVerse !== pageNumber)
+      ) {
+        const bridgeMethod =
+          viewMode === 'book' ? 'showMappedVerse' : 'goToPage';
+        const bridgeArgs =
+          viewMode === 'book'
+            ? `${pageForVerse}, '${escapeJsString(verseId)}', ${verseAudioStatus.playing ? 'true' : 'false'}`
+            : String(pageForVerse);
+        const script = `
+          (function() {
+            if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.${bridgeMethod} === 'function') {
+              window.__PDF_READER_BRIDGE__.${bridgeMethod}(${bridgeArgs});
+            }
+          })();
+          true;
+        `;
+        webViewRef.current?.injectJavaScript(script);
+        fullScreenWebViewRef.current?.injectJavaScript(script);
+        if (viewMode !== 'book') {
+          pageNumberRef.current = pageForVerse;
+          void setPageNumber(pageForVerse);
+        }
       }
       if (
         verseChanged &&
@@ -3098,14 +3872,22 @@ export default function PdfDocumentViewer({
       ) {
         void scrollCompleteToVerse(verseId, true);
       }
-      syncActiveVerseToWebView(verseId, verseAudioStatus.playing, verseChanged);
+      if (verseChanged || lastAudioVerseWebSyncRef.current !== verseId) {
+        lastAudioVerseWebSyncRef.current = verseId;
+        syncActiveVerseToWebView(
+          verseId,
+          verseAudioStatus.playing,
+          verseChanged
+        );
+      }
 
       return;
     }
 
     if (activeVerseAudioIndex === null) return;
     const activeItem = playableVerseMappings[activeVerseAudioIndex];
-    if (!activeItem || activeItem.audioAssetUrl !== currentVerseAudioUrl) return;
+    if (!activeItem || activeItem.audioAssetUrl !== currentVerseAudioUrl)
+      return;
     if (currentMs < activeItem.segmentEndMs) return;
 
     const nextIndex = activeVerseAudioIndex + 1;
@@ -3139,37 +3921,59 @@ export default function PdfDocumentViewer({
     verseAudioStatus.currentTime,
     verseAudioStatus.isLoaded,
     verseAudioStatus.playing,
+    viewMode,
   ]);
 
   useEffect(() => {
     if (!viewerReady || contentMode !== 'verse') return;
     syncActiveVerseToWebView(activeVerseId, verseAudioStatus.playing, false);
-  }, [activeVerseId, contentMode, pageNumber, syncActiveVerseToWebView, verseAudioStatus.playing, viewerReady, viewMode]);
-
-  const adjustVerseFontSize = useCallback((deltaSteps: number) => {
-    if (!Number.isFinite(deltaSteps) || deltaSteps === 0) return;
-    setVerseFontSizePx((value) => {
-      const next = Math.max(
-        verseZoomConfig.min,
-        Math.min(
-          verseZoomConfig.max,
-          value + deltaSteps * VERSE_GESTURE_ZOOM_STEP_PX
-        )
-      );
-      const nextZoom = next / verseZoomConfig.defaultSize;
-      zoomLevelRef.current = nextZoom;
-      setZoomLevel(nextZoom);
-      return next;
-    });
-    showOverlay();
   }, [
-    showOverlay,
-    verseZoomConfig.defaultSize,
-    verseZoomConfig.max,
-    verseZoomConfig.min,
+    activeVerseId,
+    contentMode,
+    syncActiveVerseToWebView,
+    verseAudioStatus.playing,
+    viewerReady,
+    viewMode,
   ]);
 
+  const adjustVerseFontSize = useCallback(
+    (deltaSteps: number) => {
+      if (!Number.isFinite(deltaSteps) || deltaSteps === 0) return;
+      if (
+        deltaSteps > 0 &&
+        viewMode === 'book' &&
+        bookVerseCanZoomIn === false
+      ) {
+        showOverlay();
+        return;
+      }
+      setVerseFontSizePx((value) => {
+        const next = Math.max(
+          verseZoomConfig.min,
+          Math.min(
+            verseZoomConfig.max,
+            value + deltaSteps * VERSE_GESTURE_ZOOM_STEP_PX
+          )
+        );
+        const nextZoom = next / verseZoomConfig.defaultSize;
+        zoomLevelRef.current = nextZoom;
+        setZoomLevel(nextZoom);
+        return next;
+      });
+      showOverlay();
+    },
+    [
+      bookVerseCanZoomIn,
+      showOverlay,
+      verseZoomConfig.defaultSize,
+      verseZoomConfig.max,
+      verseZoomConfig.min,
+      viewMode,
+    ]
+  );
+
   const zoomOutVerse = useCallback(() => {
+    setBookVerseCanZoomIn(true);
     setVerseFontSizePx((value) => {
       const next = Math.max(verseZoomConfig.min, value - verseZoomConfig.step);
       const nextZoom = next / verseZoomConfig.defaultSize;
@@ -3186,6 +3990,10 @@ export default function PdfDocumentViewer({
   ]);
 
   const zoomInVerse = useCallback(() => {
+    if (viewMode === 'book' && bookVerseCanZoomIn === false) {
+      showOverlay();
+      return;
+    }
     setVerseFontSizePx((value) => {
       const next = Math.min(verseZoomConfig.max, value + verseZoomConfig.step);
       const nextZoom = next / verseZoomConfig.defaultSize;
@@ -3195,10 +4003,12 @@ export default function PdfDocumentViewer({
     });
     showOverlay();
   }, [
+    bookVerseCanZoomIn,
     showOverlay,
     verseZoomConfig.defaultSize,
     verseZoomConfig.max,
     verseZoomConfig.step,
+    viewMode,
   ]);
 
   const adjustPdfZoom = useCallback(
@@ -3216,6 +4026,86 @@ export default function PdfDocumentViewer({
     [showOverlay]
   );
 
+  const handleFullScreenWebViewMessage = useCallback(
+    (event: { nativeEvent: { data?: string } }) => {
+      try {
+        const payload = JSON.parse(event.nativeEvent.data || '{}');
+        if (payload?.type === 'document-meta') {
+          const nextPageCount = Number(payload.pageCount);
+          if (Number.isInteger(nextPageCount) && nextPageCount > 0) {
+            pageCountRef.current = nextPageCount;
+            setPageCount((current) =>
+              current === nextPageCount ? current : nextPageCount
+            );
+          }
+          return;
+        }
+        if (payload?.type === 'verse-pages') {
+          const nextPageById: Record<string, number> = {};
+          const nextIdsByPage: Record<number, string[]> = {};
+          const pages = Array.isArray(payload.pages) ? payload.pages : [];
+          const nextSignature = JSON.stringify(pages);
+          if (versePagesSignatureRef.current === nextSignature) return;
+          versePagesSignatureRef.current = nextSignature;
+          for (const page of pages) {
+            const pageNumberValue = Number(page?.pageNumber);
+            if (!Number.isInteger(pageNumberValue) || pageNumberValue <= 0) {
+              continue;
+            }
+            const verseIds = Array.isArray(page?.verseIds) ? page.verseIds : [];
+            nextIdsByPage[pageNumberValue] = verseIds.map((verseId: unknown) =>
+              String(verseId)
+            );
+            for (const verseId of verseIds) {
+              nextPageById[String(verseId)] = pageNumberValue;
+            }
+          }
+          setVersePageById(nextPageById);
+          setVerseIdsByPage(nextIdsByPage);
+          return;
+        }
+        if (payload?.type === 'interaction') {
+          showOverlay();
+          return;
+        }
+        if (payload?.type === 'ready') {
+          setLoadingPdf(false);
+          setViewerReady(true);
+          onReady?.({ pageCount: pageCountRef.current });
+          return;
+        }
+        if (payload?.type === 'verse-zoom') {
+          const deltaSteps = Number(payload.deltaSteps || 0);
+          adjustVerseFontSize(deltaSteps);
+          return;
+        }
+        if (payload?.type === 'verse-layout-state') {
+          setBookVerseCanZoomIn(payload.canZoomIn !== false);
+          return;
+        }
+        if (payload?.type === 'error') {
+          const message =
+            typeof payload.message === 'string' && payload.message
+              ? payload.message
+              : 'Failed to load reader content.';
+          setLoadingError(message);
+          setLoadingPdf(false);
+          onError?.({ message, code: payload.code });
+          return;
+        }
+        if (payload?.type !== 'page-change') return;
+        const nextPage = Number(payload.pageNumber);
+        if (!Number.isInteger(nextPage) || nextPage <= 0) return;
+        if (nextPage === pageNumberRef.current) return;
+        pageNumberRef.current = nextPage;
+        void setPageNumber(nextPage);
+      } catch {
+        // ignore malformed payloads
+      }
+    },
+    [adjustVerseFontSize, onError, onReady, setPageNumber, showOverlay]
+  );
+
   const enterVerseFullScreen = useCallback(() => {
     if (contentMode !== 'verse') return;
     setIsVerseFullScreen(true);
@@ -3224,9 +4114,26 @@ export default function PdfDocumentViewer({
 
   const exitVerseFullScreen = useCallback(() => {
     if (contentMode !== 'verse') return;
+    const activeMapping =
+      activeVerseAudioIndex === null
+        ? null
+        : playableVerseMappings[activeVerseAudioIndex] || null;
+    if (activeMapping) {
+      showMappedVerse(String(activeMapping.verseId), {
+        isPlaying: verseAudioStatus.playing,
+        animated: false,
+      });
+    }
     setIsVerseFullScreen(false);
     showOverlay();
-  }, [contentMode, showOverlay]);
+  }, [
+    activeVerseAudioIndex,
+    contentMode,
+    playableVerseMappings,
+    showMappedVerse,
+    showOverlay,
+    verseAudioStatus.playing,
+  ]);
 
   const toggleVerseFullScreen = useCallback(() => {
     if (isVerseFullScreen) {
@@ -3244,28 +4151,99 @@ export default function PdfDocumentViewer({
     };
   }, []);
 
+  const requestBookPageChange = useCallback(
+    (direction: 'next' | 'prev') => {
+      const methodName =
+        direction === 'next' ? 'goToNextPage' : 'goToPreviousPage';
+      const script = `
+        (function() {
+          if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.${methodName} === 'function') {
+            window.__PDF_READER_BRIDGE__.${methodName}();
+          }
+        })();
+        true;
+      `;
+      webViewRef.current?.injectJavaScript(script);
+      fullScreenWebViewRef.current?.injectJavaScript(script);
+    },
+    []
+  );
+
   const goToPreviousPage = useCallback(() => {
     const currentPage = pageNumberRef.current || pageNumber;
-    const previousPage = Math.max(1, currentPage - 1);
-    pageNumberRef.current = previousPage;
-    void setPageNumber(previousPage);
+    const currentAnchor =
+      activeBookSpreadMode === 'double' && currentPage % 2 === 0
+        ? currentPage - 1
+        : currentPage;
+    const pageStep =
+      viewMode === 'book' && activeBookSpreadMode === 'double' ? 2 : 1;
+    const previousPage = Math.max(1, currentAnchor - pageStep);
+    if (viewMode === 'book') {
+      if (useFullScreenBookWebView) {
+        requestBookPageChange('prev');
+      } else {
+        pageNumberRef.current = previousPage;
+        pendingModeSwitchPageRef.current = previousPage;
+        void setPageNumber(previousPage);
+      }
+    } else {
+      pageNumberRef.current = previousPage;
+      void setPageNumber(previousPage);
+    }
     showOverlay();
-  }, [pageNumber, setPageNumber, showOverlay, verseIdsByPage]);
+  }, [
+    activeBookSpreadMode,
+    pageNumber,
+    requestBookPageChange,
+    setPageNumber,
+    showOverlay,
+    useFullScreenBookWebView,
+    viewMode,
+  ]);
 
   const goToNextPage = useCallback(() => {
     const currentPage = pageNumberRef.current || pageNumber;
-    const nextPage = pageCount ? Math.min(currentPage + 1, pageCount) : currentPage + 1;
-    pageNumberRef.current = nextPage;
-    void setPageNumber(nextPage);
+    const currentAnchor =
+      activeBookSpreadMode === 'double' && currentPage % 2 === 0
+        ? currentPage - 1
+        : currentPage;
+    const pageStep =
+      viewMode === 'book' && activeBookSpreadMode === 'double' ? 2 : 1;
+    const nextPage = pageCount
+      ? Math.min(currentAnchor + pageStep, pageCount)
+      : currentAnchor + pageStep;
+    if (viewMode === 'book') {
+      if (useFullScreenBookWebView) {
+        requestBookPageChange('next');
+      } else {
+        pageNumberRef.current = nextPage;
+        pendingModeSwitchPageRef.current = nextPage;
+        void setPageNumber(nextPage);
+      }
+    } else {
+      pageNumberRef.current = nextPage;
+      void setPageNumber(nextPage);
+    }
     showOverlay();
-  }, [pageCount, pageNumber, setPageNumber, showOverlay, verseIdsByPage]);
+  }, [
+    activeBookSpreadMode,
+    pageCount,
+    pageNumber,
+    requestBookPageChange,
+    setPageNumber,
+    showOverlay,
+    useFullScreenBookWebView,
+    viewMode,
+  ]);
 
   const goToFirstPage = useCallback(() => {
     const firstVerseId = completeVerses[0]?.id || null;
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
     void setPageNumber(1);
-    setReaderVerseId((current) => (current === firstVerseId ? current : firstVerseId));
+    setReaderVerseId((current) =>
+      current === firstVerseId ? current : firstVerseId
+    );
     if (viewMode === 'continuous') {
       pendingCompleteScrollVerseIdRef.current = firstVerseId;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
@@ -3296,11 +4274,17 @@ export default function PdfDocumentViewer({
           showOverlay();
           return false;
         },
-          onMoveShouldSetPanResponder: (_event: unknown, gestureState: SwipeGestureState) =>
-            viewMode === 'book' &&
-            Math.abs(gestureState.dx) > 40 &&
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
-          onPanResponderRelease: (_event: unknown, gestureState: SwipeGestureState) => {
+        onMoveShouldSetPanResponder: (
+          _event: unknown,
+          gestureState: SwipeGestureState
+        ) =>
+          viewMode === 'book' &&
+          Math.abs(gestureState.dx) > 40 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
+        onPanResponderRelease: (
+          _event: unknown,
+          gestureState: SwipeGestureState
+        ) => {
           if (gestureState.dx < -44) {
             goToNextPage();
             return;
@@ -3328,10 +4312,7 @@ export default function PdfDocumentViewer({
         MIN_ZOOM_LEVEL,
         Math.min(MAX_ZOOM_LEVEL, Number(requestedZoom) || DEFAULT_ZOOM_LEVEL)
       );
-      if (
-        safeMode === 'continuous' &&
-        suppressCompleteModeSyncRef.current
-      ) {
+      if (safeMode === 'continuous' && suppressCompleteModeSyncRef.current) {
         suppressCompleteModeSyncRef.current = false;
         return;
       }
@@ -3358,28 +4339,37 @@ export default function PdfDocumentViewer({
     (mode: ReaderViewMode) => {
       const currentPage = pageNumberRef.current || pageNumber;
       const currentZoom = zoomLevelRef.current || zoomLevel;
-      const pageForAnchor = readerVerseId ? versePageById[readerVerseId] : undefined;
+      const pageForAnchor = readerVerseId
+        ? versePageById[readerVerseId]
+        : undefined;
       const anchorBelongsToCurrentPage = pageForAnchor === currentPage;
-      const targetPage = pageForAnchor && anchorBelongsToCurrentPage
-        ? pageForAnchor
-        : pageCount
-        ? Math.min(Math.max(1, currentPage), pageCount)
-        : Math.max(1, currentPage);
-      const targetVerseId =
-        anchorBelongsToCurrentPage
-          ? readerVerseId
-          : verseIdsByPage[targetPage]?.[0] ||
-            (useNativeVersePaging ? completeVerses[targetPage - 1]?.id : null) ||
-            null;
+      const targetPage =
+        pageForAnchor && anchorBelongsToCurrentPage
+          ? pageForAnchor
+          : pageCount
+            ? Math.min(Math.max(1, currentPage), pageCount)
+            : Math.max(1, currentPage);
+      const targetVerseId = anchorBelongsToCurrentPage
+        ? readerVerseId
+        : verseIdsByPage[targetPage]?.[0] ||
+          (useNativeVersePaging ? completeVerses[targetPage - 1]?.id : null) ||
+          null;
       if (mode === 'continuous' && targetVerseId) {
         pendingCompleteScrollVerseIdRef.current = targetVerseId;
       }
       pendingModeSwitchPageRef.current = targetPage;
       pageNumberRef.current = targetPage;
       viewModeRef.current = mode;
-      setReaderVerseId((current) => (current === targetVerseId ? current : targetVerseId));
+      setReaderVerseId((current) =>
+        current === targetVerseId ? current : targetVerseId
+      );
       void setPageNumber(targetPage);
       setViewMode(mode);
+      if (contentMode === 'verse') {
+        setIsVerseFullScreen(
+          mode === 'book' || verseLayout?.fullScreen === true
+        );
+      }
       setShowShareOverlay(false);
       suppressCompleteModeSyncRef.current = false;
       if (viewerReady && !loadingError) {
@@ -3396,8 +4386,10 @@ export default function PdfDocumentViewer({
       setPageNumber,
       showOverlay,
       syncViewerStateToWebView,
+      contentMode,
       completeVerses,
       useNativeVersePaging,
+      verseLayout?.fullScreen,
       versePageById,
       verseIdsByPage,
       viewerReady,
@@ -3407,14 +4399,16 @@ export default function PdfDocumentViewer({
 
   useEffect(() => {
     if (!viewerReady || loadingError) return;
-    const safePage = pageCount ? Math.min(Math.max(1, pageNumber), pageCount) : Math.max(1, pageNumber);
+    const safePage = pageCount
+      ? Math.min(Math.max(1, pageNumber), pageCount)
+      : Math.max(1, pageNumber);
     const modeChanged = lastSyncedViewModeRef.current !== viewMode;
     const targetPage = pendingModeSwitchPageRef.current ?? safePage;
     const syncPage = modeChanged ? targetPage : safePage;
     const syncSignature = JSON.stringify({
       viewMode,
       pageNumber: syncPage,
-      readerVerseId: readerVerseId || '',
+      readerVerseId: viewMode === 'book' ? '' : readerVerseId || '',
       zoomLevel: Math.round(zoomLevel * 100) / 100,
     });
     if (lastInjectedViewerStateRef.current === syncSignature) return;
@@ -3422,7 +4416,7 @@ export default function PdfDocumentViewer({
     syncViewerStateToWebView(
       viewMode,
       syncPage,
-      readerVerseId,
+      viewMode === 'book' ? null : readerVerseId,
       zoomLevel
     );
     lastInjectedViewerStateRef.current = syncSignature;
@@ -3546,14 +4540,18 @@ export default function PdfDocumentViewer({
       : zoomLevel <= MIN_ZOOM_LEVEL;
   const zoomInDisabled =
     contentMode === 'verse'
-      ? verseFontSizePx >= verseZoomConfig.max
+      ? verseFontSizePx >= verseZoomConfig.max ||
+        (viewMode === 'book' && bookVerseCanZoomIn === false)
       : zoomLevel >= MAX_ZOOM_LEVEL;
   const pageBadgeText =
     contentMode === 'verse' && viewMode === 'continuous'
       ? `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`
       : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`;
   const activeVerseAudio =
-    activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
+    activeVerseAudioIndex === null
+      ? null
+      : playableVerseMappings[activeVerseAudioIndex] || null;
+  const nativeBookPageNumber = pageNumberRef.current || pageNumber;
   const nativeBookVerse =
     (useNativeBookVerseView ||
       (useNativeFullScreenOverlay && viewMode === 'book')) &&
@@ -3563,46 +4561,212 @@ export default function PdfDocumentViewer({
             0,
             Math.min(
               completeVerses.length - 1,
-              (pageNumberRef.current || pageNumber) - 1
+              nativeBookPageNumber - 1
             )
           )
         ]
       : null;
-  const verseAudioCurrentSeconds = Math.max(0, verseAudioStatus.currentTime || 0);
+  const nativeSecondBookVerse =
+    nativeBookVerse && activeBookSpreadMode === 'double' && completeVerses.length
+      ? completeVerses[
+          Math.max(
+            0,
+            Math.min(completeVerses.length - 1, nativeBookPageNumber)
+          )
+        ] || null
+      : null;
+  const nativeBookVerses = [nativeBookVerse, nativeSecondBookVerse].filter(
+    (verse): verse is NonNullable<typeof nativeBookVerse> => verse !== null
+  );
+  const verseAudioCurrentSeconds = Math.max(
+    0,
+    verseAudioStatus.currentTime || 0
+  );
   const activeTrackDurationSeconds = useMemo(() => {
     if (!activeVerseAudio) return 0;
     const statusTrackDurationSeconds = Math.max(
       0,
       Number(
-        (verseAudioStatus as unknown as { duration?: number; durationSeconds?: number })
-          .duration ??
-          (verseAudioStatus as unknown as { duration?: number; durationSeconds?: number })
-            .durationSeconds ??
+        (
+          verseAudioStatus as unknown as {
+            duration?: number;
+            durationSeconds?: number;
+          }
+        ).duration ??
+          (
+            verseAudioStatus as unknown as {
+              duration?: number;
+              durationSeconds?: number;
+            }
+          ).durationSeconds ??
           0
       )
     );
     const mappedTrackDurationSeconds = playableVerseMappings
-      .filter((mapping) => mapping.audioAssetUrl === activeVerseAudio.audioAssetUrl)
-      .reduce((maxEndSeconds, mapping) => Math.max(maxEndSeconds, mapping.segmentEndMs / 1000), 0);
+      .filter(
+        (mapping) => mapping.audioAssetUrl === activeVerseAudio.audioAssetUrl
+      )
+      .reduce(
+        (maxEndSeconds, mapping) =>
+          Math.max(maxEndSeconds, mapping.segmentEndMs / 1000),
+        0
+      );
     return Math.max(statusTrackDurationSeconds, mappedTrackDurationSeconds);
   }, [activeVerseAudio, playableVerseMappings, verseAudioStatus]);
   const verseAudioTimeText = activeVerseAudio
     ? `${formatTime(Math.max(0, verseAudioCurrentSeconds))} / ${formatTime(Math.max(0, activeTrackDurationSeconds))}`
     : '';
-  const activeVerseAudioDurationSeconds = Math.max(0, activeTrackDurationSeconds);
+  const activeVerseAudioDurationSeconds = Math.max(
+    0,
+    activeTrackDurationSeconds
+  );
   const activeVerseAudioElapsedSeconds = activeVerseAudio
     ? Math.max(
         0,
-        Math.min(
-          activeVerseAudioDurationSeconds,
-          verseAudioCurrentSeconds
-        )
+        Math.min(activeVerseAudioDurationSeconds, verseAudioCurrentSeconds)
       )
     : 0;
   const activeVerseAudioProgress =
     activeVerseAudioDurationSeconds > 0
       ? activeVerseAudioElapsedSeconds / activeVerseAudioDurationSeconds
       : 0;
+  const visibleBookVerseIds = useMemo(() => {
+    const ids = [
+      ...(verseIdsByPage[pageNumber] ||
+        (useNativeVersePaging && completeVerses[pageNumber - 1]?.id
+          ? [completeVerses[pageNumber - 1].id]
+          : [])),
+    ];
+    if (activeBookSpreadMode === 'double') {
+      ids.push(
+        ...(verseIdsByPage[pageNumber + 1] ||
+          (useNativeVersePaging && completeVerses[pageNumber]?.id
+            ? [completeVerses[pageNumber].id]
+            : []))
+      );
+    }
+    return ids.map((id) => String(id));
+  }, [
+    activeBookSpreadMode,
+    completeVerses,
+    pageNumber,
+    useNativeVersePaging,
+    verseIdsByPage,
+  ]);
+  const visibleMappedVerseAudioIndex = useMemo(
+    () =>
+      playableVerseMappings.findIndex((mapping) =>
+        visibleBookVerseIds.includes(String(mapping.verseId))
+      ),
+    [playableVerseMappings, visibleBookVerseIds]
+  );
+  const previousMappedVerseAudioIndex = useMemo(() => {
+    if (!hasVerseAudio || !playableVerseMappings.length) return -1;
+    const currentIndex =
+      activeVerseAudioIndex !== null
+        ? activeVerseAudioIndex
+        : visibleMappedVerseAudioIndex;
+    if (currentIndex < 0) return -1;
+    return currentIndex > 0 ? currentIndex - 1 : -1;
+  }, [
+    activeVerseAudioIndex,
+    hasVerseAudio,
+    playableVerseMappings.length,
+    visibleMappedVerseAudioIndex,
+  ]);
+  const currentMappedVerseAudioIndex = useMemo(() => {
+    if (!hasVerseAudio || !playableVerseMappings.length) return -1;
+    if (activeVerseAudioIndex !== null) return activeVerseAudioIndex;
+    return visibleMappedVerseAudioIndex;
+  }, [
+    activeVerseAudioIndex,
+    hasVerseAudio,
+    playableVerseMappings.length,
+    visibleMappedVerseAudioIndex,
+  ]);
+  const nextMappedVerseAudioIndex = useMemo(() => {
+    if (!hasVerseAudio || !playableVerseMappings.length) return -1;
+    const currentIndex =
+      activeVerseAudioIndex !== null
+        ? activeVerseAudioIndex
+        : visibleMappedVerseAudioIndex;
+    if (currentIndex < 0) return 0;
+    return currentIndex + 1 < playableVerseMappings.length
+      ? currentIndex + 1
+      : -1;
+  }, [
+    activeVerseAudioIndex,
+    hasVerseAudio,
+    playableVerseMappings.length,
+    visibleMappedVerseAudioIndex,
+  ]);
+  const canPlayPreviousMappedVerse = previousMappedVerseAudioIndex >= 0;
+  const canRestartMappedVerse = currentMappedVerseAudioIndex >= 0;
+  const canPlayNextMappedVerse = nextMappedVerseAudioIndex >= 0;
+  const playPreviousMappedVerse = useCallback(() => {
+    if (!canPlayPreviousMappedVerse) return;
+    activateVerseAudioIndex(previousMappedVerseAudioIndex, { autoplay: true });
+  }, [
+    activateVerseAudioIndex,
+    canPlayPreviousMappedVerse,
+    previousMappedVerseAudioIndex,
+  ]);
+  const restartMappedVerse = useCallback(() => {
+    if (!canRestartMappedVerse) return;
+    activateVerseAudioIndex(currentMappedVerseAudioIndex, { autoplay: true });
+  }, [
+    activateVerseAudioIndex,
+    canRestartMappedVerse,
+    currentMappedVerseAudioIndex,
+  ]);
+  const playNextMappedVerse = useCallback(() => {
+    if (!canPlayNextMappedVerse) return;
+    activateVerseAudioIndex(nextMappedVerseAudioIndex, { autoplay: true });
+  }, [
+    activateVerseAudioIndex,
+    canPlayNextMappedVerse,
+    nextMappedVerseAudioIndex,
+  ]);
+  const seekAudioByLocationX = useCallback(
+    (locationX: number) => {
+      seekActiveVerseAudioToRatio(
+        Math.max(0, locationX || 0) / audioSliderWidth
+      );
+    },
+    [audioSliderWidth, seekActiveVerseAudioToRatio]
+  );
+  const audioSliderPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => Boolean(activeVerseAudio),
+        onMoveShouldSetPanResponder: () => Boolean(activeVerseAudio),
+        onPanResponderGrant: (event: LocationTouchEvent) => {
+          seekAudioByLocationX(event.nativeEvent.locationX || 0);
+        },
+        onPanResponderMove: (event: LocationTouchEvent) => {
+          seekAudioByLocationX(event.nativeEvent.locationX || 0);
+        },
+      }),
+    [activeVerseAudio, seekAudioByLocationX]
+  );
+  const toggleBookSpreadMode = useCallback(() => {
+    setBookSpreadMode((current) => {
+      const next = current === 'double' ? 'single' : 'double';
+      const safeNext = allowBookDoubleSpread ? next : 'single';
+      const currentPage = pageNumberRef.current || pageNumber;
+      const anchoredPage =
+        safeNext === 'double' && currentPage % 2 === 0
+          ? Math.max(1, currentPage - 1)
+          : currentPage;
+      pageNumberRef.current = anchoredPage;
+      pendingModeSwitchPageRef.current = anchoredPage;
+      lastInjectedViewerStateRef.current = null;
+      void setPageNumber(anchoredPage);
+      setBookVerseCanZoomIn(true);
+      return safeNext;
+    });
+    showOverlay();
+  }, [allowBookDoubleSpread, pageNumber, setPageNumber, showOverlay]);
   const nativeFullScreenControls = (
     <View
       pointerEvents="box-none"
@@ -3611,6 +4775,110 @@ export default function PdfDocumentViewer({
         isFullScreenLandscape ? styles.nativeFullScreenControlsLandscape : null,
       ]}
     >
+      {hasVerseAudio ? (
+        <View pointerEvents="auto" style={styles.overlayAudioPanel}>
+          <View style={styles.overlayAudioControls}>
+            <Pressable
+              onPress={playPreviousMappedVerse}
+              disabled={!canPlayPreviousMappedVerse}
+              style={[
+                styles.overlayAudioButton,
+                styles.overlayAudioPlayButton,
+                !canPlayPreviousMappedVerse
+                  ? styles.overlayButtonDisabled
+                  : null,
+              ]}
+              accessibilityLabel="Play previous mapped verse"
+              >
+                <Ionicons
+                  name="play-skip-back-outline"
+                  size={20}
+                  color="#fff"
+                />
+              </Pressable>
+            <Pressable
+              onPress={restartMappedVerse}
+              disabled={!canRestartMappedVerse}
+              style={[
+                styles.overlayAudioButton,
+                styles.overlayAudioPlayButton,
+                !canRestartMappedVerse ? styles.overlayButtonDisabled : null,
+              ]}
+              accessibilityLabel="Restart mapped verse"
+            >
+              <Ionicons name="refresh-outline" size={20} color="#fff" />
+            </Pressable>
+            <Pressable
+              onPress={toggleVerseAudio}
+              style={[styles.overlayAudioButton, styles.overlayAudioPlayButton]}
+              accessibilityLabel={
+                verseAudioStatus.playing ? 'Pause audio' : 'Play audio'
+              }
+            >
+              <Ionicons
+                name={
+                  verseAudioStatus.playing ? 'pause-outline' : 'play-outline'
+                }
+                size={20}
+                color="#fff"
+              />
+            </Pressable>
+            <Pressable
+              onPress={playNextMappedVerse}
+              disabled={!canPlayNextMappedVerse}
+              style={[
+                styles.overlayAudioButton,
+                styles.overlayAudioPlayButton,
+                !canPlayNextMappedVerse ? styles.overlayButtonDisabled : null,
+              ]}
+              accessibilityLabel="Play next mapped verse"
+            >
+              <Ionicons
+                name="play-skip-forward-outline"
+                size={20}
+                color="#fff"
+              />
+            </Pressable>
+            <Pressable
+              onLayout={(event: {
+                nativeEvent: { layout: { width?: number } };
+              }) => {
+                const nextWidth = Math.max(
+                  1,
+                  Math.round(event.nativeEvent.layout.width || 1)
+                );
+                setAudioSliderWidth((current) =>
+                  current === nextWidth ? current : nextWidth
+                );
+              }}
+              onPress={(event: { nativeEvent: { locationX?: number } }) => {
+                seekAudioByLocationX(event.nativeEvent.locationX || 0);
+              }}
+              disabled={!activeVerseAudio}
+              style={[
+                styles.overlayAudioSlider,
+                !activeVerseAudio ? styles.overlayButtonDisabled : null,
+              ]}
+              accessibilityLabel="Seek mapped audio"
+              {...audioSliderPanResponder.panHandlers}
+            >
+              <View style={styles.overlayAudioSliderTrack}>
+                <View
+                  style={[
+                    styles.overlayAudioSliderFill,
+                    {
+                      width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </Pressable>
+            {verseAudioTimeText ? (
+              <Text style={styles.overlayAudioTime}>{verseAudioTimeText}</Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
       <View style={styles.overlayZoomGroup}>
         {viewMode === 'book' ? (
           <Pressable
@@ -3655,6 +4923,27 @@ export default function PdfDocumentViewer({
             color={zoomInDisabled ? '#d4d4d8' : '#fff'}
           />
         </Pressable>
+        {viewMode === 'book' && allowBookDoubleSpread ? (
+          <Pressable
+            onPress={toggleBookSpreadMode}
+            style={styles.overlayZoomButton}
+            accessibilityLabel={
+              activeBookSpreadMode === 'double'
+                ? 'Show one page'
+                : 'Show two pages'
+            }
+          >
+            <Ionicons
+              name={
+                activeBookSpreadMode === 'double'
+                  ? 'tablet-portrait-outline'
+                  : 'book-outline'
+              }
+              size={20}
+              color="#fff"
+            />
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={exitVerseFullScreen}
           style={styles.overlayZoomButton}
@@ -3689,9 +4978,9 @@ export default function PdfDocumentViewer({
         <NativeModal
           visible
           transparent={false}
-          animationType="slide"
+          animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
           presentationStyle="fullScreen"
-          statusBarTranslucent
+          statusBarTranslucent={Platform.OS === 'android'}
           onRequestClose={exitVerseFullScreen}
         >
           <View
@@ -3700,121 +4989,79 @@ export default function PdfDocumentViewer({
               { backgroundColor: resolvedReaderTheme.background },
             ]}
           >
-            {viewMode === 'book' ? (
-            <NativeScrollView
-              style={styles.nativeFullScreenScroll}
-              contentContainerStyle={[
-                styles.nativeFullScreenScrollContent,
-                isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null,
-              ]}
-              showsVerticalScrollIndicator={false}
-              onTouchStart={showOverlay}
-            >
+            {useFullScreenBookWebView ? (
               <View
-                style={[
-                  styles.nativeFullScreenPage,
-                  {
-                    borderColor: resolvedReaderTheme.accent,
-                    backgroundColor: resolvedReaderTheme.page,
-                    shadowColor: resolvedReaderTheme.shadow,
-                  },
-                ]}
+                style={styles.nativeFullScreenBookSurface}
+                onTouchStart={showOverlay}
               >
-                {nativeBookVerse ? (
-                  <Text
-                    style={[
-                      styles.nativeFullScreenVerseText,
-                      COMPLETE_VERSE_STYLE_MAP[
-                        nativeBookVerse.styleKey || 'classic'
-                      ] || COMPLETE_VERSE_STYLE_MAP.classic,
-                      { color: resolvedReaderTheme.text },
-                      {
-                        fontSize: verseFontSizePx,
-                        lineHeight: Math.round(verseFontSizePx * 1.45),
-                      },
-                    ]}
-                  >
-                    {renderNativeRichText(
-                      nativeBookVerse.contentHtml,
-                      `fullscreen-book-${nativeBookVerse.id}`
-                    )}
-                  </Text>
-                ) : null}
+                <WebView
+                  ref={fullScreenWebViewRef}
+                  key={`fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`}
+                  originWhitelist={['about:blank']}
+                  source={fullScreenWebViewSource}
+                  style={styles.nativeFullScreenWebView}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  startInLoadingState={false}
+                  setSupportMultipleWindows={false}
+                  mixedContentMode="never"
+                  scrollEnabled
+                  nestedScrollEnabled
+                  bounces={false}
+                  showsVerticalScrollIndicator={false}
+                  showsHorizontalScrollIndicator={false}
+                  scalesPageToFit={false}
+                  setBuiltInZoomControls={false}
+                  setDisplayZoomControls={false}
+                  onLoadStart={() => {
+                    setLoadingPdf(true);
+                    setViewerReady(false);
+                    setLoadingError(null);
+                  }}
+                  onLoadEnd={() => {
+                    setLoadingPdf(false);
+                    setViewerReady(true);
+                  }}
+                  onMessage={handleFullScreenWebViewMessage}
+                />
               </View>
-            </NativeScrollView>
-          ) : (
-            <NativeScrollView
-              ref={completeScrollRef}
-              style={styles.nativeFullScreenScroll}
-              contentContainerStyle={[
-                styles.nativeFullScreenScrollContent,
-                isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null,
-              ]}
-              showsVerticalScrollIndicator={false}
-              scrollEventThrottle={64}
-              onTouchStart={showOverlay}
-              onScrollBeginDrag={handleCompleteScrollBeginDrag}
-              onScrollEndDrag={handleCompleteScrollEndDrag}
-              onMomentumScrollEnd={handleCompleteMomentumScrollEnd}
-              onScroll={(event: { nativeEvent: { contentOffset: { y: number } } }) => {
-                if (!userDraggingCompleteScrollRef.current) {
-                  if (pendingCompleteScrollVerseIdRef.current) return;
-                  if (Date.now() < completeRestoreGuardUntilRef.current) return;
-                }
-                updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
-              }}
-              onContentSizeChange={() => {
-                if (!autoAlignCurrentVerse) return;
-                scrollCompleteToVerse(
-                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                  false
-                );
-              }}
-              onLayout={() => {
-                if (!autoAlignCurrentVerse) return;
-                scrollCompleteToVerse(
-                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                  false
-                );
-              }}
-            >
-              {completeVerses.map((verse) => {
-                const isActive =
-                  highlightCurrentVerse &&
-                  (readerVerseId === verse.id || activeVerseId === verse.id);
-                const textStyle =
-                  COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
-                  COMPLETE_VERSE_STYLE_MAP.classic;
-                return (
+            ) : useNativeFullScreenBookView ? (
+              <NativeScrollView
+                style={[
+                  styles.nativeFullScreenScroll,
+                  { backgroundColor: resolvedReaderTheme.background },
+                ]}
+                contentContainerStyle={[
+                  styles.nativeFullScreenBookContent,
+                  activeBookSpreadMode === 'double'
+                    ? styles.nativeFullScreenBookContentDouble
+                    : null,
+                ]}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+                onTouchStart={showOverlay}
+              >
+                {nativeBookVerses.map((verse) => (
                   <View
-                    key={verse.id}
-                    onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
-                      completeVerseYByIdRef.current[verse.id] =
-                        event.nativeEvent.layout.y;
-                      if (!autoAlignCurrentVerse) return;
-                      if (pendingCompleteScrollVerseIdRef.current === verse.id) {
-                        setTimeout(() => {
-                          scrollCompleteToVerse(verse.id, false);
-                        }, 0);
-                      }
-                    }}
+                    key={`fullscreen-book-${verse.id}`}
                     style={[
-                      styles.nativeFullScreenVerseBlock,
+                      styles.nativeBookPage,
+                      styles.nativeFullScreenBookPage,
+                      activeBookSpreadMode === 'double'
+                        ? styles.nativeFullScreenBookPageDouble
+                        : null,
                       {
-                        borderColor: isActive
-                          ? resolvedReaderTheme.accent
-                          : resolvedReaderTheme.border,
-                        backgroundColor: isActive
-                          ? resolvedReaderTheme.accentSurface
-                          : resolvedReaderTheme.page,
+                        borderColor: resolvedReaderTheme.accent,
+                        backgroundColor: resolvedReaderTheme.page,
+                        shadowColor: resolvedReaderTheme.shadow,
                       },
-                      isActive ? styles.nativeFullScreenVerseBlockActive : null,
                     ]}
                   >
                     <Text
                       style={[
-                        styles.nativeFullScreenVerseText,
-                        textStyle,
+                        styles.nativeBookVerseText,
+                        COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
+                          COMPLETE_VERSE_STYLE_MAP.classic,
                         { color: resolvedReaderTheme.text },
                         {
                           fontSize: verseFontSizePx,
@@ -3824,15 +5071,116 @@ export default function PdfDocumentViewer({
                     >
                       {renderNativeRichText(
                         verse.contentHtml,
-                        `fullscreen-complete-${verse.id}`
+                        `fullscreen-book-${verse.id}`
                       )}
                     </Text>
                   </View>
-                );
-              })}
-            </NativeScrollView>
-          )}
-          {nativeFullScreenControls}
+                ))}
+              </NativeScrollView>
+            ) : (
+              <NativeScrollView
+                ref={completeScrollRef}
+                style={styles.nativeFullScreenScroll}
+                contentContainerStyle={[
+                  styles.nativeFullScreenScrollContent,
+                  isFullScreenLandscape
+                    ? styles.nativeFullScreenScrollContentLandscape
+                    : null,
+                ]}
+                showsVerticalScrollIndicator={false}
+                scrollEventThrottle={64}
+                onTouchStart={showOverlay}
+                onScrollBeginDrag={handleCompleteScrollBeginDrag}
+                onScrollEndDrag={handleCompleteScrollEndDrag}
+                onMomentumScrollEnd={handleCompleteMomentumScrollEnd}
+                onScroll={(event: {
+                  nativeEvent: { contentOffset: { y: number } };
+                }) => {
+                  if (!userDraggingCompleteScrollRef.current) {
+                    if (pendingCompleteScrollVerseIdRef.current) return;
+                    if (Date.now() < completeRestoreGuardUntilRef.current)
+                      return;
+                  }
+                  updateCompleteAnchorFromOffset(
+                    event.nativeEvent.contentOffset.y
+                  );
+                }}
+                onContentSizeChange={() => {
+                  if (!autoAlignCurrentVerse) return;
+                  scrollCompleteToVerse(
+                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                    false
+                  );
+                }}
+                onLayout={() => {
+                  if (!autoAlignCurrentVerse) return;
+                  scrollCompleteToVerse(
+                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
+                    false
+                  );
+                }}
+              >
+                {completeVerses.map((verse) => {
+                  const isActive =
+                    highlightCurrentVerse &&
+                    (readerVerseId === verse.id || activeVerseId === verse.id);
+                  const textStyle =
+                    COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
+                    COMPLETE_VERSE_STYLE_MAP.classic;
+                  return (
+                    <View
+                      key={verse.id}
+                      onLayout={(event: {
+                        nativeEvent: { layout: { y: number } };
+                      }) => {
+                        completeVerseYByIdRef.current[verse.id] =
+                          event.nativeEvent.layout.y;
+                        if (!autoAlignCurrentVerse) return;
+                        if (
+                          pendingCompleteScrollVerseIdRef.current === verse.id
+                        ) {
+                          setTimeout(() => {
+                            scrollCompleteToVerse(verse.id, false);
+                          }, 0);
+                        }
+                      }}
+                      style={[
+                        styles.nativeFullScreenVerseBlock,
+                        {
+                          borderColor: isActive
+                            ? resolvedReaderTheme.accent
+                            : resolvedReaderTheme.border,
+                          backgroundColor: isActive
+                            ? resolvedReaderTheme.accentSurface
+                            : resolvedReaderTheme.page,
+                        },
+                        isActive
+                          ? styles.nativeFullScreenVerseBlockActive
+                          : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.nativeFullScreenVerseText,
+                          textStyle,
+                          { color: resolvedReaderTheme.text },
+                          {
+                            fontSize: verseFontSizePx,
+                            lineHeight: Math.round(verseFontSizePx * 1.45),
+                          },
+                        ]}
+                      >
+                        {renderNativeRichText(
+                          verse.contentHtml,
+                          `fullscreen-complete-${verse.id}`
+                        )}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </NativeScrollView>
+            )}
+            {showOverlayControls ? nativeFullScreenControls : null}
           </View>
         </NativeModal>
       </>
@@ -4100,28 +5448,30 @@ export default function PdfDocumentViewer({
           styles.viewerWrap,
           { borderColor: resolvedReaderTheme.border },
           useNativeCompleteVerseView || useNativeBookVerseView
-              ? { height: viewerHeight }
-              : inlineFullScreenActive
+            ? { height: viewerHeight }
+            : inlineFullScreenActive
               ? styles.viewerWrapFullScreen
               : { height: viewerHeight },
         ]}
         onLayout={
           contentMode === 'verse'
             ? (event: { nativeEvent: { layout: { height?: number } } }) => {
-                const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
+                const nextHeight = Math.round(
+                  event.nativeEvent.layout.height || 0
+                );
                 if (nextHeight > 0 && nextHeight !== viewerWrapHeight) {
                   setViewerWrapHeight(nextHeight);
                 }
               }
             : undefined
         }
-        {...(
-          viewMode === 'book' && contentMode === 'verse'
-            ? panResponder.panHandlers
-            : {}
-        )}
+        {...(viewMode === 'book' && contentMode === 'verse'
+          ? panResponder.panHandlers
+          : {})}
       >
-        {loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? (
+        {loadingPdf &&
+        !useNativeCompleteVerseView &&
+        !useNativeBookVerseView ? (
           <View
             style={[
               styles.loadingWrap,
@@ -4149,7 +5499,9 @@ export default function PdfDocumentViewer({
               ]}
               contentContainerStyle={[
                 styles.nativeBookScrollContent,
-                isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null,
+                isEmbeddedLandscape
+                  ? styles.nativeBookScrollContentCompact
+                  : null,
               ]}
               nestedScrollEnabled
               scrollEventThrottle={64}
@@ -4158,20 +5510,32 @@ export default function PdfDocumentViewer({
             >
               <View
                 style={[
-                  styles.nativeBookPage,
-                  {
-                    borderColor: resolvedReaderTheme.accent,
-                    backgroundColor: resolvedReaderTheme.page,
-                    shadowColor: resolvedReaderTheme.shadow,
-                  },
+                  styles.nativeBookPages,
+                  activeBookSpreadMode === 'double'
+                    ? styles.nativeBookPagesDouble
+                    : null,
                 ]}
               >
-                {nativeBookVerse ? (
+                {nativeBookVerses.map((verse) => (
+                  <View
+                    key={`book-${verse.id}`}
+                    style={[
+                      styles.nativeBookPage,
+                      activeBookSpreadMode === 'double'
+                        ? styles.nativeBookPageDouble
+                        : null,
+                      {
+                        borderColor: resolvedReaderTheme.accent,
+                        backgroundColor: resolvedReaderTheme.page,
+                        shadowColor: resolvedReaderTheme.shadow,
+                      },
+                    ]}
+                  >
                   <Text
                     style={[
                       styles.nativeBookVerseText,
                       COMPLETE_VERSE_STYLE_MAP[
-                        nativeBookVerse.styleKey || 'classic'
+                        verse.styleKey || 'classic'
                       ] || COMPLETE_VERSE_STYLE_MAP.classic,
                       { color: resolvedReaderTheme.text },
                       {
@@ -4181,14 +5545,17 @@ export default function PdfDocumentViewer({
                     ]}
                   >
                     {renderNativeRichText(
-                      nativeBookVerse.contentHtml,
-                      `book-${nativeBookVerse.id}`
+                      verse.contentHtml,
+                      `book-${verse.id}`
                     )}
                   </Text>
-                ) : null}
+                  </View>
+                ))}
               </View>
             </NativeScrollView>
-          ) : useNativeCompleteVerseView && contentMode === 'verse' && viewMode === 'continuous' ? (
+          ) : useNativeCompleteVerseView &&
+            contentMode === 'verse' &&
+            viewMode === 'continuous' ? (
             <NativeScrollView
               ref={completeScrollRef}
               style={[
@@ -4197,7 +5564,9 @@ export default function PdfDocumentViewer({
               ]}
               contentContainerStyle={[
                 styles.completeScrollContent,
-                isEmbeddedLandscape ? styles.completeScrollContentCompact : null,
+                isEmbeddedLandscape
+                  ? styles.completeScrollContentCompact
+                  : null,
               ]}
               nestedScrollEnabled
               scrollEventThrottle={64}
@@ -4206,12 +5575,16 @@ export default function PdfDocumentViewer({
               onScrollBeginDrag={handleCompleteScrollBeginDrag}
               onScrollEndDrag={handleCompleteScrollEndDrag}
               onMomentumScrollEnd={handleCompleteMomentumScrollEnd}
-              onScroll={(event: { nativeEvent: { contentOffset: { y: number } } }) => {
+              onScroll={(event: {
+                nativeEvent: { contentOffset: { y: number } };
+              }) => {
                 if (!userDraggingCompleteScrollRef.current) {
                   if (pendingCompleteScrollVerseIdRef.current) return;
                   if (Date.now() < completeRestoreGuardUntilRef.current) return;
                 }
-                updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+                updateCompleteAnchorFromOffset(
+                  event.nativeEvent.contentOffset.y
+                );
               }}
               onContentSizeChange={() => {
                 if (!autoAlignCurrentVerse) return;
@@ -4228,292 +5601,336 @@ export default function PdfDocumentViewer({
                 );
               }}
             >
-                {completeVerses.map((verse) => {
-                  const isActive =
-                    highlightCurrentVerse &&
-                    (readerVerseId === verse.id || activeVerseId === verse.id);
-                  const textStyle =
-                    COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
-                    COMPLETE_VERSE_STYLE_MAP.classic;
-                  return (
-                    <View
-                      key={verse.id}
-                      onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
-                        completeVerseYByIdRef.current[verse.id] =
-                          event.nativeEvent.layout.y;
-                        if (!autoAlignCurrentVerse) return;
-                        if (pendingCompleteScrollVerseIdRef.current === verse.id) {
-                          setTimeout(() => {
-                            scrollCompleteToVerse(verse.id, false);
-                          }, 0);
-                        }
-                      }}
+              {completeVerses.map((verse) => {
+                const isActive =
+                  highlightCurrentVerse &&
+                  (readerVerseId === verse.id || activeVerseId === verse.id);
+                const textStyle =
+                  COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
+                  COMPLETE_VERSE_STYLE_MAP.classic;
+                return (
+                  <View
+                    key={verse.id}
+                    onLayout={(event: {
+                      nativeEvent: { layout: { y: number } };
+                    }) => {
+                      completeVerseYByIdRef.current[verse.id] =
+                        event.nativeEvent.layout.y;
+                      if (!autoAlignCurrentVerse) return;
+                      if (
+                        pendingCompleteScrollVerseIdRef.current === verse.id
+                      ) {
+                        setTimeout(() => {
+                          scrollCompleteToVerse(verse.id, false);
+                        }, 0);
+                      }
+                    }}
+                    style={[
+                      styles.completeVerseBlock,
+                      {
+                        borderColor: isActive
+                          ? resolvedReaderTheme.accent
+                          : resolvedReaderTheme.border,
+                        backgroundColor: isActive
+                          ? resolvedReaderTheme.accentSurface
+                          : resolvedReaderTheme.page,
+                        shadowColor: resolvedReaderTheme.shadow,
+                      },
+                      isActive ? styles.completeVerseBlockActive : null,
+                    ]}
+                  >
+                    <Text
                       style={[
-                        styles.completeVerseBlock,
+                        styles.completeVerseText,
+                        textStyle,
+                        { color: resolvedReaderTheme.text },
                         {
-                          borderColor: isActive
-                            ? resolvedReaderTheme.accent
-                            : resolvedReaderTheme.border,
-                          backgroundColor: isActive
-                            ? resolvedReaderTheme.accentSurface
-                            : resolvedReaderTheme.page,
-                          shadowColor: resolvedReaderTheme.shadow,
+                          fontSize: verseFontSizePx,
+                          lineHeight: Math.round(verseFontSizePx * 1.45),
                         },
-                        isActive ? styles.completeVerseBlockActive : null,
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.completeVerseText,
-                          textStyle,
-                          { color: resolvedReaderTheme.text },
-                          {
-                            fontSize: verseFontSizePx,
-                            lineHeight: Math.round(verseFontSizePx * 1.45),
-                          },
-                        ]}
-                      >
-                        {renderNativeRichText(
-                          verse.contentHtml,
-                          `complete-${verse.id}`
-                        )}
-                      </Text>
-                    </View>
-                  );
-                })}
+                      {renderNativeRichText(
+                        verse.contentHtml,
+                        `complete-${verse.id}`
+                      )}
+                    </Text>
+                  </View>
+                );
+              })}
             </NativeScrollView>
           ) : (
-          <WebView
-            ref={webViewRef}
-            key={`${viewerReloadKey}`}
-            originWhitelist={['about:blank']}
-            source={webViewSource}
-            style={[
-              styles.webview,
-              { flex: 1 },
-              inlineFullScreenActive ? styles.webviewFullScreen : null,
-            ]}
-            javaScriptEnabled
-            domStorageEnabled
-            startInLoadingState={false}
-            onLoadStart={() => {
-              setLoadingPdf(true);
-              setViewerReady(false);
-              setLoadingError(null);
-            }}
-            onLoadEnd={() => {
-              if (contentMode === 'verse') {
-                setLoadingPdf(false);
-                setViewerReady(true);
+            <WebView
+              ref={webViewRef}
+              key={`${viewerReloadKey}`}
+              originWhitelist={['about:blank']}
+              source={webViewSource}
+              style={[
+                styles.webview,
+                { flex: 1 },
+                inlineFullScreenActive ? styles.webviewFullScreen : null,
+              ]}
+              javaScriptEnabled
+              domStorageEnabled
+              startInLoadingState={false}
+              onLoadStart={() => {
+                setLoadingPdf(true);
+                setViewerReady(false);
+                setLoadingError(null);
+              }}
+              onLoadEnd={() => {
+                if (contentMode === 'verse') {
+                  setLoadingPdf(false);
+                  setViewerReady(true);
+                }
+              }}
+              setSupportMultipleWindows={false}
+              mixedContentMode="never"
+              allowFileAccess={usesLocalFileFallback}
+              allowFileAccessFromFileURLs={usesLocalFileFallback}
+              allowUniversalAccessFromFileURLs={usesLocalFileFallback}
+              scrollEnabled={contentMode === 'pdf' || isVerseFullScreen}
+              nestedScrollEnabled={
+                viewMode === 'book' || viewMode === 'continuous'
               }
-            }}
-            setSupportMultipleWindows={false}
-            mixedContentMode="never"
-            allowFileAccess={usesLocalFileFallback}
-            allowFileAccessFromFileURLs={usesLocalFileFallback}
-            allowUniversalAccessFromFileURLs={usesLocalFileFallback}
-            scrollEnabled={contentMode === 'pdf' || isVerseFullScreen}
-            nestedScrollEnabled={viewMode === 'book' || viewMode === 'continuous'}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-            showsHorizontalScrollIndicator={false}
-            scalesPageToFit={false}
-            setBuiltInZoomControls
-            setDisplayZoomControls={false}
-            pointerEvents="auto"
-            onTouchStart={showOverlay}
-            onRenderProcessGone={() => {
-              const message =
-                'The PDF viewer stopped unexpectedly. Please use Download PDF.';
-              setLoadingError(message);
-              setLoadingPdf(false);
-              setViewerReady(false);
-              onError?.({ message, code: 'render-process-gone' });
-            }}
-            onMessage={(event: { nativeEvent: { data?: string } }) => {
-              try {
-                const payload = JSON.parse(event.nativeEvent.data || '{}');
-                if (payload?.type === 'document-meta') {
-                  const nextPageCount = Number(payload.pageCount);
-                  if (Number.isInteger(nextPageCount) && nextPageCount > 0) {
-                    if (pageCountRef.current === nextPageCount) return;
-                    pageCountRef.current = nextPageCount;
-                    setPageCount(nextPageCount);
-                  }
-                  return;
-                }
-                if (payload?.type === 'verse-pages') {
-                  const nextPageById: Record<string, number> = {};
-                  const nextIdsByPage: Record<number, string[]> = {};
-                  const pages = Array.isArray(payload.pages) ? payload.pages : [];
-                  const nextSignature = JSON.stringify(pages);
-                  if (versePagesSignatureRef.current === nextSignature) return;
-                  versePagesSignatureRef.current = nextSignature;
-                  for (const page of pages) {
-                    const pageNumberValue = Number(page?.pageNumber);
-                    if (!Number.isInteger(pageNumberValue) || pageNumberValue <= 0) continue;
-                    const verseIds = Array.isArray(page?.verseIds) ? page.verseIds : [];
-                    nextIdsByPage[pageNumberValue] = verseIds.map((verseId: unknown) => String(verseId));
-                    for (const verseId of verseIds) {
-                      nextPageById[String(verseId)] = pageNumberValue;
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
+              scalesPageToFit={false}
+              setBuiltInZoomControls
+              setDisplayZoomControls={false}
+              pointerEvents="auto"
+              onTouchStart={showOverlay}
+              onRenderProcessGone={() => {
+                const message =
+                  'The PDF viewer stopped unexpectedly. Please use Download PDF.';
+                setLoadingError(message);
+                setLoadingPdf(false);
+                setViewerReady(false);
+                onError?.({ message, code: 'render-process-gone' });
+              }}
+              onMessage={(event: { nativeEvent: { data?: string } }) => {
+                try {
+                  const payload = JSON.parse(event.nativeEvent.data || '{}');
+                  if (payload?.type === 'document-meta') {
+                    const nextPageCount = Number(payload.pageCount);
+                    if (Number.isInteger(nextPageCount) && nextPageCount > 0) {
+                      if (pageCountRef.current === nextPageCount) return;
+                      pageCountRef.current = nextPageCount;
+                      setPageCount(nextPageCount);
                     }
+                    return;
                   }
-                  setVersePageById(nextPageById);
-                  setVerseIdsByPage(nextIdsByPage);
-                  return;
-                }
-                if (payload?.type === 'interaction') {
-                  showOverlay();
-                  return;
-                }
-        if (payload?.type === 'ready') {
-          setLoadingPdf(false);
-          setViewerReady(true);
-          onReady?.({ pageCount: pageCountRef.current });
-          return;
-        }
-                if (payload?.type === 'verse-zoom') {
-                  if (contentMode !== 'verse') return;
-                  const deltaSteps = Number(payload.deltaSteps || 0);
-                  adjustVerseFontSize(deltaSteps);
-                  return;
-                }
-                if (payload?.type === 'content-height') {
-                  return;
-                }
-                if (payload?.type === 'book-page-size') {
-                  if (contentMode !== 'pdf') return;
-                  const nextHeight = Math.min(
-                    maxPdfBookViewerHeight,
-                    Math.max(320, Math.ceil(Number(payload.height) || 0))
-                  );
-                  setPdfBookViewerHeight((current) =>
-                    current === nextHeight ? current : nextHeight
-                  );
-                  return;
-                }
-                if (payload?.type === 'error') {
-                  const message =
-                    typeof payload.message === 'string' && payload.message
-                      ? payload.message
-                      : 'Failed to load PDF.';
-                  const errorCode =
-                    typeof payload.code === 'string' ? payload.code : '';
+                  if (payload?.type === 'verse-pages') {
+                    const nextPageById: Record<string, number> = {};
+                    const nextIdsByPage: Record<number, string[]> = {};
+                    const pages = Array.isArray(payload.pages)
+                      ? payload.pages
+                      : [];
+                    const nextSignature = JSON.stringify(pages);
+                    if (versePagesSignatureRef.current === nextSignature)
+                      return;
+                    versePagesSignatureRef.current = nextSignature;
+                    for (const page of pages) {
+                      const pageNumberValue = Number(page?.pageNumber);
+                      if (
+                        !Number.isInteger(pageNumberValue) ||
+                        pageNumberValue <= 0
+                      )
+                        continue;
+                      const verseIds = Array.isArray(page?.verseIds)
+                        ? page.verseIds
+                        : [];
+                      nextIdsByPage[pageNumberValue] = verseIds.map(
+                        (verseId: unknown) => String(verseId)
+                      );
+                      for (const verseId of verseIds) {
+                        nextPageById[String(verseId)] = pageNumberValue;
+                      }
+                    }
+                    setVersePageById(nextPageById);
+                    setVerseIdsByPage(nextIdsByPage);
+                    return;
+                  }
+                  if (payload?.type === 'interaction') {
+                    showOverlay();
+                    return;
+                  }
+                  if (payload?.type === 'ready') {
+                    setLoadingPdf(false);
+                    setViewerReady(true);
+                    onReady?.({ pageCount: pageCountRef.current });
+                    return;
+                  }
+                  if (payload?.type === 'verse-zoom') {
+                    if (contentMode !== 'verse') return;
+                    const deltaSteps = Number(payload.deltaSteps || 0);
+                    adjustVerseFontSize(deltaSteps);
+                    return;
+                  }
+                  if (payload?.type === 'content-height') {
+                    return;
+                  }
+                  if (payload?.type === 'book-page-size') {
+                    if (contentMode !== 'pdf') return;
+                    const nextHeight = Math.min(
+                      maxPdfBookViewerHeight,
+                      Math.max(320, Math.ceil(Number(payload.height) || 0))
+                    );
+                    setPdfBookViewerHeight((current) =>
+                      current === nextHeight ? current : nextHeight
+                    );
+                    return;
+                  }
+                  if (payload?.type === 'error') {
+                    const message =
+                      typeof payload.message === 'string' && payload.message
+                        ? payload.message
+                        : 'Failed to load PDF.';
+                    const errorCode =
+                      typeof payload.code === 'string' ? payload.code : '';
 
+                    if (
+                      contentMode === 'pdf' &&
+                      enableLocalFallback &&
+                      errorCode === 'fetch-failed' &&
+                      !triedLocalFileFallback
+                    ) {
+                      setTriedLocalFileFallback(true);
+                      setLoadingPdf(true);
+                      setLoadingError(null);
 
-                  if (contentMode === 'pdf' && enableLocalFallback && errorCode === 'fetch-failed' && !triedLocalFileFallback) {
-                    setTriedLocalFileFallback(true);
-                    setLoadingPdf(true);
-                    setLoadingError(null);
-
-                    void (async () => {
-                      try {
-                        const downloaded = await File.downloadFileAsync(
-                          resolvedDownloadUrl,
-                          new File(Paths.cache, downloadName),
-                          { idempotent: true }
-                        );
-                        if (!downloaded.uri) {
-                          setLoadingError(`Downloaded fallback file does not exist at: ${downloaded.uri}`);
-                          setLoadingPdf(false);
-                          return;
-                        }
-
-                        if (Platform.OS === 'android') {
-                          await stopStaticServer();
-
-                          if (!hasNativeStaticServer()) {
+                      void (async () => {
+                        try {
+                          const downloaded = await File.downloadFileAsync(
+                            resolvedDownloadUrl,
+                            new File(Paths.cache, downloadName),
+                            { idempotent: true }
+                          );
+                          if (!downloaded.uri) {
                             setLoadingError(
-                              'In-app local PDF fallback requires a development build. Please use Download PDF in Expo Go.'
+                              `Downloaded fallback file does not exist at: ${downloaded.uri}`
                             );
                             setLoadingPdf(false);
                             return;
                           }
 
-                          const filePath = downloaded.uri.replace('file://', '');
-                          const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
-                          const fileBase = filePath.substring(filePath.lastIndexOf('/') + 1);
-                          let ServerClass: StaticServerCtor | null = null;
-                          try {
-                            const mod = await import('react-native-static-server');
-                            ServerClass = mod?.default || null;
-                          } catch {
-                            ServerClass = null;
-                          }
+                          if (Platform.OS === 'android') {
+                            await stopStaticServer();
 
-                          if (!ServerClass) {
-                            setLoadingError('In-app local PDF fallback is unavailable in this build. Please use Download PDF.');
-                            setLoadingPdf(false);
-                            return;
-                          }
+                            if (!hasNativeStaticServer()) {
+                              setLoadingError(
+                                'In-app local PDF fallback requires a development build. Please use Download PDF in Expo Go.'
+                              );
+                              setLoadingPdf(false);
+                              return;
+                            }
 
-                          const server = new ServerClass(0, dirPath, { localOnly: true });
-                          if (!server || typeof server.start !== 'function') {
-                            setLocalPdfUrl(downloaded.uri);
-                          } else {
-                            const serverUrl = await server.start();
-                            if (!serverUrl) {
+                            const filePath = downloaded.uri.replace(
+                              'file://',
+                              ''
+                            );
+                            const dirPath = filePath.substring(
+                              0,
+                              filePath.lastIndexOf('/')
+                            );
+                            const fileBase = filePath.substring(
+                              filePath.lastIndexOf('/') + 1
+                            );
+                            let ServerClass: StaticServerCtor | null = null;
+                            try {
+                              const mod =
+                                await import('react-native-static-server');
+                              ServerClass = mod?.default || null;
+                            } catch {
+                              ServerClass = null;
+                            }
+
+                            if (!ServerClass) {
+                              setLoadingError(
+                                'In-app local PDF fallback is unavailable in this build. Please use Download PDF.'
+                              );
+                              setLoadingPdf(false);
+                              return;
+                            }
+
+                            const server = new ServerClass(0, dirPath, {
+                              localOnly: true,
+                            });
+                            if (!server || typeof server.start !== 'function') {
                               setLocalPdfUrl(downloaded.uri);
                             } else {
-                              staticServerRef.current = server;
-                              setLocalPdfUrl(`${serverUrl}/${encodeURIComponent(fileBase)}`);
+                              const serverUrl = await server.start();
+                              if (!serverUrl) {
+                                setLocalPdfUrl(downloaded.uri);
+                              } else {
+                                staticServerRef.current = server;
+                                setLocalPdfUrl(
+                                  `${serverUrl}/${encodeURIComponent(fileBase)}`
+                                );
+                              }
                             }
+                          } else {
+                            setLocalPdfUrl(downloaded.uri);
                           }
-                        } else {
-                          setLocalPdfUrl(downloaded.uri);
+
+                          setViewerReloadKey((value) => value + 1);
+                        } catch (fallbackError) {
+                          const fallbackMessage =
+                            fallbackError instanceof Error
+                              ? fallbackError.message
+                              : 'Unable to load this PDF in-app.';
+                          setLoadingError(`Fallback error: ${fallbackMessage}`);
+                          setLoadingPdf(false);
                         }
+                      })();
+                      return;
+                    }
 
-                        setViewerReloadKey((value) => value + 1);
-                      } catch (fallbackError) {
-                        const fallbackMessage =
-                          fallbackError instanceof Error
-                            ? fallbackError.message
-                            : 'Unable to load this PDF in-app.';
-                        setLoadingError(`Fallback error: ${fallbackMessage}`);
-                        setLoadingPdf(false);
-                      }
-                    })();
+                    setLoadingError(
+                      errorCode === 'fetch-failed'
+                        ? `Unable to load this PDF in-app. Tried: ${effectivePdfUrl}`
+                        : message
+                    );
+                    onError?.({ message, code: errorCode || undefined });
+                    setLoadingPdf(false);
                     return;
                   }
-
-                  setLoadingError(
-                    errorCode === 'fetch-failed'
-                      ? `Unable to load this PDF in-app. Tried: ${effectivePdfUrl}`
-                      : message
-                  );
-                  onError?.({ message, code: errorCode || undefined });
-                  setLoadingPdf(false);
-                  return;
-                }
-                if (payload?.type !== 'page-change') return;
-                if (viewMode === 'book') return;
-                if (viewMode === 'continuous' && payload?.isAutoScroll !== true) return;
-                const nextPage = Number(payload.pageNumber);
-                if (!Number.isInteger(nextPage) || nextPage <= 0) return;
-                const pendingSync = programmaticViewerSyncRef.current;
-                if (pendingSync) {
-                  if (Date.now() > pendingSync.expiresAt) {
-                    programmaticViewerSyncRef.current = null;
-                  } else if (pendingSync.mode !== viewMode || pendingSync.page !== nextPage) {
+                  if (payload?.type !== 'page-change') return;
+                  if (
+                    viewMode === 'continuous' &&
+                    payload?.isAutoScroll !== true
+                  )
                     return;
-                  } else {
-                    programmaticViewerSyncRef.current = null;
+                  const nextPage = Number(payload.pageNumber);
+                  if (!Number.isInteger(nextPage) || nextPage <= 0) return;
+                  const pendingSync = programmaticViewerSyncRef.current;
+                  if (pendingSync) {
+                    if (Date.now() > pendingSync.expiresAt) {
+                      programmaticViewerSyncRef.current = null;
+                    } else if (
+                      pendingSync.mode !== viewMode ||
+                      pendingSync.page !== nextPage
+                    ) {
+                      return;
+                    } else {
+                      programmaticViewerSyncRef.current = null;
+                    }
                   }
+                  if (nextPage === pageNumber || !isPageHydrated) return;
+                  if (viewMode === 'continuous') {
+                    suppressCompleteModeSyncRef.current = true;
+                  }
+                  pageNumberRef.current = nextPage;
+                  void setPageNumber(nextPage);
+                  if (viewMode === 'continuous') {
+                    showOverlay();
+                  }
+                } catch {
+                  // ignore malformed payloads
                 }
-                if (nextPage === pageNumber || !isPageHydrated) return;
-                if (viewMode === 'continuous') {
-                  suppressCompleteModeSyncRef.current = true;
-                }
-                pageNumberRef.current = nextPage;
-                void setPageNumber(nextPage);
-                if (viewMode === 'continuous') {
-                  showOverlay();
-                }
-              } catch {
-                // ignore malformed payloads
-              }
-            }}
-          />
+              }}
+            />
           )
         ) : (
           <View style={styles.loadingWrap}>
@@ -4534,35 +5951,99 @@ export default function PdfDocumentViewer({
           </View>
         )}
         {!loadingError && showOverlayControls ? (
-          <View
-            pointerEvents="box-none"
-            style={styles.viewerOverlay}
-          >
+          <View pointerEvents="box-none" style={styles.viewerOverlay}>
             <View style={styles.overlayBottomCenter}>
               {hasVerseAudio ? (
                 <View pointerEvents="auto" style={styles.overlayAudioPanel}>
                   <View style={styles.overlayAudioControls}>
                     <Pressable
+                      onPress={playPreviousMappedVerse}
+                      disabled={!canPlayPreviousMappedVerse}
+                      style={[
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton,
+                        !canPlayPreviousMappedVerse
+                          ? styles.overlayButtonDisabled
+                          : null,
+                      ]}
+                      accessibilityLabel="Play previous mapped verse"
+                      >
+                        <Ionicons
+                          name="play-skip-back-outline"
+                          size={20}
+                          color="#fff"
+                        />
+                      </Pressable>
+                    <Pressable
+                      onPress={restartMappedVerse}
+                      disabled={!canRestartMappedVerse}
+                      style={[
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton,
+                        !canRestartMappedVerse
+                          ? styles.overlayButtonDisabled
+                          : null,
+                      ]}
+                      accessibilityLabel="Restart mapped verse"
+                    >
+                      <Ionicons name="refresh-outline" size={20} color="#fff" />
+                    </Pressable>
+                    <Pressable
                       onPress={toggleVerseAudio}
-                      style={[styles.overlayAudioButton, styles.overlayAudioPlayButton]}
-                      accessibilityLabel={verseAudioStatus.playing ? 'Pause audio' : 'Play audio'}
+                      style={[
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton,
+                      ]}
+                      accessibilityLabel={
+                        verseAudioStatus.playing ? 'Pause audio' : 'Play audio'
+                      }
                     >
                       <Ionicons
-                        name={verseAudioStatus.playing ? 'pause-outline' : 'play-outline'}
+                        name={
+                          verseAudioStatus.playing
+                            ? 'pause-outline'
+                            : 'play-outline'
+                        }
                         size={20}
                         color="#fff"
                       />
                     </Pressable>
                     <Pressable
-                      onLayout={(event: { nativeEvent: { layout: { width?: number } } }) => {
-                        const nextWidth = Math.max(1, Math.round(event.nativeEvent.layout.width || 1));
+                      onPress={playNextMappedVerse}
+                      disabled={!canPlayNextMappedVerse}
+                      style={[
+                        styles.overlayAudioButton,
+                        styles.overlayAudioPlayButton,
+                        !canPlayNextMappedVerse
+                          ? styles.overlayButtonDisabled
+                          : null,
+                      ]}
+                      accessibilityLabel="Play next mapped verse"
+                    >
+                      <Ionicons
+                        name="play-skip-forward-outline"
+                        size={20}
+                        color="#fff"
+                      />
+                    </Pressable>
+                    <Pressable
+                      onLayout={(event: {
+                        nativeEvent: { layout: { width?: number } };
+                      }) => {
+                        const nextWidth = Math.max(
+                          1,
+                          Math.round(event.nativeEvent.layout.width || 1)
+                        );
                         setAudioSliderWidth((current) =>
                           current === nextWidth ? current : nextWidth
                         );
                       }}
-                      onPress={(event: { nativeEvent: { locationX?: number } }) => {
-                        const locationX = Math.max(0, event.nativeEvent.locationX || 0);
-                        seekActiveVerseAudioToRatio(locationX / audioSliderWidth);
+                      onPress={(event: {
+                        nativeEvent: { locationX?: number };
+                      }) => {
+                        seekAudioByLocationX(
+                          event.nativeEvent.locationX || 0
+                        );
                       }}
                       disabled={!activeVerseAudio}
                       style={[
@@ -4570,111 +6051,116 @@ export default function PdfDocumentViewer({
                         !activeVerseAudio ? styles.overlayButtonDisabled : null,
                       ]}
                       accessibilityLabel="Seek mapped audio"
+                      {...audioSliderPanResponder.panHandlers}
                     >
                       <View style={styles.overlayAudioSliderTrack}>
                         <View
                           style={[
                             styles.overlayAudioSliderFill,
-                            { width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%` },
+                            {
+                              width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%`,
+                            },
                           ]}
                         />
                       </View>
                     </Pressable>
                     {verseAudioTimeText ? (
-                      <Text style={styles.overlayAudioTime}>{verseAudioTimeText}</Text>
+                      <Text style={styles.overlayAudioTime}>
+                        {verseAudioTimeText}
+                      </Text>
                     ) : null}
                   </View>
                 </View>
               ) : null}
               <View style={styles.overlayZoomGroup}>
-                  {viewMode === 'book' ? (
-                    <Pressable
-                      onPress={goToPreviousPage}
-                      disabled={pageNumber <= 1}
-                      style={[
-                        styles.overlayZoomButton,
-                        pageNumber <= 1 ? styles.overlayButtonDisabled : null,
-                      ]}
-                      accessibilityLabel="Previous page"
-                    >
-                      <Text style={styles.overlayButtonText}>Prev</Text>
-                    </Pressable>
-                  ) : null}
+                {viewMode === 'book' ? (
                   <Pressable
-                    onPress={() =>
-                      contentMode === 'verse'
-                        ? zoomOutVerse()
-                        : adjustPdfZoom(-PDF_ZOOM_STEP)
-                    }
-                    disabled={zoomOutDisabled}
+                    onPress={goToPreviousPage}
+                    disabled={pageNumber <= 1}
                     style={[
                       styles.overlayZoomButton,
-                      zoomOutDisabled ? styles.overlayButtonDisabled : null,
+                      pageNumber <= 1 ? styles.overlayButtonDisabled : null,
                     ]}
-                    accessibilityLabel="Zoom out"
+                    accessibilityLabel="Previous page"
                   >
-                    <Ionicons
-                      name="remove-outline"
-                      size={20}
-                      color={zoomOutDisabled ? '#d4d4d8' : '#fff'}
-                    />
+                    <Text style={styles.overlayButtonText}>Prev</Text>
                   </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() =>
+                    contentMode === 'verse'
+                      ? zoomOutVerse()
+                      : adjustPdfZoom(-PDF_ZOOM_STEP)
+                  }
+                  disabled={zoomOutDisabled}
+                  style={[
+                    styles.overlayZoomButton,
+                    zoomOutDisabled ? styles.overlayButtonDisabled : null,
+                  ]}
+                  accessibilityLabel="Zoom out"
+                >
+                  <Ionicons
+                    name="remove-outline"
+                    size={20}
+                    color={zoomOutDisabled ? '#d4d4d8' : '#fff'}
+                  />
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    contentMode === 'verse'
+                      ? zoomInVerse()
+                      : adjustPdfZoom(PDF_ZOOM_STEP)
+                  }
+                  disabled={zoomInDisabled}
+                  style={[
+                    styles.overlayZoomButton,
+                    zoomInDisabled ? styles.overlayButtonDisabled : null,
+                  ]}
+                  accessibilityLabel="Zoom in"
+                >
+                  <Ionicons
+                    name="add-outline"
+                    size={20}
+                    color={zoomInDisabled ? '#d4d4d8' : '#fff'}
+                  />
+                </Pressable>
+                {contentMode === 'verse' ? (
                   <Pressable
-                    onPress={() =>
-                      contentMode === 'verse'
-                        ? zoomInVerse()
-                        : adjustPdfZoom(PDF_ZOOM_STEP)
+                    onPress={toggleVerseFullScreen}
+                    style={styles.overlayZoomButton}
+                    accessibilityLabel={
+                      isVerseFullScreen
+                        ? 'Exit fullscreen reader'
+                        : 'Enter fullscreen reader'
                     }
-                    disabled={zoomInDisabled}
-                    style={[
-                      styles.overlayZoomButton,
-                      zoomInDisabled ? styles.overlayButtonDisabled : null,
-                    ]}
-                    accessibilityLabel="Zoom in"
                   >
                     <Ionicons
-                      name="add-outline"
-                      size={20}
-                      color={zoomInDisabled ? '#d4d4d8' : '#fff'}
-                    />
-                  </Pressable>
-                  {contentMode === 'verse' ? (
-                    <Pressable
-                      onPress={toggleVerseFullScreen}
-                      style={styles.overlayZoomButton}
-                      accessibilityLabel={
+                      name={
                         isVerseFullScreen
-                          ? 'Exit fullscreen reader'
-                          : 'Enter fullscreen reader'
+                          ? 'contract-outline'
+                          : 'expand-outline'
                       }
-                    >
-                      <Ionicons
-                        name={
-                          isVerseFullScreen
-                            ? 'contract-outline'
-                            : 'expand-outline'
-                        }
-                        size={20}
-                        color="#fff"
-                      />
-                    </Pressable>
-                  ) : null}
-                  {viewMode === 'book' ? (
-                    <Pressable
-                      onPress={goToNextPage}
-                      disabled={Boolean(pageCount && pageNumber >= pageCount)}
-                      style={[
-                        styles.overlayZoomButton,
-                        pageCount && pageNumber >= pageCount
-                          ? styles.overlayButtonDisabled
-                          : null,
-                      ]}
-                      accessibilityLabel="Next page"
-                    >
-                      <Text style={styles.overlayButtonText}>Next</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+                      size={20}
+                      color="#fff"
+                    />
+                  </Pressable>
+                ) : null}
+                {viewMode === 'book' ? (
+                  <Pressable
+                    onPress={goToNextPage}
+                    disabled={Boolean(pageCount && pageNumber >= pageCount)}
+                    style={[
+                      styles.overlayZoomButton,
+                      pageCount && pageNumber >= pageCount
+                        ? styles.overlayButtonDisabled
+                        : null,
+                    ]}
+                    accessibilityLabel="Next page"
+                  >
+                    <Text style={styles.overlayButtonText}>Next</Text>
+                  </Pressable>
+                ) : null}
+              </View>
 
               <View style={styles.overlayPageBadge}>
                 <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
@@ -4692,7 +6178,7 @@ export default function PdfDocumentViewer({
 
   return (
     <>
-      {readerContent}
+      {suppressInlineReaderSurface ? null : readerContent}
       {nativeFullScreenOverlay}
     </>
   );
@@ -4723,6 +6209,14 @@ const styles = StyleSheet.create({
   nativeFullScreenWebView: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  nativeFullScreenBookSurface: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   nativeFullScreenScroll: {
     flex: 1,
@@ -4953,6 +6447,15 @@ const styles = StyleSheet.create({
   nativeBookScrollContentCompact: {
     paddingBottom: 82,
   },
+  nativeBookPages: {
+    width: '100%',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  nativeBookPagesDouble: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
   completeVerseBlock: {
     borderRadius: 12,
     borderWidth: 1,
@@ -5010,6 +6513,27 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
+  },
+  nativeBookPageDouble: {
+    flex: 1,
+    width: undefined,
+  },
+  nativeFullScreenBookContent: {
+    minHeight: '100%',
+    padding: 10,
+    paddingBottom: 104,
+  },
+  nativeFullScreenBookContentDouble: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  nativeFullScreenBookPage: {
+    minHeight: '100%',
+  },
+  nativeFullScreenBookPageDouble: {
+    flex: 1,
+    width: undefined,
   },
   nativeBookVerseText: {
     color: '#111827',
@@ -5122,6 +6646,15 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     width: 40,
     height: 40,
+    backgroundColor: 'rgba(24, 24, 27, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  overlayTextButton: {
+    borderRadius: 18,
+    minWidth: 112,
+    height: 36,
+    paddingHorizontal: 12,
     backgroundColor: 'rgba(24, 24, 27, 0.85)',
     alignItems: 'center',
     justifyContent: 'center',
