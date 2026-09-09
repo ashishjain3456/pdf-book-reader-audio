@@ -84,6 +84,7 @@ export type PdfDocumentViewerProps = {
   verseLayout?: VerseLayoutConfig;
   renderRightActions?: (context: ReaderActionsContext) => React.ReactNode;
   onFullScreenChange?: (isFullScreen: boolean) => void;
+  hideControls?: boolean;
   readerTheme?: ReaderTheme;
 };
 
@@ -110,6 +111,9 @@ export type VerseLayoutConfig = {
   allowDoubleSpread?: boolean;
   autoAlignCurrentVerse?: boolean;
   highlightCurrentVerse?: boolean;
+  reserveControlsSpace?: boolean;
+  centerSinglePage?: boolean;
+  showPageBadge?: boolean;
   viewportWidthPx?: number;
   viewportHeightPx?: number;
   readerHeightPx?: number;
@@ -1133,6 +1137,9 @@ const buildVerseHtml = (
       spreadMode || (layout?.bookSpreadMode === 'double' ? 'double' : 'single'),
     enablePageTurnEffect: layout?.enablePageTurnEffect !== false,
     showSecondPage: showSecondPage ?? layout?.showSecondPage !== false,
+    reserveControlsSpace: layout?.reserveControlsSpace !== false,
+    centerSinglePage: layout?.centerSinglePage === true,
+    showPageBadge: layout?.showPageBadge !== false,
     viewportWidthPx: Math.max(
       320,
       Math.floor(Number(layout?.viewportWidthPx) || 360)
@@ -2673,6 +2680,7 @@ export default function PdfDocumentViewer({
   verseLayout,
   renderRightActions,
   onFullScreenChange,
+  hideControls = false,
   readerTheme,
 }: PdfDocumentViewerProps) {
   const [windowSize, setWindowSize] = useState(
@@ -3005,7 +3013,7 @@ export default function PdfDocumentViewer({
   const readerDocumentId =
     documentId?.trim() ||
     (contentMode === 'verse' ? `verse:${label}` : pdfUrl || label);
-  const showHeaderControls = !isVerseFullScreen;
+  const showHeaderControls = !hideControls && !isVerseFullScreen;
   const initialPageRef = useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0
       ? Math.trunc(Number(currentPage))
@@ -3325,15 +3333,16 @@ export default function PdfDocumentViewer({
     zoomLevelRef.current = nextZoom;
     setZoomLevel((value) => (value === nextZoom ? value : nextZoom));
     if (contentMode === 'verse') {
-      setVerseFontSizePx(
-        Math.max(
+      setVerseFontSizePx((value) => {
+        const nextFontSize = Math.max(
           verseZoomConfig.min,
           Math.min(
             verseZoomConfig.max,
             Math.round(verseZoomConfig.defaultSize * nextZoom)
           )
-        )
-      );
+        );
+        return value === nextFontSize ? value : nextFontSize;
+      });
     }
   }, [
     contentMode,
@@ -4578,6 +4587,29 @@ export default function PdfDocumentViewer({
   const nativeBookVerses = [nativeBookVerse, nativeSecondBookVerse].filter(
     (verse): verse is NonNullable<typeof nativeBookVerse> => verse !== null
   );
+  const reserveOverlayControlsSpace =
+    effectiveVerseLayout?.reserveControlsSpace !== false;
+  const centerSinglePageVerse =
+    effectiveVerseLayout?.centerSinglePage === true &&
+    nativeBookVerses.length === 1;
+  const inlineBookPageFillStyle = centerSinglePageVerse
+    ? {
+        minHeight: Math.max(
+          260,
+          viewerHeight - (reserveOverlayControlsSpace ? 114 : 20)
+        ),
+        justifyContent: 'center' as const,
+      }
+    : null;
+  const fullScreenBookPageFillStyle = centerSinglePageVerse
+    ? {
+        minHeight: Math.max(
+          260,
+          visibleViewportHeight - (reserveOverlayControlsSpace ? 114 : 20)
+        ),
+        justifyContent: 'center' as const,
+      }
+    : null;
   const verseAudioCurrentSeconds = Math.max(
     0,
     verseAudioStatus.currentTime || 0
@@ -4967,9 +4999,11 @@ export default function PdfDocumentViewer({
           </Pressable>
         ) : null}
       </View>
-      <View style={styles.overlayPageBadge}>
-        <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
-      </View>
+      {effectiveVerseLayout?.showPageBadge !== false ? (
+        <View style={styles.overlayPageBadge}>
+          <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
+        </View>
+      ) : null}
     </View>
   );
   const nativeFullScreenOverlay =
@@ -5036,6 +5070,9 @@ export default function PdfDocumentViewer({
                   activeBookSpreadMode === 'double'
                     ? styles.nativeFullScreenBookContentDouble
                     : null,
+                  !reserveOverlayControlsSpace
+                    ? styles.noOverlayControlsPadding
+                    : null,
                 ]}
                 nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
@@ -5050,6 +5087,7 @@ export default function PdfDocumentViewer({
                       activeBookSpreadMode === 'double'
                         ? styles.nativeFullScreenBookPageDouble
                         : null,
+                      fullScreenBookPageFillStyle,
                       {
                         borderColor: resolvedReaderTheme.accent,
                         backgroundColor: resolvedReaderTheme.page,
@@ -5180,7 +5218,7 @@ export default function PdfDocumentViewer({
                 })}
               </NativeScrollView>
             )}
-            {showOverlayControls ? nativeFullScreenControls : null}
+            {!hideControls && showOverlayControls ? nativeFullScreenControls : null}
           </View>
         </NativeModal>
       </>
@@ -5502,6 +5540,9 @@ export default function PdfDocumentViewer({
                 isEmbeddedLandscape
                   ? styles.nativeBookScrollContentCompact
                   : null,
+                !reserveOverlayControlsSpace
+                  ? styles.noOverlayControlsPadding
+                  : null,
               ]}
               nestedScrollEnabled
               scrollEventThrottle={64}
@@ -5524,6 +5565,7 @@ export default function PdfDocumentViewer({
                       activeBookSpreadMode === 'double'
                         ? styles.nativeBookPageDouble
                         : null,
+                      inlineBookPageFillStyle,
                       {
                         borderColor: resolvedReaderTheme.accent,
                         backgroundColor: resolvedReaderTheme.page,
@@ -5566,6 +5608,9 @@ export default function PdfDocumentViewer({
                 styles.completeScrollContent,
                 isEmbeddedLandscape
                   ? styles.completeScrollContentCompact
+                  : null,
+                !reserveOverlayControlsSpace
+                  ? styles.noOverlayControlsPadding
                   : null,
               ]}
               nestedScrollEnabled
@@ -5950,7 +5995,7 @@ export default function PdfDocumentViewer({
             </Pressable>
           </View>
         )}
-        {!loadingError && showOverlayControls ? (
+        {!loadingError && !hideControls && showOverlayControls ? (
           <View pointerEvents="box-none" style={styles.viewerOverlay}>
             <View style={styles.overlayBottomCenter}>
               {hasVerseAudio ? (
@@ -6162,9 +6207,11 @@ export default function PdfDocumentViewer({
                 ) : null}
               </View>
 
-              <View style={styles.overlayPageBadge}>
-                <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
-              </View>
+              {effectiveVerseLayout?.showPageBadge !== false ? (
+                <View style={styles.overlayPageBadge}>
+                  <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -6522,6 +6569,9 @@ const styles = StyleSheet.create({
     minHeight: '100%',
     padding: 10,
     paddingBottom: 104,
+  },
+  noOverlayControlsPadding: {
+    paddingBottom: 0,
   },
   nativeFullScreenBookContentDouble: {
     flexDirection: 'row',

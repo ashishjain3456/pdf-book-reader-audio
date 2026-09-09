@@ -60,6 +60,7 @@ type PdfDocumentViewerProps = {
     verseLayout?: VerseLayoutConfig;
     renderRightActions?: (context: ReaderActionsContext) => React.ReactNode;
     onFullScreenChange?: (isFullScreen: boolean) => void;
+    hideControls?: boolean;
     readerTheme?: ReaderTheme;
 };
 type ReaderVerse = {
@@ -84,10 +85,13 @@ type VerseLayoutConfig = {
     allowDoubleSpread?: boolean;
     autoAlignCurrentVerse?: boolean;
     highlightCurrentVerse?: boolean;
+    reserveControlsSpace?: boolean;
+    centerSinglePage?: boolean;
+    showPageBadge?: boolean;
     viewportWidthPx?: number;
     viewportHeightPx?: number;
     readerHeightPx?: number;
 };
-declare function PdfDocumentViewer({ pdfUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, readerTheme, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
+declare function PdfDocumentViewer({ pdfUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, readerTheme, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
 
 export { PdfDocumentViewer, type PdfDocumentViewerProps, type ReaderActionsContext, type ReaderState, type ReaderVerse, type ReaderViewMode, VerseAudioMapping, type VerseLayoutConfig };

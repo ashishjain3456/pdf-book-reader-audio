@@ -900,6 +900,9 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
     bookSpreadMode: spreadMode || (layout?.bookSpreadMode === "double" ? "double" : "single"),
     enablePageTurnEffect: layout?.enablePageTurnEffect !== false,
     showSecondPage: showSecondPage ?? layout?.showSecondPage !== false,
+    reserveControlsSpace: layout?.reserveControlsSpace !== false,
+    centerSinglePage: layout?.centerSinglePage === true,
+    showPageBadge: layout?.showPageBadge !== false,
     viewportWidthPx: Math.max(
       320,
       Math.floor(Number(layout?.viewportWidthPx) || 360)
@@ -2432,6 +2435,7 @@ function PdfDocumentViewer({
   verseLayout,
   renderRightActions,
   onFullScreenChange,
+  hideControls = false,
   readerTheme
 }) {
   const [windowSize, setWindowSize] = useState(
@@ -2666,7 +2670,7 @@ function PdfDocumentViewer({
   const label = filename?.trim() || title?.trim() || (contentMode === "verse" ? "Verse document" : "PDF document");
   const shareUrl = (downloadUrl || pdfUrl || "").trim();
   documentId?.trim() || (contentMode === "verse" ? `verse:${label}` : pdfUrl || label);
-  const showHeaderControls = !isVerseFullScreen;
+  const showHeaderControls = !hideControls && !isVerseFullScreen;
   const initialPageRef = useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0 ? Math.trunc(Number(currentPage)) : 1
   );
@@ -2925,15 +2929,16 @@ function PdfDocumentViewer({
     zoomLevelRef.current = nextZoom;
     setZoomLevel((value) => value === nextZoom ? value : nextZoom);
     if (contentMode === "verse") {
-      setVerseFontSizePx(
-        Math.max(
+      setVerseFontSizePx((value) => {
+        const nextFontSize = Math.max(
           verseZoomConfig.min,
           Math.min(
             verseZoomConfig.max,
             Math.round(verseZoomConfig.defaultSize * nextZoom)
           )
-        )
-      );
+        );
+        return value === nextFontSize ? value : nextFontSize;
+      });
     }
   }, [
     contentMode,
@@ -3978,6 +3983,22 @@ ${shareUrl}`;
   const nativeBookVerses = [nativeBookVerse, nativeSecondBookVerse].filter(
     (verse) => verse !== null
   );
+  const reserveOverlayControlsSpace = effectiveVerseLayout?.reserveControlsSpace !== false;
+  const centerSinglePageVerse = effectiveVerseLayout?.centerSinglePage === true && nativeBookVerses.length === 1;
+  const inlineBookPageFillStyle = centerSinglePageVerse ? {
+    minHeight: Math.max(
+      260,
+      viewerHeight - (reserveOverlayControlsSpace ? 114 : 20)
+    ),
+    justifyContent: "center"
+  } : null;
+  const fullScreenBookPageFillStyle = centerSinglePageVerse ? {
+    minHeight: Math.max(
+      260,
+      visibleViewportHeight - (reserveOverlayControlsSpace ? 114 : 20)
+    ),
+    justifyContent: "center"
+  } : null;
   const verseAudioCurrentSeconds = Math.max(
     0,
     verseAudioStatus.currentTime || 0
@@ -4338,7 +4359,7 @@ ${shareUrl}`;
             }
           ) : null
         ] }),
-        /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) })
+        effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
       ]
     }
   );
@@ -4407,7 +4428,8 @@ ${shareUrl}`;
                 ],
                 contentContainerStyle: [
                   styles.nativeFullScreenBookContent,
-                  activeBookSpreadMode === "double" ? styles.nativeFullScreenBookContentDouble : null
+                  activeBookSpreadMode === "double" ? styles.nativeFullScreenBookContentDouble : null,
+                  !reserveOverlayControlsSpace ? styles.noOverlayControlsPadding : null
                 ],
                 nestedScrollEnabled: true,
                 showsVerticalScrollIndicator: false,
@@ -4419,6 +4441,7 @@ ${shareUrl}`;
                       styles.nativeBookPage,
                       styles.nativeFullScreenBookPage,
                       activeBookSpreadMode === "double" ? styles.nativeFullScreenBookPageDouble : null,
+                      fullScreenBookPageFillStyle,
                       {
                         borderColor: resolvedReaderTheme.accent,
                         backgroundColor: resolvedReaderTheme.page,
@@ -4533,7 +4556,7 @@ ${shareUrl}`;
                 })
               }
             ),
-            showOverlayControls ? nativeFullScreenControls : null
+            !hideControls && showOverlayControls ? nativeFullScreenControls : null
           ]
         }
       )
@@ -4849,7 +4872,8 @@ ${shareUrl}`;
                   ],
                   contentContainerStyle: [
                     styles.nativeBookScrollContent,
-                    isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null
+                    isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null,
+                    !reserveOverlayControlsSpace ? styles.noOverlayControlsPadding : null
                   ],
                   nestedScrollEnabled: true,
                   scrollEventThrottle: 64,
@@ -4868,6 +4892,7 @@ ${shareUrl}`;
                           style: [
                             styles.nativeBookPage,
                             activeBookSpreadMode === "double" ? styles.nativeBookPageDouble : null,
+                            inlineBookPageFillStyle,
                             {
                               borderColor: resolvedReaderTheme.accent,
                               backgroundColor: resolvedReaderTheme.page,
@@ -4908,7 +4933,8 @@ ${shareUrl}`;
                   ],
                   contentContainerStyle: [
                     styles.completeScrollContent,
-                    isEmbeddedLandscape ? styles.completeScrollContentCompact : null
+                    isEmbeddedLandscape ? styles.completeScrollContentCompact : null,
+                    !reserveOverlayControlsSpace ? styles.noOverlayControlsPadding : null
                   ],
                   nestedScrollEnabled: true,
                   scrollEventThrottle: 64,
@@ -5237,7 +5263,7 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && showOverlayControls ? /* @__PURE__ */ jsx(View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxs(View, { style: styles.overlayBottomCenter, children: [
+              !loadingError && !hideControls && showOverlayControls ? /* @__PURE__ */ jsx(View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxs(View, { style: styles.overlayBottomCenter, children: [
                 hasVerseAudio ? /* @__PURE__ */ jsx(View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxs(View, { style: styles.overlayAudioControls, children: [
                   /* @__PURE__ */ jsx(
                     Pressable,
@@ -5437,7 +5463,7 @@ ${shareUrl}`;
                     }
                   ) : null
                 ] }),
-                /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) })
+                effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
               ] }) }) : null
             ]
           }
@@ -5789,6 +5815,9 @@ var styles = StyleSheet.create({
     minHeight: "100%",
     padding: 10,
     paddingBottom: 104
+  },
+  noOverlayControlsPadding: {
+    paddingBottom: 0
   },
   nativeFullScreenBookContentDouble: {
     flexDirection: "row",
