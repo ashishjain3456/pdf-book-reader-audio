@@ -5,7 +5,7 @@ var ReactNative = require('react-native');
 var expoFileSystem = require('expo-file-system');
 var ExpoLinking = require('expo-linking');
 var Sharing = require('expo-sharing');
-var expoAudio = require('expo-audio');
+var ExpoAudio = require('expo-audio');
 var Ionicons = require('@expo/vector-icons/Ionicons');
 var FontAwesome6 = require('@expo/vector-icons/FontAwesome6');
 var reactNativeWebview = require('react-native-webview');
@@ -34,6 +34,7 @@ function _interopNamespace(e) {
 var ReactNative__namespace = /*#__PURE__*/_interopNamespace(ReactNative);
 var ExpoLinking__namespace = /*#__PURE__*/_interopNamespace(ExpoLinking);
 var Sharing__namespace = /*#__PURE__*/_interopNamespace(Sharing);
+var ExpoAudio__namespace = /*#__PURE__*/_interopNamespace(ExpoAudio);
 var Ionicons__default = /*#__PURE__*/_interopDefault(Ionicons);
 var FontAwesome6__default = /*#__PURE__*/_interopDefault(FontAwesome6);
 
@@ -44,6 +45,8 @@ var PAGE_FLIP_BROWSER_SCRIPT = '!function(t,e){"object"==typeof exports&&"undefi
 var NativeModal = ReactNative__namespace.Modal;
 var NativeScrollView = ReactNative__namespace.ScrollView;
 var NativeDimensions = ReactNative__namespace.Dimensions;
+var { useAudioPlayer, useAudioPlayerStatus } = ExpoAudio__namespace;
+var maybeSetAudioModeAsync = ExpoAudio__namespace.setAudioModeAsync;
 var DEFAULT_READER_THEME = {
   background: "#f5f5f4",
   surface: "#fafaf9",
@@ -2463,6 +2466,8 @@ function PdfDocumentViewer({
   renderRightActions,
   onFullScreenChange,
   hideControls = false,
+  hideVerseAudioControls = false,
+  externalVerseAudioState = null,
   readerTheme
 }) {
   const [windowSize, setWindowSize] = react.useState(
@@ -2508,8 +2513,8 @@ function PdfDocumentViewer({
     verseLayout?.maxFontSizePx,
     verseLayout?.minFontSizePx
   ]);
-  const verseAudioPlayer = expoAudio.useAudioPlayer(null, { updateInterval: 120 });
-  const verseAudioStatus = expoAudio.useAudioPlayerStatus(verseAudioPlayer);
+  const verseAudioPlayer = useAudioPlayer(null, { updateInterval: 120 });
+  const verseAudioStatus = useAudioPlayerStatus(verseAudioPlayer);
   const [loadingError, setLoadingError] = react.useState(null);
   const [loadingPdf, setLoadingPdf] = react.useState(true);
   const [viewerReady, setViewerReady] = react.useState(false);
@@ -2707,14 +2712,10 @@ function PdfDocumentViewer({
   }, [verseLayout?.fullScreen]);
   react.useEffect(() => {
     if (contentMode !== "verse") return;
-    if (viewMode === "book") {
-      setIsVerseFullScreen(true);
-      return;
-    }
     if (verseLayout?.fullScreen !== true) {
       setIsVerseFullScreen(false);
     }
-  }, [contentMode, verseLayout?.fullScreen, viewMode]);
+  }, [contentMode, verseLayout?.fullScreen]);
   react.useEffect(() => {
     if (allowBookDoubleSpread) return;
     setBookSpreadMode("single");
@@ -3160,6 +3161,52 @@ function PdfDocumentViewer({
       viewMode
     ]
   );
+  react.useEffect(() => {
+    if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
+    const audioAssetUrl = String(externalVerseAudioState.audioAssetUrl).trim();
+    const currentMs = Math.max(
+      0,
+      Math.floor(Number(externalVerseAudioState.currentTimeMs) || 0)
+    );
+    const matchedIndex = playableVerseMappings.findIndex((item) => {
+      if (item.audioAssetUrl !== audioAssetUrl) return false;
+      return currentMs >= item.segmentStartMs && currentMs < item.segmentEndMs;
+    });
+    if (matchedIndex < 0) return;
+    const matched = playableVerseMappings[matchedIndex];
+    const verseId = String(matched.verseId);
+    const isPlaying = externalVerseAudioState.isPlaying === true;
+    const verseChanged = activeVerseAudioIndex !== matchedIndex || activeVerseId !== verseId || readerVerseId !== verseId;
+    const pageForVerse = getNativeVersePage(verseId);
+    const pageChanged = Boolean(pageForVerse && pageForVerse !== pageNumber);
+    if (activeVerseAudioIndex !== matchedIndex) {
+      setActiveVerseAudioIndex(matchedIndex);
+    }
+    if (activeVerseId !== verseId) {
+      setActiveVerseId(verseId);
+    }
+    if (readerVerseId !== verseId) {
+      setReaderVerseId(verseId);
+    }
+    if (verseChanged || pageChanged) {
+      showMappedVerse(verseId, { isPlaying, animated: true });
+      return;
+    }
+    syncActiveVerseToWebView(verseId, isPlaying, false);
+  }, [
+    activeVerseAudioIndex,
+    activeVerseId,
+    externalVerseAudioState?.audioAssetUrl,
+    externalVerseAudioState?.currentTimeMs,
+    externalVerseAudioState?.isPlaying,
+    getNativeVersePage,
+    hasVerseAudio,
+    pageNumber,
+    playableVerseMappings,
+    readerVerseId,
+    showMappedVerse,
+    syncActiveVerseToWebView
+  ]);
   const activateVerseAudioIndex = react.useCallback(
     (targetIndex, options) => {
       const item = playableVerseMappings[targetIndex];
@@ -3179,7 +3226,11 @@ function PdfDocumentViewer({
           if (autoplay) {
             try {
               verseAudioPlayer.play();
-            } catch {
+            } catch (error) {
+              console.warn("[pdf-reader] Failed to play verse audio", {
+                message: error instanceof Error ? error.message : String(error),
+                sourceUrl: item.audioAssetUrl
+              });
             }
           }
         });
@@ -3191,7 +3242,11 @@ function PdfDocumentViewer({
           setCurrentVerseAudioUrl(item.audioAssetUrl);
           pendingVerseAudioAutoplayRef.current = autoplay;
           setPendingVerseAudioSeekMs(item.segmentStartMs);
-        } catch {
+        } catch (error) {
+          console.warn("[pdf-reader] Failed to load verse audio", {
+            message: error instanceof Error ? error.message : String(error),
+            sourceUrl: item.audioAssetUrl
+          });
           setPendingVerseAudioSeekMs(null);
         }
         showOverlay();
@@ -3329,6 +3384,32 @@ function PdfDocumentViewer({
     ]
   );
   react.useEffect(() => {
+    if (!hasVerseAudio || !maybeSetAudioModeAsync) return;
+    void maybeSetAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: "duckOthers",
+      shouldRouteThroughEarpiece: false
+    }).catch((error) => {
+      console.warn("[pdf-reader] Failed to configure audio mode", {
+        message: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }, [hasVerseAudio]);
+  react.useEffect(() => {
+    const extendedStatus = verseAudioStatus;
+    if (!extendedStatus.error) return;
+    console.warn("[pdf-reader] Verse audio playback error", {
+      error: extendedStatus.error,
+      sourceUrl: currentVerseAudioUrl,
+      playbackState: extendedStatus.playbackState,
+      timeControlStatus: extendedStatus.timeControlStatus
+    });
+  }, [
+    currentVerseAudioUrl,
+    verseAudioStatus
+  ]);
+  react.useEffect(() => {
     if (!hasVerseAudio) {
       setActiveVerseAudioIndex(null);
       setActiveVerseId(null);
@@ -3355,10 +3436,15 @@ function PdfDocumentViewer({
       if (!shouldPlayAfterSeek) return;
       try {
         verseAudioPlayer.play();
-      } catch {
+      } catch (error) {
+        console.warn("[pdf-reader] Failed to play pending verse audio", {
+          message: error instanceof Error ? error.message : String(error),
+          sourceUrl: currentVerseAudioUrl
+        });
       }
     });
   }, [
+    currentVerseAudioUrl,
     hasVerseAudio,
     pendingVerseAudioSeekMs,
     verseAudioPlayer,
@@ -3846,9 +3932,7 @@ function PdfDocumentViewer({
       void setPageNumber(targetPage);
       setViewMode(mode2);
       if (contentMode === "verse") {
-        setIsVerseFullScreen(
-          mode2 === "book" || verseLayout?.fullScreen === true
-        );
+        setIsVerseFullScreen(verseLayout?.fullScreen === true);
       }
       setShowShareOverlay(false);
       suppressCompleteModeSyncRef.current = false;
@@ -4183,7 +4267,7 @@ ${shareUrl}`;
         isFullScreenLandscape ? styles.nativeFullScreenControlsLandscape : null
       ],
       children: [
-        hasVerseAudio ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
+        hasVerseAudio && !hideVerseAudioControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
           /* @__PURE__ */ jsxRuntime.jsx(
             ReactNative.Pressable,
             {
@@ -5291,7 +5375,7 @@ ${shareUrl}`;
                 )
               ] }),
               !loadingError && !hideControls && showOverlayControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayBottomCenter, children: [
-                hasVerseAudio ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
+                hasVerseAudio && !hideVerseAudioControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
                   /* @__PURE__ */ jsxRuntime.jsx(
                     ReactNative.Pressable,
                     {
