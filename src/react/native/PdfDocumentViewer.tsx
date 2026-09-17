@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import * as ReactNative from 'react-native';
 import { NativeModules, PanResponder, Platform } from 'react-native';
@@ -108,6 +108,7 @@ export type PdfDocumentViewerProps = {
   hideControls?: boolean;
   hideVerseAudioControls?: boolean;
   externalVerseAudioState?: ExternalVerseAudioState | null;
+  externalActiveVerseId?: string | null;
   readerTheme?: ReaderTheme;
   overlayViewport?: {
     top: number;
@@ -2749,6 +2750,7 @@ export default function PdfDocumentViewer({
   hideControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
+  externalActiveVerseId = null,
   readerTheme,
   overlayViewport,
 }: PdfDocumentViewerProps) {
@@ -2867,7 +2869,7 @@ export default function PdfDocumentViewer({
   const [viewerWrapHeight, setViewerWrapHeight] = useState(0);
   const viewerWrapRef = useRef<any>(null);
   const [viewerContentTop, setViewerContentTop] = useState<number | null>(null);
-  const [stickyOverlayVisible, setStickyOverlayVisible] = useState(false);
+  const lastViewerMeasureRef = useRef(0);
   const [overlayControlsHeight, setOverlayControlsHeight] = useState(96);
   const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = useState(0);
   const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] =
@@ -2940,6 +2942,16 @@ export default function PdfDocumentViewer({
   const suppressCompleteModeSyncRef = useRef(false);
   const pendingModeSwitchPageRef = useRef<number | null>(null);
   const nativeBookTurnProgress = useRef(new NativeAnimated.Value(1)).current;
+  const nativeBookTurnTokenRef = useRef(0);
+  const lastRenderedBookPageRef = useRef<{
+    mode: ReaderViewMode;
+    page: number;
+  } | null>(null);
+  const lastExternalVerseRef = useRef<{
+    documentId: string;
+    verseId: string;
+  } | null>(null);
+  const nativeBookSpreadLayoutRef = useRef({ width: 0, height: 0 });
   const programmaticViewerSyncRef = useRef<{
     mode: ReaderViewMode;
     page: number;
@@ -3002,24 +3014,15 @@ export default function PdfDocumentViewer({
   }, [overlayViewport]);
   useEffect(measureViewerWindow, [measureViewerWindow]);
   useEffect(() => {
-    if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
-      return;
-    const updateVisibility = (scrollY: number) => {
-      const viewerY = viewerContentTop - scrollY;
-      const visibleHeight =
-        Math.min(viewerY + viewerWrapHeight, overlayViewport.bottom) -
-        Math.max(viewerY, overlayViewport.top);
-      const visible = visibleHeight >= overlayControlsHeight + 20;
-      setStickyOverlayVisible((current) =>
-        current === visible ? current : visible
-      );
-    };
-    updateVisibility(overlayViewport.getScrollOffset());
-    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
-      updateVisibility(value);
+    if (!overlayViewport) return;
+    const listenerId = overlayViewport.scrollY.addListener(() => {
+      const now = Date.now();
+      if (now - lastViewerMeasureRef.current < 200) return;
+      lastViewerMeasureRef.current = now;
+      measureViewerWindow();
     });
     return () => overlayViewport.scrollY.removeListener(listenerId);
-  }, [overlayViewport, viewerContentTop, viewerWrapHeight, overlayControlsHeight]);
+  }, [overlayViewport, measureViewerWindow]);
   const stickyOverlayTranslate = useMemo(() => {
     if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
       return null;
@@ -3196,10 +3199,34 @@ export default function PdfDocumentViewer({
   const [nativeBookPageNumberState, setNativeBookPageNumberState] = useState(
     externalInitialPageNumber
   );
-  const [nativeBookTurnDirection, setNativeBookTurnDirection] = useState<
-    'next' | 'prev'
-  >('next');
+  const [nativeBookTurn, setNativeBookTurn] = useState<{
+    token: number;
+    direction: 'next' | 'prev';
+    sourceVerses: Array<(typeof completeVerses)[number]>;
+    backVerse: (typeof completeVerses)[number] | null;
+    double: boolean;
+    pageWidth: number;
+    pageHeight: number;
+  } | null>(null);
   const isPageHydrated = true;
+
+  useEffect(() => {
+    if (!nativeBookTurn) return;
+    const turnToken = nativeBookTurn.token;
+    nativeBookTurnProgress.setValue(0);
+    const animation = NativeAnimated.timing(nativeBookTurnProgress, {
+      toValue: 1,
+      duration: 620,
+      easing: NativeEasing.inOut(NativeEasing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }: { finished: boolean }) => {
+      if (finished && nativeBookTurnTokenRef.current === turnToken) {
+        setNativeBookTurn(null);
+      }
+    });
+    return () => animation.stop();
+  }, [nativeBookTurn, nativeBookTurnProgress]);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
@@ -3695,6 +3722,31 @@ export default function PdfDocumentViewer({
   );
 
   useEffect(() => {
+    if (contentMode !== 'verse' || !externalActiveVerseId) {
+      lastExternalVerseRef.current = null;
+      return;
+    }
+    const pageForVerse = getNativeVersePage(externalActiveVerseId);
+    if (!pageForVerse) return;
+    const lastExternalVerse = lastExternalVerseRef.current;
+    if (
+      lastExternalVerse?.documentId === readerDocumentId &&
+      lastExternalVerse.verseId === externalActiveVerseId
+    ) return;
+    lastExternalVerseRef.current = {
+      documentId: readerDocumentId,
+      verseId: externalActiveVerseId,
+    };
+    showMappedVerse(externalActiveVerseId);
+  }, [
+    contentMode,
+    externalActiveVerseId,
+    getNativeVersePage,
+    readerDocumentId,
+    showMappedVerse,
+  ]);
+
+  useEffect(() => {
     if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
     const isPlaying = externalVerseAudioState.isPlaying === true;
     if (!isPlaying) return;
@@ -4075,6 +4127,14 @@ export default function PdfDocumentViewer({
       if (readerVerseId !== verseId) {
         setReaderVerseId(verseId);
       }
+      if (viewMode === 'book' && verseChanged && pageForVerse) {
+        lastAudioVerseWebSyncRef.current = verseId;
+        showMappedVerse(verseId, {
+          isPlaying: verseAudioStatus.playing,
+          animated: true,
+        });
+        return;
+      }
       const shouldFollowAudioPage =
         viewMode !== 'book' || verseChanged || activeVerseAudioIndex === null;
       if (
@@ -4151,6 +4211,7 @@ export default function PdfDocumentViewer({
     readerVerseId,
     scrollCompleteToVerse,
     setPageNumber,
+    showMappedVerse,
     syncActiveVerseToWebView,
     useNativeCompleteVerseView,
     useNativeFullScreenOverlay,
@@ -4408,31 +4469,54 @@ export default function PdfDocumentViewer({
   );
 
   const playNativeBookTurn = useCallback(
-    (direction: 'next' | 'prev') => {
-      setNativeBookTurnDirection(direction);
+    (sourcePage: number, targetPage: number) => {
+      const direction = targetPage > sourcePage ? 'next' : 'prev';
+      const sourceAnchor =
+        activeBookSpreadMode === 'double' && sourcePage % 2 === 0
+          ? sourcePage - 1
+          : sourcePage;
+      const double = activeBookSpreadMode === 'double';
+      const sourceVerses = completeVerses.slice(
+        sourceAnchor - 1,
+        sourceAnchor - 1 + (double ? 2 : 1)
+      );
+      if (!sourceVerses.length) return;
+      const layout = nativeBookSpreadLayoutRef.current;
+      const spreadWidth = Math.max(1, layout.width || fullScreenViewportWidth);
+      const pageWidth = double ? (spreadWidth - 10) / 2 : spreadWidth;
+      const backVerse = double
+        ? completeVerses[targetPage - 1 + (direction === 'prev' ? 1 : 0)] || null
+        : completeVerses[targetPage - 1] || null;
+      const turnToken = ++nativeBookTurnTokenRef.current;
       nativeBookTurnProgress.stopAnimation();
       nativeBookTurnProgress.setValue(0);
-      NativeAnimated.timing(nativeBookTurnProgress, {
-        toValue: 1,
-        duration: 360,
-        easing: NativeEasing.out(NativeEasing.cubic),
-        useNativeDriver: true,
-      }).start();
+      setNativeBookTurn({
+        token: turnToken,
+        direction,
+        sourceVerses,
+        backVerse,
+        double,
+        pageWidth,
+        pageHeight: Math.max(1, layout.height || viewerHeight),
+      });
     },
-    [nativeBookTurnProgress]
+    [
+      activeBookSpreadMode,
+      completeVerses,
+      fullScreenViewportWidth,
+      nativeBookTurnProgress,
+      viewerHeight,
+    ]
   );
 
   const navigateNativeVerseBookPage = useCallback(
-    (targetPage: number, direction: 'next' | 'prev' = 'next') => {
+    (targetPage: number) => {
       const safePageCount =
         completeVerses.length || pageCountRef.current || pageCount || 1;
       const safePage = Math.max(
         1,
         Math.min(Math.trunc(targetPage), safePageCount)
       );
-      if (safePage !== pageNumberRef.current) {
-        playNativeBookTurn(direction);
-      }
       const targetVerse = completeVerses[safePage - 1] || null;
       const targetVerseId =
         targetVerse?.id === null || targetVerse?.id === undefined
@@ -4457,7 +4541,6 @@ export default function PdfDocumentViewer({
     [
       completeVerses,
       pageCount,
-      playNativeBookTurn,
       setPageNumber,
       syncActiveVerseToWebView,
       verseAudioStatus.playing,
@@ -4480,7 +4563,7 @@ export default function PdfDocumentViewer({
       if (useFullScreenBookWebView) {
         requestBookPageChange('prev');
       } else {
-        navigateNativeVerseBookPage(previousPage, 'prev');
+        navigateNativeVerseBookPage(previousPage);
       }
     } else {
       pageNumberRef.current = previousPage;
@@ -4519,7 +4602,7 @@ export default function PdfDocumentViewer({
       if (useFullScreenBookWebView) {
         requestBookPageChange('next');
       } else {
-        navigateNativeVerseBookPage(nextPage, 'next');
+        navigateNativeVerseBookPage(nextPage);
       }
     } else {
       pageNumberRef.current = nextPage;
@@ -4867,6 +4950,34 @@ export default function PdfDocumentViewer({
     readerVersePageNumber > 0
       ? readerVersePageNumber
       : nativeBookPageNumberState || pageNumber;
+  useLayoutEffect(() => {
+    if (!completeVerses.length) {
+      lastRenderedBookPageRef.current = null;
+      return;
+    }
+    const previous = lastRenderedBookPageRef.current;
+    lastRenderedBookPageRef.current = {
+      mode: viewMode,
+      page: nativeBookPageNumber,
+    };
+    if (!previous || previous.mode !== 'book' || viewMode !== 'book') return;
+    if (!useNativeBookVerseView && !useNativeFullScreenBookView) return;
+    const anchor = (page: number) =>
+      activeBookSpreadMode === 'double' && page % 2 === 0
+        ? page - 1
+        : page;
+    if (anchor(previous.page) !== anchor(nativeBookPageNumber)) {
+      playNativeBookTurn(previous.page, nativeBookPageNumber);
+    }
+  }, [
+    activeBookSpreadMode,
+    completeVerses.length,
+    nativeBookPageNumber,
+    playNativeBookTurn,
+    useNativeBookVerseView,
+    useNativeFullScreenBookView,
+    viewMode,
+  ]);
   const nativeBookVerse =
     (useNativeBookVerseView ||
       (useNativeFullScreenOverlay && viewMode === 'book')) &&
@@ -4882,13 +4993,11 @@ export default function PdfDocumentViewer({
         ]
       : null;
   const nativeSecondBookVerse =
-    nativeBookVerse && activeBookSpreadMode === 'double' && completeVerses.length
-      ? completeVerses[
-          Math.max(
-            0,
-            Math.min(completeVerses.length - 1, nativeBookPageNumber)
-          )
-        ] || null
+    nativeBookVerse &&
+    activeBookSpreadMode === 'double' &&
+    nativeBookPageNumber < completeVerses.length &&
+    completeVerses[nativeBookPageNumber]?.id !== nativeBookVerse.id
+      ? completeVerses[nativeBookPageNumber] || null
       : null;
   const nativeBookVerses = [nativeBookVerse, nativeSecondBookVerse].filter(
     (verse): verse is NonNullable<typeof nativeBookVerse> => verse !== null
@@ -4910,32 +5019,222 @@ export default function PdfDocumentViewer({
     activeBookSpreadMode === 'double'
       ? Math.max(18, Math.round(verseFontSizePx * 0.86))
       : verseFontSizePx;
-  const nativeBookTurnAnimatedStyle = useMemo(() => {
-    const entryOffset = nativeBookTurnDirection === 'next' ? 42 : -42;
-    const entryRotation =
-      nativeBookTurnDirection === 'next' ? '-8deg' : '8deg';
+  const nativeBookTurnVisuals = useMemo(() => {
+    if (!nativeBookTurn) return null;
+    const next = nativeBookTurn.direction === 'next';
+    const pivot =
+      (next ? -1 : 1) * nativeBookTurn.pageWidth / 2;
+    const foldWidth = nativeBookTurn.pageWidth * 0.16;
+    const foldPivot = (next ? -1 : 1) * foldWidth / 2;
     return {
-      opacity: nativeBookTurnProgress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0.35, 1],
+      foldWidth,
+      outgoingOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.46, 0.54, 1],
+        outputRange: [1, 1, 0, 0],
       }),
-      transform: [
-        { perspective: 900 },
-        {
-          translateX: nativeBookTurnProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [entryOffset, 0],
-          }),
-        },
+      incomingOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.46, 0.54, 1],
+        outputRange: [0, 0, 1, 1],
+      }),
+      foldShadeOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.12, 0.36, 0.68, 1],
+        outputRange: [0, 0.12, 0.22, 0.1, 0],
+      }),
+      stationaryOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.46, 0.54, 1],
+        outputRange: [1, 1, 0, 0],
+      }),
+      sheetTransform: [
+        { perspective: 1100 },
+        { translateX: pivot },
         {
           rotateY: nativeBookTurnProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [entryRotation, '0deg'],
+            inputRange: [0, 0.14, 0.45, 1],
+            outputRange: [
+              '0deg',
+              next ? '-9deg' : '9deg',
+              next ? '-82deg' : '82deg',
+              next ? '-180deg' : '180deg',
+            ],
           }),
         },
+        { translateX: -pivot },
+      ],
+      foldTransform: [
+        { perspective: 700 },
+        { translateX: foldPivot },
+        {
+          rotateY: nativeBookTurnProgress.interpolate({
+            inputRange: [0, 0.12, 0.36, 0.68, 1],
+            outputRange: [
+              '0deg',
+              next ? '-30deg' : '30deg',
+              next ? '-38deg' : '38deg',
+              next ? '-14deg' : '14deg',
+              '0deg',
+            ],
+          }),
+        },
+        { translateX: -foldPivot },
       ],
     };
-  }, [nativeBookTurnDirection, nativeBookTurnProgress]);
+  }, [nativeBookTurn, nativeBookTurnProgress]);
+  const renderNativeBookPage = (
+    verse: (typeof completeVerses)[number],
+    key: string,
+    fullScreen: boolean,
+    pageStyle?: Record<string, unknown>
+  ) => (
+    <View
+      key={key}
+      style={[
+        styles.nativeBookPage,
+        fullScreen ? styles.nativeFullScreenBookPage : null,
+        activeBookSpreadMode === 'double'
+          ? fullScreen
+            ? styles.nativeFullScreenBookPageDouble
+            : styles.nativeBookPageDouble
+          : null,
+        fullScreen ? fullScreenBookPageFillStyle : inlineBookPageFillStyle,
+        {
+          borderColor: resolvedReaderTheme.accent,
+          backgroundColor: resolvedReaderTheme.page,
+          shadowColor: resolvedReaderTheme.shadow,
+        },
+        pageStyle,
+      ]}
+    >
+      <View pointerEvents="none" style={styles.nativeBookPageOrnamentOuter} />
+      <View pointerEvents="none" style={styles.nativeBookPageOrnamentInner} />
+      <View style={styles.nativeBookPageContent}>
+        <Text
+          style={[
+            styles.nativeBookVerseText,
+            COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
+              COMPLETE_VERSE_STYLE_MAP.classic,
+            { color: resolvedReaderTheme.text },
+            {
+              fontSize: nativeBookVerseFontSizePx,
+              lineHeight: Math.round(nativeBookVerseFontSizePx * 1.45),
+            },
+          ]}
+        >
+          {renderNativeRichText(verse.contentHtml, key)}
+        </Text>
+      </View>
+    </View>
+  );
+  const renderNativeBookTurn = (fullScreen: boolean) => {
+    if (!nativeBookTurn || !nativeBookTurnVisuals) return null;
+    const { direction, double, pageWidth, pageHeight, sourceVerses, backVerse } =
+      nativeBookTurn;
+    const frontVerse = double
+      ? sourceVerses[direction === 'next' ? 1 : 0]
+      : sourceVerses[0];
+    const stationaryVerse = double
+      ? sourceVerses[direction === 'next' ? 0 : 1]
+      : null;
+    if (!frontVerse) return null;
+    const pagePosition = {
+      width: pageWidth,
+      height: pageHeight,
+      [direction === 'next' ? 'right' : 'left']: 0,
+    };
+    return (
+      <View pointerEvents="none" style={styles.nativeBookTurnOverlay}>
+        {stationaryVerse ? (
+          <NativeAnimatedView
+            style={[
+              styles.nativeBookTurnStationary,
+              {
+                width: pageWidth,
+                height: pageHeight,
+                [direction === 'next' ? 'left' : 'right']: 0,
+                opacity: nativeBookTurnVisuals.stationaryOpacity,
+              },
+            ]}
+          >
+            {renderNativeBookPage(
+              stationaryVerse,
+              `turn-stationary-${stationaryVerse.id}`,
+              fullScreen,
+              styles.nativeBookTurnPage
+            )}
+          </NativeAnimatedView>
+        ) : null}
+        <NativeAnimatedView
+          style={[
+            styles.nativeBookTurnSheet,
+            pagePosition,
+            { transform: nativeBookTurnVisuals.sheetTransform },
+          ]}
+        >
+          <NativeAnimatedView
+            style={[
+              styles.nativeBookTurnFront,
+              { opacity: nativeBookTurnVisuals.outgoingOpacity },
+            ]}
+          >
+            {renderNativeBookPage(
+              frontVerse,
+              `turn-front-${frontVerse.id}`,
+              fullScreen,
+              styles.nativeBookTurnPage
+            )}
+            <NativeAnimatedView
+              style={[
+                styles.nativeBookTurnFold,
+                {
+                  width: nativeBookTurnVisuals.foldWidth,
+                  [direction === 'next' ? 'right' : 'left']: 0,
+                  transform: nativeBookTurnVisuals.foldTransform,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.nativeBookTurnFoldContent,
+                  {
+                    width: pageWidth,
+                    height: pageHeight,
+                    [direction === 'next' ? 'right' : 'left']: 0,
+                  },
+                ]}
+              >
+                {renderNativeBookPage(
+                  frontVerse,
+                  `turn-fold-${frontVerse.id}`,
+                  fullScreen,
+                  styles.nativeBookTurnPage
+                )}
+              </View>
+              <NativeAnimatedView
+                style={[
+                  styles.nativeBookTurnFoldShade,
+                  { opacity: nativeBookTurnVisuals.foldShadeOpacity },
+                ]}
+              />
+            </NativeAnimatedView>
+          </NativeAnimatedView>
+          {backVerse ? (
+            <NativeAnimatedView
+              style={[
+                styles.nativeBookTurnBack,
+                { opacity: nativeBookTurnVisuals.incomingOpacity },
+              ]}
+            >
+              {renderNativeBookPage(
+                backVerse,
+                `turn-back-${backVerse.id}`,
+                fullScreen,
+                styles.nativeBookTurnPage
+              )}
+            </NativeAnimatedView>
+          ) : null}
+        </NativeAnimatedView>
+      </View>
+    );
+  };
   const verseAudioCurrentSeconds = Math.max(
     0,
     verseAudioStatus.currentTime || 0
@@ -5396,19 +5695,26 @@ export default function PdfDocumentViewer({
                 nestedScrollEnabled
                 onTouchStart={showOverlay}
               >
-                <NativeAnimatedView
+                <View
+                  onLayout={(event: {
+                    nativeEvent: { layout: { width: number; height: number } };
+                  }) => {
+                    nativeBookSpreadLayoutRef.current = event.nativeEvent.layout;
+                  }}
                   style={[
                     styles.nativeFullScreenBookContent,
                     activeBookSpreadMode === 'double'
                       ? styles.nativeFullScreenBookContentDouble
                       : null,
                     styles.nativeFullScreenBookContentEdgeToEdge,
-                    nativeBookTurnAnimatedStyle,
+                    nativeBookTurn
+                      ? { minHeight: nativeBookTurn.pageHeight }
+                      : null,
                   ]}
                 >
-                {nativeBookVerses.map((verse) => (
+                {nativeBookVerses.map((verse, index) => (
                   <View
-                    key={`fullscreen-book-${nativeBookPageNumber}-${verse.id}`}
+                    key={`fullscreen-book-${nativeBookPageNumber}-${index}`}
                     style={[
                       styles.nativeBookPage,
                       styles.nativeFullScreenBookPage,
@@ -5431,7 +5737,14 @@ export default function PdfDocumentViewer({
                       pointerEvents="none"
                       style={styles.nativeBookPageOrnamentInner}
                     />
-                    <View style={styles.nativeBookPageContent}>
+                    <NativeAnimatedView
+                      style={[
+                        styles.nativeBookPageContent,
+                        nativeBookTurnVisuals
+                          ? { opacity: nativeBookTurnVisuals.incomingOpacity }
+                          : null,
+                      ]}
+                    >
                       <Text
                         style={[
                           styles.nativeBookVerseText,
@@ -5452,10 +5765,11 @@ export default function PdfDocumentViewer({
                           `fullscreen-book-${verse.id}`
                         )}
                       </Text>
-                    </View>
+                    </NativeAnimatedView>
                   </View>
                 ))}
-                </NativeAnimatedView>
+                {renderNativeBookTurn(true)}
+                </View>
               </NativeScrollView>
             ) : (
               <NativeScrollView
@@ -5926,18 +6240,25 @@ export default function PdfDocumentViewer({
                     : null,
                 ]}
               >
-              <NativeAnimatedView
+              <View
+                onLayout={(event: {
+                  nativeEvent: { layout: { width: number; height: number } };
+                }) => {
+                  nativeBookSpreadLayoutRef.current = event.nativeEvent.layout;
+                }}
                 style={[
                   styles.nativeBookPages,
                   activeBookSpreadMode === 'double'
                     ? styles.nativeBookPagesDouble
                     : null,
-                  nativeBookTurnAnimatedStyle,
+                  nativeBookTurn
+                    ? { minHeight: nativeBookTurn.pageHeight }
+                    : null,
                 ]}
               >
-                {nativeBookVerses.map((verse) => (
+                {nativeBookVerses.map((verse, index) => (
                   <View
-                    key={`book-${nativeBookPageNumber}-${verse.id}`}
+                    key={`book-${nativeBookPageNumber}-${index}`}
                     style={[
                       styles.nativeBookPage,
                       activeBookSpreadMode === 'double'
@@ -5959,7 +6280,14 @@ export default function PdfDocumentViewer({
                       pointerEvents="none"
                       style={styles.nativeBookPageOrnamentInner}
                     />
-                    <View style={styles.nativeBookPageContent}>
+                    <NativeAnimatedView
+                      style={[
+                        styles.nativeBookPageContent,
+                        nativeBookTurnVisuals
+                          ? { opacity: nativeBookTurnVisuals.incomingOpacity }
+                          : null,
+                      ]}
+                    >
                       <Text
                         style={[
                           styles.nativeBookVerseText,
@@ -5980,10 +6308,11 @@ export default function PdfDocumentViewer({
                           `book-${verse.id}`
                         )}
                       </Text>
-                    </View>
+                    </NativeAnimatedView>
                   </View>
                 ))}
-              </NativeAnimatedView>
+                {renderNativeBookTurn(false)}
+              </View>
               </View>
             </NativeScrollView>
           ) : useNativeCompleteVerseView &&
@@ -6400,8 +6729,7 @@ export default function PdfDocumentViewer({
         )}
         {!loadingError &&
         !hideControls &&
-        (showOverlayControls || (Boolean(overlayViewport) && useNativeVerseView)) &&
-        (!overlayViewport || stickyOverlayVisible) ? (
+        (showOverlayControls || (Boolean(overlayViewport) && useNativeVerseView)) ? (
           <View pointerEvents="box-none" style={styles.viewerOverlay}>
             <NativeAnimatedView
               onLayout={(event: { nativeEvent: { layout: { height: number } } }) => {
@@ -7016,6 +7344,66 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
+  },
+  nativeBookTurnOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 8,
+    elevation: 8,
+  },
+  nativeBookTurnStationary: {
+    position: 'absolute',
+    top: 0,
+  },
+  nativeBookTurnSheet: {
+    position: 'absolute',
+    top: 0,
+  },
+  nativeBookTurnFront: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backfaceVisibility: 'hidden',
+  },
+  nativeBookTurnFold: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    backfaceVisibility: 'hidden',
+    elevation: 3,
+  },
+  nativeBookTurnFoldContent: {
+    position: 'absolute',
+    top: 0,
+  },
+  nativeBookTurnFoldShade: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: '#23120a',
+  },
+  nativeBookTurnBack: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backfaceVisibility: 'hidden',
+    transform: [{ rotateY: '180deg' }],
+  },
+  nativeBookTurnPage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    minHeight: 0,
   },
   nativeBookPageContent: {
     zIndex: 4,

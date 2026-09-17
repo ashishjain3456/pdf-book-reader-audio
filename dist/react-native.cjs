@@ -2500,6 +2500,7 @@ function PdfDocumentViewer({
   hideControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
+  externalActiveVerseId = null,
   readerTheme,
   overlayViewport
 }) {
@@ -2604,7 +2605,7 @@ function PdfDocumentViewer({
   const [viewerWrapHeight, setViewerWrapHeight] = react.useState(0);
   const viewerWrapRef = react.useRef(null);
   const [viewerContentTop, setViewerContentTop] = react.useState(null);
-  const [stickyOverlayVisible, setStickyOverlayVisible] = react.useState(false);
+  const lastViewerMeasureRef = react.useRef(0);
   const [overlayControlsHeight, setOverlayControlsHeight] = react.useState(96);
   const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = react.useState(0);
   const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] = react.useState(0);
@@ -2655,6 +2656,10 @@ function PdfDocumentViewer({
   const suppressCompleteModeSyncRef = react.useRef(false);
   const pendingModeSwitchPageRef = react.useRef(null);
   const nativeBookTurnProgress = react.useRef(new NativeAnimated.Value(1)).current;
+  const nativeBookTurnTokenRef = react.useRef(0);
+  const lastRenderedBookPageRef = react.useRef(null);
+  const lastExternalVerseRef = react.useRef(null);
+  const nativeBookSpreadLayoutRef = react.useRef({ width: 0, height: 0 });
   const programmaticViewerSyncRef = react.useRef(null);
   const lastSyncedViewModeRef = react.useRef(null);
   const lastInjectedViewerStateRef = react.useRef(null);
@@ -2692,22 +2697,15 @@ function PdfDocumentViewer({
   }, [overlayViewport]);
   react.useEffect(measureViewerWindow, [measureViewerWindow]);
   react.useEffect(() => {
-    if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
-      return;
-    const updateVisibility = (scrollY) => {
-      const viewerY = viewerContentTop - scrollY;
-      const visibleHeight = Math.min(viewerY + viewerWrapHeight, overlayViewport.bottom) - Math.max(viewerY, overlayViewport.top);
-      const visible = visibleHeight >= overlayControlsHeight + 20;
-      setStickyOverlayVisible(
-        (current) => current === visible ? current : visible
-      );
-    };
-    updateVisibility(overlayViewport.getScrollOffset());
-    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
-      updateVisibility(value);
+    if (!overlayViewport) return;
+    const listenerId = overlayViewport.scrollY.addListener(() => {
+      const now = Date.now();
+      if (now - lastViewerMeasureRef.current < 200) return;
+      lastViewerMeasureRef.current = now;
+      measureViewerWindow();
     });
     return () => overlayViewport.scrollY.removeListener(listenerId);
-  }, [overlayViewport, viewerContentTop, viewerWrapHeight, overlayControlsHeight]);
+  }, [overlayViewport, measureViewerWindow]);
   const stickyOverlayTranslate = react.useMemo(() => {
     if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
       return null;
@@ -2783,7 +2781,7 @@ function PdfDocumentViewer({
   const resolvedDownloadUrl = downloadUrl || pdfUrl || "";
   const label = filename?.trim() || title?.trim() || (contentMode === "verse" ? "Verse document" : "PDF document");
   const shareUrl = (downloadUrl || pdfUrl || "").trim();
-  documentId?.trim() || (contentMode === "verse" ? `verse:${label}` : pdfUrl || label);
+  const readerDocumentId = documentId?.trim() || (contentMode === "verse" ? `verse:${label}` : pdfUrl || label);
   const showHeaderControls = !hideControls && !isVerseFullScreen;
   const initialPageRef = react.useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0 ? Math.trunc(Number(currentPage)) : 1
@@ -2830,8 +2828,25 @@ function PdfDocumentViewer({
   const [nativeBookPageNumberState, setNativeBookPageNumberState] = react.useState(
     externalInitialPageNumber
   );
-  const [nativeBookTurnDirection, setNativeBookTurnDirection] = react.useState("next");
+  const [nativeBookTurn, setNativeBookTurn] = react.useState(null);
   const isPageHydrated = true;
+  react.useEffect(() => {
+    if (!nativeBookTurn) return;
+    const turnToken = nativeBookTurn.token;
+    nativeBookTurnProgress.setValue(0);
+    const animation = NativeAnimated.timing(nativeBookTurnProgress, {
+      toValue: 1,
+      duration: 620,
+      easing: NativeEasing.inOut(NativeEasing.cubic),
+      useNativeDriver: true
+    });
+    animation.start(({ finished }) => {
+      if (finished && nativeBookTurnTokenRef.current === turnToken) {
+        setNativeBookTurn(null);
+      }
+    });
+    return () => animation.stop();
+  }, [nativeBookTurn, nativeBookTurnProgress]);
   react.useEffect(() => {
     pageNumberRef.current = pageNumber;
     setNativeBookPageNumberState(
@@ -3253,6 +3268,27 @@ function PdfDocumentViewer({
     ]
   );
   react.useEffect(() => {
+    if (contentMode !== "verse" || !externalActiveVerseId) {
+      lastExternalVerseRef.current = null;
+      return;
+    }
+    const pageForVerse = getNativeVersePage(externalActiveVerseId);
+    if (!pageForVerse) return;
+    const lastExternalVerse = lastExternalVerseRef.current;
+    if (lastExternalVerse?.documentId === readerDocumentId && lastExternalVerse.verseId === externalActiveVerseId) return;
+    lastExternalVerseRef.current = {
+      documentId: readerDocumentId,
+      verseId: externalActiveVerseId
+    };
+    showMappedVerse(externalActiveVerseId);
+  }, [
+    contentMode,
+    externalActiveVerseId,
+    getNativeVersePage,
+    readerDocumentId,
+    showMappedVerse
+  ]);
+  react.useEffect(() => {
     if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
     const isPlaying = externalVerseAudioState.isPlaying === true;
     if (!isPlaying) return;
@@ -3580,6 +3616,14 @@ function PdfDocumentViewer({
       if (readerVerseId !== verseId) {
         setReaderVerseId(verseId);
       }
+      if (viewMode === "book" && verseChanged && pageForVerse) {
+        lastAudioVerseWebSyncRef.current = verseId;
+        showMappedVerse(verseId, {
+          isPlaying: verseAudioStatus.playing,
+          animated: true
+        });
+        return;
+      }
       const shouldFollowAudioPage = viewMode !== "book" || verseChanged || activeVerseAudioIndex === null;
       if (shouldFollowAudioPage && pageForVerse && (viewMode === "book" || pageForVerse !== pageNumber)) {
         const bridgeMethod = viewMode === "book" ? "showMappedVerse" : "goToPage";
@@ -3639,6 +3683,7 @@ function PdfDocumentViewer({
     readerVerseId,
     scrollCompleteToVerse,
     setPageNumber,
+    showMappedVerse,
     syncActiveVerseToWebView,
     useNativeCompleteVerseView,
     useNativeFullScreenOverlay,
@@ -3872,29 +3917,47 @@ function PdfDocumentViewer({
     []
   );
   const playNativeBookTurn = react.useCallback(
-    (direction) => {
-      setNativeBookTurnDirection(direction);
+    (sourcePage, targetPage) => {
+      const direction = targetPage > sourcePage ? "next" : "prev";
+      const sourceAnchor = activeBookSpreadMode === "double" && sourcePage % 2 === 0 ? sourcePage - 1 : sourcePage;
+      const double = activeBookSpreadMode === "double";
+      const sourceVerses = completeVerses.slice(
+        sourceAnchor - 1,
+        sourceAnchor - 1 + (double ? 2 : 1)
+      );
+      if (!sourceVerses.length) return;
+      const layout = nativeBookSpreadLayoutRef.current;
+      const spreadWidth = Math.max(1, layout.width || fullScreenViewportWidth);
+      const pageWidth = double ? (spreadWidth - 10) / 2 : spreadWidth;
+      const backVerse = double ? completeVerses[targetPage - 1 + (direction === "prev" ? 1 : 0)] || null : completeVerses[targetPage - 1] || null;
+      const turnToken = ++nativeBookTurnTokenRef.current;
       nativeBookTurnProgress.stopAnimation();
       nativeBookTurnProgress.setValue(0);
-      NativeAnimated.timing(nativeBookTurnProgress, {
-        toValue: 1,
-        duration: 360,
-        easing: NativeEasing.out(NativeEasing.cubic),
-        useNativeDriver: true
-      }).start();
+      setNativeBookTurn({
+        token: turnToken,
+        direction,
+        sourceVerses,
+        backVerse,
+        double,
+        pageWidth,
+        pageHeight: Math.max(1, layout.height || viewerHeight)
+      });
     },
-    [nativeBookTurnProgress]
+    [
+      activeBookSpreadMode,
+      completeVerses,
+      fullScreenViewportWidth,
+      nativeBookTurnProgress,
+      viewerHeight
+    ]
   );
   const navigateNativeVerseBookPage = react.useCallback(
-    (targetPage, direction = "next") => {
+    (targetPage) => {
       const safePageCount = completeVerses.length || pageCountRef.current || pageCount || 1;
       const safePage = Math.max(
         1,
         Math.min(Math.trunc(targetPage), safePageCount)
       );
-      if (safePage !== pageNumberRef.current) {
-        playNativeBookTurn(direction);
-      }
       const targetVerse = completeVerses[safePage - 1] || null;
       const targetVerseId = targetVerse?.id === null || targetVerse?.id === void 0 ? null : String(targetVerse.id);
       pageNumberRef.current = safePage;
@@ -3914,7 +3977,6 @@ function PdfDocumentViewer({
     [
       completeVerses,
       pageCount,
-      playNativeBookTurn,
       setPageNumber,
       syncActiveVerseToWebView,
       verseAudioStatus.playing
@@ -3927,7 +3989,7 @@ function PdfDocumentViewer({
     const previousPage = Math.max(1, currentAnchor - pageStep);
     if (viewMode === "book") {
       {
-        navigateNativeVerseBookPage(previousPage, "prev");
+        navigateNativeVerseBookPage(previousPage);
       }
     } else {
       pageNumberRef.current = previousPage;
@@ -3954,7 +4016,7 @@ function PdfDocumentViewer({
     const nextPage = pageCount ? Math.min(currentAnchor + pageStep, pageCount) : currentAnchor + pageStep;
     if (viewMode === "book") {
       {
-        navigateNativeVerseBookPage(nextPage, "next");
+        navigateNativeVerseBookPage(nextPage);
       }
     } else {
       pageNumberRef.current = nextPage;
@@ -4227,6 +4289,31 @@ ${shareUrl}`;
   const activeVerseAudio = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
   const readerVersePageNumber = readerVerseId && useNativeVersePaging ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1 : 0;
   const nativeBookPageNumber = readerVersePageNumber > 0 ? readerVersePageNumber : nativeBookPageNumberState || pageNumber;
+  react.useLayoutEffect(() => {
+    if (!completeVerses.length) {
+      lastRenderedBookPageRef.current = null;
+      return;
+    }
+    const previous = lastRenderedBookPageRef.current;
+    lastRenderedBookPageRef.current = {
+      mode: viewMode,
+      page: nativeBookPageNumber
+    };
+    if (!previous || previous.mode !== "book" || viewMode !== "book") return;
+    if (!useNativeBookVerseView && !useNativeFullScreenBookView) return;
+    const anchor = (page) => activeBookSpreadMode === "double" && page % 2 === 0 ? page - 1 : page;
+    if (anchor(previous.page) !== anchor(nativeBookPageNumber)) {
+      playNativeBookTurn(previous.page, nativeBookPageNumber);
+    }
+  }, [
+    activeBookSpreadMode,
+    completeVerses.length,
+    nativeBookPageNumber,
+    playNativeBookTurn,
+    useNativeBookVerseView,
+    useNativeFullScreenBookView,
+    viewMode
+  ]);
   const nativeBookVerse = (useNativeBookVerseView || useNativeFullScreenOverlay && viewMode === "book") && completeVerses.length ? completeVerses[Math.max(
     0,
     Math.min(
@@ -4234,10 +4321,7 @@ ${shareUrl}`;
       nativeBookPageNumber - 1
     )
   )] : null;
-  const nativeSecondBookVerse = nativeBookVerse && activeBookSpreadMode === "double" && completeVerses.length ? completeVerses[Math.max(
-    0,
-    Math.min(completeVerses.length - 1, nativeBookPageNumber)
-  )] || null : null;
+  const nativeSecondBookVerse = nativeBookVerse && activeBookSpreadMode === "double" && nativeBookPageNumber < completeVerses.length && completeVerses[nativeBookPageNumber]?.id !== nativeBookVerse.id ? completeVerses[nativeBookPageNumber] || null : null;
   const nativeBookVerses = [nativeBookVerse, nativeSecondBookVerse].filter(
     (verse) => verse !== null
   );
@@ -4254,31 +4338,223 @@ ${shareUrl}`;
     justifyContent: "center"
   };
   const nativeBookVerseFontSizePx = activeBookSpreadMode === "double" ? Math.max(18, Math.round(verseFontSizePx * 0.86)) : verseFontSizePx;
-  const nativeBookTurnAnimatedStyle = react.useMemo(() => {
-    const entryOffset = nativeBookTurnDirection === "next" ? 42 : -42;
-    const entryRotation = nativeBookTurnDirection === "next" ? "-8deg" : "8deg";
+  const nativeBookTurnVisuals = react.useMemo(() => {
+    if (!nativeBookTurn) return null;
+    const next = nativeBookTurn.direction === "next";
+    const pivot = (next ? -1 : 1) * nativeBookTurn.pageWidth / 2;
+    const foldWidth = nativeBookTurn.pageWidth * 0.16;
+    const foldPivot = (next ? -1 : 1) * foldWidth / 2;
     return {
-      opacity: nativeBookTurnProgress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0.35, 1]
+      foldWidth,
+      outgoingOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.46, 0.54, 1],
+        outputRange: [1, 1, 0, 0]
       }),
-      transform: [
-        { perspective: 900 },
-        {
-          translateX: nativeBookTurnProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [entryOffset, 0]
-          })
-        },
+      incomingOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.46, 0.54, 1],
+        outputRange: [0, 0, 1, 1]
+      }),
+      foldShadeOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.12, 0.36, 0.68, 1],
+        outputRange: [0, 0.12, 0.22, 0.1, 0]
+      }),
+      stationaryOpacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 0.46, 0.54, 1],
+        outputRange: [1, 1, 0, 0]
+      }),
+      sheetTransform: [
+        { perspective: 1100 },
+        { translateX: pivot },
         {
           rotateY: nativeBookTurnProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [entryRotation, "0deg"]
+            inputRange: [0, 0.14, 0.45, 1],
+            outputRange: [
+              "0deg",
+              next ? "-9deg" : "9deg",
+              next ? "-82deg" : "82deg",
+              next ? "-180deg" : "180deg"
+            ]
           })
-        }
+        },
+        { translateX: -pivot }
+      ],
+      foldTransform: [
+        { perspective: 700 },
+        { translateX: foldPivot },
+        {
+          rotateY: nativeBookTurnProgress.interpolate({
+            inputRange: [0, 0.12, 0.36, 0.68, 1],
+            outputRange: [
+              "0deg",
+              next ? "-30deg" : "30deg",
+              next ? "-38deg" : "38deg",
+              next ? "-14deg" : "14deg",
+              "0deg"
+            ]
+          })
+        },
+        { translateX: -foldPivot }
       ]
     };
-  }, [nativeBookTurnDirection, nativeBookTurnProgress]);
+  }, [nativeBookTurn, nativeBookTurnProgress]);
+  const renderNativeBookPage = (verse, key, fullScreen, pageStyle) => /* @__PURE__ */ jsxRuntime.jsxs(
+    ReactNative.View,
+    {
+      style: [
+        styles.nativeBookPage,
+        fullScreen ? styles.nativeFullScreenBookPage : null,
+        activeBookSpreadMode === "double" ? fullScreen ? styles.nativeFullScreenBookPageDouble : styles.nativeBookPageDouble : null,
+        fullScreen ? fullScreenBookPageFillStyle : inlineBookPageFillStyle,
+        {
+          borderColor: resolvedReaderTheme.accent,
+          backgroundColor: resolvedReaderTheme.page,
+          shadowColor: resolvedReaderTheme.shadow
+        },
+        pageStyle
+      ],
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "none", style: styles.nativeBookPageOrnamentOuter }),
+        /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "none", style: styles.nativeBookPageOrnamentInner }),
+        /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.nativeBookPageContent, children: /* @__PURE__ */ jsxRuntime.jsx(
+          ReactNative.Text,
+          {
+            style: [
+              styles.nativeBookVerseText,
+              COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+              { color: resolvedReaderTheme.text },
+              {
+                fontSize: nativeBookVerseFontSizePx,
+                lineHeight: Math.round(nativeBookVerseFontSizePx * 1.45)
+              }
+            ],
+            children: renderNativeRichText(verse.contentHtml, key)
+          }
+        ) })
+      ]
+    },
+    key
+  );
+  const renderNativeBookTurn = (fullScreen) => {
+    if (!nativeBookTurn || !nativeBookTurnVisuals) return null;
+    const { direction, double, pageWidth, pageHeight, sourceVerses, backVerse } = nativeBookTurn;
+    const frontVerse = double ? sourceVerses[direction === "next" ? 1 : 0] : sourceVerses[0];
+    const stationaryVerse = double ? sourceVerses[direction === "next" ? 0 : 1] : null;
+    if (!frontVerse) return null;
+    const pagePosition = {
+      width: pageWidth,
+      height: pageHeight,
+      [direction === "next" ? "right" : "left"]: 0
+    };
+    return /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { pointerEvents: "none", style: styles.nativeBookTurnOverlay, children: [
+      stationaryVerse ? /* @__PURE__ */ jsxRuntime.jsx(
+        NativeAnimatedView,
+        {
+          style: [
+            styles.nativeBookTurnStationary,
+            {
+              width: pageWidth,
+              height: pageHeight,
+              [direction === "next" ? "left" : "right"]: 0,
+              opacity: nativeBookTurnVisuals.stationaryOpacity
+            }
+          ],
+          children: renderNativeBookPage(
+            stationaryVerse,
+            `turn-stationary-${stationaryVerse.id}`,
+            fullScreen,
+            styles.nativeBookTurnPage
+          )
+        }
+      ) : null,
+      /* @__PURE__ */ jsxRuntime.jsxs(
+        NativeAnimatedView,
+        {
+          style: [
+            styles.nativeBookTurnSheet,
+            pagePosition,
+            { transform: nativeBookTurnVisuals.sheetTransform }
+          ],
+          children: [
+            /* @__PURE__ */ jsxRuntime.jsxs(
+              NativeAnimatedView,
+              {
+                style: [
+                  styles.nativeBookTurnFront,
+                  { opacity: nativeBookTurnVisuals.outgoingOpacity }
+                ],
+                children: [
+                  renderNativeBookPage(
+                    frontVerse,
+                    `turn-front-${frontVerse.id}`,
+                    fullScreen,
+                    styles.nativeBookTurnPage
+                  ),
+                  /* @__PURE__ */ jsxRuntime.jsxs(
+                    NativeAnimatedView,
+                    {
+                      style: [
+                        styles.nativeBookTurnFold,
+                        {
+                          width: nativeBookTurnVisuals.foldWidth,
+                          [direction === "next" ? "right" : "left"]: 0,
+                          transform: nativeBookTurnVisuals.foldTransform
+                        }
+                      ],
+                      children: [
+                        /* @__PURE__ */ jsxRuntime.jsx(
+                          ReactNative.View,
+                          {
+                            style: [
+                              styles.nativeBookTurnFoldContent,
+                              {
+                                width: pageWidth,
+                                height: pageHeight,
+                                [direction === "next" ? "right" : "left"]: 0
+                              }
+                            ],
+                            children: renderNativeBookPage(
+                              frontVerse,
+                              `turn-fold-${frontVerse.id}`,
+                              fullScreen,
+                              styles.nativeBookTurnPage
+                            )
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntime.jsx(
+                          NativeAnimatedView,
+                          {
+                            style: [
+                              styles.nativeBookTurnFoldShade,
+                              { opacity: nativeBookTurnVisuals.foldShadeOpacity }
+                            ]
+                          }
+                        )
+                      ]
+                    }
+                  )
+                ]
+              }
+            ),
+            backVerse ? /* @__PURE__ */ jsxRuntime.jsx(
+              NativeAnimatedView,
+              {
+                style: [
+                  styles.nativeBookTurnBack,
+                  { opacity: nativeBookTurnVisuals.incomingOpacity }
+                ],
+                children: renderNativeBookPage(
+                  backVerse,
+                  `turn-back-${backVerse.id}`,
+                  fullScreen,
+                  styles.nativeBookTurnPage
+                )
+              }
+            ) : null
+          ]
+        }
+      )
+    ] });
+  };
   const verseAudioCurrentSeconds = Math.max(
     0,
     verseAudioStatus.currentTime || 0
@@ -4671,68 +4947,83 @@ ${shareUrl}`;
                 showsVerticalScrollIndicator: false,
                 nestedScrollEnabled: true,
                 onTouchStart: showOverlay,
-                children: /* @__PURE__ */ jsxRuntime.jsx(
-                  NativeAnimatedView,
+                children: /* @__PURE__ */ jsxRuntime.jsxs(
+                  ReactNative.View,
                   {
+                    onLayout: (event) => {
+                      nativeBookSpreadLayoutRef.current = event.nativeEvent.layout;
+                    },
                     style: [
                       styles.nativeFullScreenBookContent,
                       activeBookSpreadMode === "double" ? styles.nativeFullScreenBookContentDouble : null,
                       styles.nativeFullScreenBookContentEdgeToEdge,
-                      nativeBookTurnAnimatedStyle
+                      nativeBookTurn ? { minHeight: nativeBookTurn.pageHeight } : null
                     ],
-                    children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsxs(
-                      ReactNative.View,
-                      {
-                        style: [
-                          styles.nativeBookPage,
-                          styles.nativeFullScreenBookPage,
-                          activeBookSpreadMode === "double" ? styles.nativeFullScreenBookPageDouble : null,
-                          fullScreenBookPageFillStyle,
-                          {
-                            borderColor: resolvedReaderTheme.accent,
-                            backgroundColor: resolvedReaderTheme.page,
-                            shadowColor: resolvedReaderTheme.shadow
-                          }
-                        ],
-                        children: [
-                          /* @__PURE__ */ jsxRuntime.jsx(
-                            ReactNative.View,
+                    children: [
+                      nativeBookVerses.map((verse, index) => /* @__PURE__ */ jsxRuntime.jsxs(
+                        ReactNative.View,
+                        {
+                          style: [
+                            styles.nativeBookPage,
+                            styles.nativeFullScreenBookPage,
+                            activeBookSpreadMode === "double" ? styles.nativeFullScreenBookPageDouble : null,
+                            fullScreenBookPageFillStyle,
                             {
-                              pointerEvents: "none",
-                              style: styles.nativeBookPageOrnamentOuter
+                              borderColor: resolvedReaderTheme.accent,
+                              backgroundColor: resolvedReaderTheme.page,
+                              shadowColor: resolvedReaderTheme.shadow
                             }
-                          ),
-                          /* @__PURE__ */ jsxRuntime.jsx(
-                            ReactNative.View,
-                            {
-                              pointerEvents: "none",
-                              style: styles.nativeBookPageOrnamentInner
-                            }
-                          ),
-                          /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.nativeBookPageContent, children: /* @__PURE__ */ jsxRuntime.jsx(
-                            ReactNative.Text,
-                            {
-                              style: [
-                                styles.nativeBookVerseText,
-                                COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
-                                { color: resolvedReaderTheme.text },
-                                {
-                                  fontSize: nativeBookVerseFontSizePx,
-                                  lineHeight: Math.round(
-                                    nativeBookVerseFontSizePx * 1.45
-                                  )
-                                }
-                              ],
-                              children: renderNativeRichText(
-                                verse.contentHtml,
-                                `fullscreen-book-${verse.id}`
-                              )
-                            }
-                          ) })
-                        ]
-                      },
-                      `fullscreen-book-${nativeBookPageNumber}-${verse.id}`
-                    ))
+                          ],
+                          children: [
+                            /* @__PURE__ */ jsxRuntime.jsx(
+                              ReactNative.View,
+                              {
+                                pointerEvents: "none",
+                                style: styles.nativeBookPageOrnamentOuter
+                              }
+                            ),
+                            /* @__PURE__ */ jsxRuntime.jsx(
+                              ReactNative.View,
+                              {
+                                pointerEvents: "none",
+                                style: styles.nativeBookPageOrnamentInner
+                              }
+                            ),
+                            /* @__PURE__ */ jsxRuntime.jsx(
+                              NativeAnimatedView,
+                              {
+                                style: [
+                                  styles.nativeBookPageContent,
+                                  nativeBookTurnVisuals ? { opacity: nativeBookTurnVisuals.incomingOpacity } : null
+                                ],
+                                children: /* @__PURE__ */ jsxRuntime.jsx(
+                                  ReactNative.Text,
+                                  {
+                                    style: [
+                                      styles.nativeBookVerseText,
+                                      COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                                      { color: resolvedReaderTheme.text },
+                                      {
+                                        fontSize: nativeBookVerseFontSizePx,
+                                        lineHeight: Math.round(
+                                          nativeBookVerseFontSizePx * 1.45
+                                        )
+                                      }
+                                    ],
+                                    children: renderNativeRichText(
+                                      verse.contentHtml,
+                                      `fullscreen-book-${verse.id}`
+                                    )
+                                  }
+                                )
+                              }
+                            )
+                          ]
+                        },
+                        `fullscreen-book-${nativeBookPageNumber}-${index}`
+                      )),
+                      renderNativeBookTurn(true)
+                    ]
                   }
                 )
               }
@@ -5195,66 +5486,81 @@ ${shareUrl}`;
                         isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null,
                         !reserveOverlayControlsSpace ? styles.noOverlayControlsPadding : null
                       ],
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        NativeAnimatedView,
+                      children: /* @__PURE__ */ jsxRuntime.jsxs(
+                        ReactNative.View,
                         {
+                          onLayout: (event) => {
+                            nativeBookSpreadLayoutRef.current = event.nativeEvent.layout;
+                          },
                           style: [
                             styles.nativeBookPages,
                             activeBookSpreadMode === "double" ? styles.nativeBookPagesDouble : null,
-                            nativeBookTurnAnimatedStyle
+                            nativeBookTurn ? { minHeight: nativeBookTurn.pageHeight } : null
                           ],
-                          children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsxs(
-                            ReactNative.View,
-                            {
-                              style: [
-                                styles.nativeBookPage,
-                                activeBookSpreadMode === "double" ? styles.nativeBookPageDouble : null,
-                                inlineBookPageFillStyle,
-                                {
-                                  borderColor: resolvedReaderTheme.accent,
-                                  backgroundColor: resolvedReaderTheme.page,
-                                  shadowColor: resolvedReaderTheme.shadow
-                                }
-                              ],
-                              children: [
-                                /* @__PURE__ */ jsxRuntime.jsx(
-                                  ReactNative.View,
+                          children: [
+                            nativeBookVerses.map((verse, index) => /* @__PURE__ */ jsxRuntime.jsxs(
+                              ReactNative.View,
+                              {
+                                style: [
+                                  styles.nativeBookPage,
+                                  activeBookSpreadMode === "double" ? styles.nativeBookPageDouble : null,
+                                  inlineBookPageFillStyle,
                                   {
-                                    pointerEvents: "none",
-                                    style: styles.nativeBookPageOrnamentOuter
+                                    borderColor: resolvedReaderTheme.accent,
+                                    backgroundColor: resolvedReaderTheme.page,
+                                    shadowColor: resolvedReaderTheme.shadow
                                   }
-                                ),
-                                /* @__PURE__ */ jsxRuntime.jsx(
-                                  ReactNative.View,
-                                  {
-                                    pointerEvents: "none",
-                                    style: styles.nativeBookPageOrnamentInner
-                                  }
-                                ),
-                                /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.nativeBookPageContent, children: /* @__PURE__ */ jsxRuntime.jsx(
-                                  ReactNative.Text,
-                                  {
-                                    style: [
-                                      styles.nativeBookVerseText,
-                                      COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
-                                      { color: resolvedReaderTheme.text },
-                                      {
-                                        fontSize: nativeBookVerseFontSizePx,
-                                        lineHeight: Math.round(
-                                          nativeBookVerseFontSizePx * 1.45
-                                        )
-                                      }
-                                    ],
-                                    children: renderNativeRichText(
-                                      verse.contentHtml,
-                                      `book-${verse.id}`
-                                    )
-                                  }
-                                ) })
-                              ]
-                            },
-                            `book-${nativeBookPageNumber}-${verse.id}`
-                          ))
+                                ],
+                                children: [
+                                  /* @__PURE__ */ jsxRuntime.jsx(
+                                    ReactNative.View,
+                                    {
+                                      pointerEvents: "none",
+                                      style: styles.nativeBookPageOrnamentOuter
+                                    }
+                                  ),
+                                  /* @__PURE__ */ jsxRuntime.jsx(
+                                    ReactNative.View,
+                                    {
+                                      pointerEvents: "none",
+                                      style: styles.nativeBookPageOrnamentInner
+                                    }
+                                  ),
+                                  /* @__PURE__ */ jsxRuntime.jsx(
+                                    NativeAnimatedView,
+                                    {
+                                      style: [
+                                        styles.nativeBookPageContent,
+                                        nativeBookTurnVisuals ? { opacity: nativeBookTurnVisuals.incomingOpacity } : null
+                                      ],
+                                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                                        ReactNative.Text,
+                                        {
+                                          style: [
+                                            styles.nativeBookVerseText,
+                                            COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                                            { color: resolvedReaderTheme.text },
+                                            {
+                                              fontSize: nativeBookVerseFontSizePx,
+                                              lineHeight: Math.round(
+                                                nativeBookVerseFontSizePx * 1.45
+                                              )
+                                            }
+                                          ],
+                                          children: renderNativeRichText(
+                                            verse.contentHtml,
+                                            `book-${verse.id}`
+                                          )
+                                        }
+                                      )
+                                    }
+                                  )
+                                ]
+                              },
+                              `book-${nativeBookPageNumber}-${index}`
+                            )),
+                            renderNativeBookTurn(false)
+                          ]
                         }
                       )
                     }
@@ -5620,7 +5926,7 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && !hideControls && (showOverlayControls || Boolean(overlayViewport) && useNativeVerseView) && (!overlayViewport || stickyOverlayVisible) ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(
+              !loadingError && !hideControls && (showOverlayControls || Boolean(overlayViewport) && useNativeVerseView) ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(
                 NativeAnimatedView,
                 {
                   onLayout: (event) => {
@@ -6215,6 +6521,66 @@ var styles = ReactNative.StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1
+  },
+  nativeBookTurnOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 8,
+    elevation: 8
+  },
+  nativeBookTurnStationary: {
+    position: "absolute",
+    top: 0
+  },
+  nativeBookTurnSheet: {
+    position: "absolute",
+    top: 0
+  },
+  nativeBookTurnFront: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backfaceVisibility: "hidden"
+  },
+  nativeBookTurnFold: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    overflow: "hidden",
+    backfaceVisibility: "hidden",
+    elevation: 3
+  },
+  nativeBookTurnFoldContent: {
+    position: "absolute",
+    top: 0
+  },
+  nativeBookTurnFoldShade: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "#23120a"
+  },
+  nativeBookTurnBack: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backfaceVisibility: "hidden",
+    transform: [{ rotateY: "180deg" }]
+  },
+  nativeBookTurnPage: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    minHeight: 0
   },
   nativeBookPageContent: {
     zIndex: 4,
