@@ -45,6 +45,9 @@ var PAGE_FLIP_BROWSER_SCRIPT = '!function(t,e){"object"==typeof exports&&"undefi
 var NativeModal = ReactNative__namespace.Modal;
 var NativeScrollView = ReactNative__namespace.ScrollView;
 var NativeDimensions = ReactNative__namespace.Dimensions;
+var NativeAnimated = ReactNative__namespace.Animated;
+var NativeAnimatedView = NativeAnimated.View;
+var NativeEasing = ReactNative__namespace.Easing;
 var { useAudioPlayer, useAudioPlayerStatus } = ExpoAudio__namespace;
 var maybeSetAudioModeAsync = ExpoAudio__namespace.setAudioModeAsync;
 var DEFAULT_READER_THEME = {
@@ -1064,8 +1067,8 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
       .page.book-sheet {
         margin: 0;
         height: 100%;
-        border-radius: 8px;
-        border: 1px solid rgba(120, 53, 15, 0.22);
+        border-radius: 6px;
+        border: 1px solid rgba(120, 53, 15, 0.2);
         background: ${theme.page};
         box-shadow:
           inset 0 0 0 1px rgba(255, 255, 255, 0.72),
@@ -1082,6 +1085,30 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         backface-visibility: hidden;
         transform-origin: center center;
         will-change: transform, opacity;
+      }
+      .page-ornament {
+        position: absolute;
+        inset: 8px;
+        pointer-events: none;
+        z-index: 3;
+        border-radius: 3px;
+        background:
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) top 5px left 16px / 32px 12px repeat-x,
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) bottom 5px left 16px / 32px 12px repeat-x,
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) left 5px top 16px / 12px 32px repeat-y,
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) right 5px top 16px / 12px 32px repeat-y,
+          repeating-linear-gradient(135deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) top / 100% 12px no-repeat,
+          repeating-linear-gradient(45deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) bottom / 100% 12px no-repeat,
+          repeating-linear-gradient(45deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) left / 12px 100% no-repeat,
+          repeating-linear-gradient(135deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) right / 12px 100% no-repeat;
+        filter: drop-shadow(0 0 0.6px rgba(194, 65, 12, 0.42));
+      }
+      .page-ornament::before {
+        content: '';
+        position: absolute;
+        inset: 9px;
+        border: 1px solid rgba(249, 115, 22, 0.62);
+        border-radius: 2px;
       }
       .page.book-sheet.active {
         border-color: rgba(120, 53, 15, 0.24);
@@ -1196,6 +1223,8 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         height: 100%;
         max-width: 88%;
         min-height: 0;
+        padding: 34px 30px;
+        box-sizing: border-box;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
@@ -1625,7 +1654,7 @@ ${pageFlipBrowserScript}
           const configuredPagePadding = Number(layout.pagePaddingPx);
           const pagePadding = Number.isFinite(configuredPagePadding)
             ? Math.max(0, configuredPagePadding)
-            : 18;
+            : 30;
           const maxVersesPerPage =
             currentViewMode === 'book'
               ? 1
@@ -1782,7 +1811,10 @@ ${pageFlipBrowserScript}
           for (const verse of pageData) {
             contentWrap.appendChild(createVerseBlock(verse));
           }
+          const ornament = document.createElement('div');
+          ornament.className = 'page-ornament';
           wrapper.appendChild(contentWrap);
+          wrapper.appendChild(ornament);
           return wrapper;
         };
 
@@ -2468,7 +2500,8 @@ function PdfDocumentViewer({
   hideControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
-  readerTheme
+  readerTheme,
+  overlayViewport
 }) {
   const [windowSize, setWindowSize] = react.useState(
     () => NativeDimensions?.get?.("window") || { width: 0, height: 0 }
@@ -2569,6 +2602,12 @@ function PdfDocumentViewer({
   const [verseIdsByPage, setVerseIdsByPage] = react.useState({});
   const [audioSliderWidth, setAudioSliderWidth] = react.useState(1);
   const [viewerWrapHeight, setViewerWrapHeight] = react.useState(0);
+  const viewerWrapRef = react.useRef(null);
+  const [viewerContentTop, setViewerContentTop] = react.useState(null);
+  const [stickyOverlayVisible, setStickyOverlayVisible] = react.useState(false);
+  const [overlayControlsHeight, setOverlayControlsHeight] = react.useState(96);
+  const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = react.useState(0);
+  const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] = react.useState(0);
   const [pdfBookViewerHeight, setPdfBookViewerHeight] = react.useState(480);
   const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = react.useState(true);
   const effectiveVerseLayout = react.useMemo(() => {
@@ -2615,6 +2654,7 @@ function PdfDocumentViewer({
   const overlayTimerRef = react.useRef(null);
   const suppressCompleteModeSyncRef = react.useRef(false);
   const pendingModeSwitchPageRef = react.useRef(null);
+  const nativeBookTurnProgress = react.useRef(new NativeAnimated.Value(1)).current;
   const programmaticViewerSyncRef = react.useRef(null);
   const lastSyncedViewModeRef = react.useRef(null);
   const lastInjectedViewerStateRef = react.useRef(null);
@@ -2634,11 +2674,53 @@ function PdfDocumentViewer({
   const hasVerseContent = Boolean(verses?.length);
   const contentMode = mode === "verse" ? "verse" : mode === "pdf" ? "pdf" : hasVerseContent ? "verse" : "pdf";
   const useNativeFullScreenOverlay = contentMode === "verse" && isVerseFullScreen;
-  const useFullScreenBookWebView = useNativeFullScreenOverlay && viewMode === "book";
+  const useFullScreenBookWebView = false;
   const useNativeFullScreenBookView = useNativeFullScreenOverlay && viewMode === "book" && !useFullScreenBookWebView;
   const suppressInlineReaderSurface = useNativeFullScreenBookView || ReactNative.Platform.OS === "ios" && useFullScreenBookWebView;
   const inlineFullScreenActive = contentMode === "verse" && isVerseFullScreen && !useNativeFullScreenOverlay;
   const viewerHeight = contentMode === "pdf" && viewMode === "book" ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight) : completeViewerHeight;
+  const measureViewerWindow = react.useCallback(() => {
+    if (!overlayViewport) return;
+    viewerWrapRef.current?.measureInWindow?.(
+      (_x, y) => {
+        const contentTop = y + overlayViewport.getScrollOffset();
+        setViewerContentTop(
+          (current) => current !== null && Math.abs(current - contentTop) < 1 ? current : contentTop
+        );
+      }
+    );
+  }, [overlayViewport]);
+  react.useEffect(measureViewerWindow, [measureViewerWindow]);
+  react.useEffect(() => {
+    if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
+      return;
+    const updateVisibility = (scrollY) => {
+      const viewerY = viewerContentTop - scrollY;
+      const visibleHeight = Math.min(viewerY + viewerWrapHeight, overlayViewport.bottom) - Math.max(viewerY, overlayViewport.top);
+      const visible = visibleHeight >= overlayControlsHeight + 20;
+      setStickyOverlayVisible(
+        (current) => current === visible ? current : visible
+      );
+    };
+    updateVisibility(overlayViewport.getScrollOffset());
+    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
+      updateVisibility(value);
+    });
+    return () => overlayViewport.scrollY.removeListener(listenerId);
+  }, [overlayViewport, viewerContentTop, viewerWrapHeight, overlayControlsHeight]);
+  const stickyOverlayTranslate = react.useMemo(() => {
+    if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
+      return null;
+    const minTop = 10;
+    const maxTop = Math.max(minTop + 1, viewerWrapHeight - overlayControlsHeight - 10);
+    const baseTop = viewerWrapHeight - overlayControlsHeight - 6;
+    const entryOffset = minTop - (overlayViewport.bottom - viewerContentTop - overlayControlsHeight - 20);
+    return overlayViewport.scrollY.interpolate({
+      inputRange: [entryOffset, entryOffset + maxTop - minTop],
+      outputRange: [minTop - baseTop, maxTop - baseTop],
+      extrapolate: "clamp"
+    });
+  }, [overlayViewport, viewerContentTop, viewerWrapHeight, overlayControlsHeight]);
   const useNativeCompleteVerseView = contentMode === "verse" && viewMode === "continuous" && !isVerseFullScreen;
   const useNativeBookVerseView = contentMode === "verse" && viewMode === "book" && !isVerseFullScreen;
   const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
@@ -2745,9 +2827,16 @@ function PdfDocumentViewer({
     }
   }, []);
   const [pageNumber, setPageNumber] = react.useState(externalInitialPageNumber);
+  const [nativeBookPageNumberState, setNativeBookPageNumberState] = react.useState(
+    externalInitialPageNumber
+  );
+  const [nativeBookTurnDirection, setNativeBookTurnDirection] = react.useState("next");
   const isPageHydrated = true;
   react.useEffect(() => {
     pageNumberRef.current = pageNumber;
+    setNativeBookPageNumberState(
+      (current) => current === pageNumber ? current : pageNumber
+    );
   }, [pageNumber]);
   react.useEffect(() => {
     viewModeRef.current = viewMode;
@@ -2989,6 +3078,7 @@ function PdfDocumentViewer({
     const currentPage2 = pageNumberRef.current || pageNumber;
     if (currentPage2 > nextPageCount) {
       pageNumberRef.current = nextPageCount;
+      setNativeBookPageNumberState(nextPageCount);
       void setPageNumber(nextPageCount);
     }
   }, [completeVerses.length, useNativeVersePaging]);
@@ -3095,7 +3185,7 @@ function PdfDocumentViewer({
       resolvedReaderTheme
     ]
   );
-  const fullScreenWebViewSource = react.useMemo(
+  react.useMemo(
     () => ({ html: fullScreenVerseHtml }),
     [fullScreenVerseHtml]
   );
@@ -3129,6 +3219,7 @@ function PdfDocumentViewer({
       const pageForVerse = getNativeVersePage(verseId);
       if (!pageForVerse) return;
       pageNumberRef.current = pageForVerse;
+      setNativeBookPageNumberState(pageForVerse);
       pendingModeSwitchPageRef.current = pageForVerse;
       pendingCompleteScrollVerseIdRef.current = verseId;
       void setPageNumber(pageForVerse);
@@ -3163,6 +3254,8 @@ function PdfDocumentViewer({
   );
   react.useEffect(() => {
     if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
+    const isPlaying = externalVerseAudioState.isPlaying === true;
+    if (!isPlaying) return;
     const audioAssetUrl = String(externalVerseAudioState.audioAssetUrl).trim();
     const currentMs = Math.max(
       0,
@@ -3175,7 +3268,6 @@ function PdfDocumentViewer({
     if (matchedIndex < 0) return;
     const matched = playableVerseMappings[matchedIndex];
     const verseId = String(matched.verseId);
-    const isPlaying = externalVerseAudioState.isPlaying === true;
     const verseChanged = activeVerseAudioIndex !== matchedIndex || activeVerseId !== verseId || readerVerseId !== verseId;
     const pageForVerse = getNativeVersePage(verseId);
     const pageChanged = Boolean(pageForVerse && pageForVerse !== pageNumber);
@@ -3284,6 +3376,7 @@ function PdfDocumentViewer({
         );
         if (viewMode !== "book" && pageForVerse && pageForVerse !== pageNumber) {
           pageNumberRef.current = pageForVerse;
+          setNativeBookPageNumberState(pageForVerse);
           void setPageNumber(pageForVerse);
           const script = `
             (function() {
@@ -3453,6 +3546,7 @@ function PdfDocumentViewer({
   react.useEffect(() => {
     if (!hasVerseAudio || !verseAudioStatus.isLoaded || !currentVerseAudioUrl)
       return;
+    if (!verseAudioStatus.playing) return;
     const currentMs = Math.max(
       0,
       Math.floor((verseAudioStatus.currentTime || 0) * 1e3)
@@ -3647,7 +3741,7 @@ function PdfDocumentViewer({
     },
     [showOverlay]
   );
-  const handleFullScreenWebViewMessage = react.useCallback(
+  react.useCallback(
     (event) => {
       try {
         const payload = JSON.parse(event.nativeEvent.data || "{}");
@@ -3716,6 +3810,7 @@ function PdfDocumentViewer({
         if (!Number.isInteger(nextPage) || nextPage <= 0) return;
         if (nextPage === pageNumberRef.current) return;
         pageNumberRef.current = nextPage;
+        setNativeBookPageNumberState(nextPage);
         void setPageNumber(nextPage);
       } catch {
       }
@@ -3776,27 +3871,76 @@ function PdfDocumentViewer({
     },
     []
   );
+  const playNativeBookTurn = react.useCallback(
+    (direction) => {
+      setNativeBookTurnDirection(direction);
+      nativeBookTurnProgress.stopAnimation();
+      nativeBookTurnProgress.setValue(0);
+      NativeAnimated.timing(nativeBookTurnProgress, {
+        toValue: 1,
+        duration: 360,
+        easing: NativeEasing.out(NativeEasing.cubic),
+        useNativeDriver: true
+      }).start();
+    },
+    [nativeBookTurnProgress]
+  );
+  const navigateNativeVerseBookPage = react.useCallback(
+    (targetPage, direction = "next") => {
+      const safePageCount = completeVerses.length || pageCountRef.current || pageCount || 1;
+      const safePage = Math.max(
+        1,
+        Math.min(Math.trunc(targetPage), safePageCount)
+      );
+      if (safePage !== pageNumberRef.current) {
+        playNativeBookTurn(direction);
+      }
+      const targetVerse = completeVerses[safePage - 1] || null;
+      const targetVerseId = targetVerse?.id === null || targetVerse?.id === void 0 ? null : String(targetVerse.id);
+      pageNumberRef.current = safePage;
+      setNativeBookPageNumberState(safePage);
+      pendingModeSwitchPageRef.current = safePage;
+      void setPageNumber(safePage);
+      if (targetVerseId) {
+        setReaderVerseId(
+          (current) => current === targetVerseId ? current : targetVerseId
+        );
+        setActiveVerseId(
+          (current) => current === targetVerseId ? current : targetVerseId
+        );
+        syncActiveVerseToWebView(targetVerseId, verseAudioStatus.playing, true);
+      }
+    },
+    [
+      completeVerses,
+      pageCount,
+      playNativeBookTurn,
+      setPageNumber,
+      syncActiveVerseToWebView,
+      verseAudioStatus.playing
+    ]
+  );
   const goToPreviousPage = react.useCallback(() => {
-    const currentPage2 = pageNumberRef.current || pageNumber;
+    const currentPage2 = contentMode === "verse" && viewMode === "book" ? nativeBookPageNumberState || pageNumber : pageNumberRef.current || pageNumber;
     const currentAnchor = activeBookSpreadMode === "double" && currentPage2 % 2 === 0 ? currentPage2 - 1 : currentPage2;
     const pageStep = viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1;
     const previousPage = Math.max(1, currentAnchor - pageStep);
     if (viewMode === "book") {
-      if (useFullScreenBookWebView) {
-        requestBookPageChange("prev");
-      } else {
-        pageNumberRef.current = previousPage;
-        pendingModeSwitchPageRef.current = previousPage;
-        void setPageNumber(previousPage);
+      {
+        navigateNativeVerseBookPage(previousPage, "prev");
       }
     } else {
       pageNumberRef.current = previousPage;
+      setNativeBookPageNumberState(previousPage);
       void setPageNumber(previousPage);
     }
     showOverlay();
   }, [
     activeBookSpreadMode,
+    contentMode,
+    nativeBookPageNumberState,
     pageNumber,
+    navigateNativeVerseBookPage,
     requestBookPageChange,
     setPageNumber,
     showOverlay,
@@ -3804,27 +3948,27 @@ function PdfDocumentViewer({
     viewMode
   ]);
   const goToNextPage = react.useCallback(() => {
-    const currentPage2 = pageNumberRef.current || pageNumber;
+    const currentPage2 = contentMode === "verse" && viewMode === "book" ? nativeBookPageNumberState || pageNumber : pageNumberRef.current || pageNumber;
     const currentAnchor = activeBookSpreadMode === "double" && currentPage2 % 2 === 0 ? currentPage2 - 1 : currentPage2;
     const pageStep = viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1;
     const nextPage = pageCount ? Math.min(currentAnchor + pageStep, pageCount) : currentAnchor + pageStep;
     if (viewMode === "book") {
-      if (useFullScreenBookWebView) {
-        requestBookPageChange("next");
-      } else {
-        pageNumberRef.current = nextPage;
-        pendingModeSwitchPageRef.current = nextPage;
-        void setPageNumber(nextPage);
+      {
+        navigateNativeVerseBookPage(nextPage, "next");
       }
     } else {
       pageNumberRef.current = nextPage;
+      setNativeBookPageNumberState(nextPage);
       void setPageNumber(nextPage);
     }
     showOverlay();
   }, [
     activeBookSpreadMode,
+    contentMode,
+    nativeBookPageNumberState,
     pageCount,
     pageNumber,
+    navigateNativeVerseBookPage,
     requestBookPageChange,
     setPageNumber,
     showOverlay,
@@ -3835,6 +3979,7 @@ function PdfDocumentViewer({
     const firstVerseId = completeVerses[0]?.id || null;
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
+    setNativeBookPageNumberState(1);
     void setPageNumber(1);
     setReaderVerseId(
       (current) => current === firstVerseId ? current : firstVerseId
@@ -3969,14 +4114,14 @@ function PdfDocumentViewer({
     const syncSignature = JSON.stringify({
       viewMode,
       pageNumber: syncPage,
-      readerVerseId: viewMode === "book" ? "" : readerVerseId || "",
+      readerVerseId: readerVerseId || "",
       zoomLevel: Math.round(zoomLevel * 100) / 100
     });
     if (lastInjectedViewerStateRef.current === syncSignature) return;
     syncViewerStateToWebView(
       viewMode,
       syncPage,
-      viewMode === "book" ? null : readerVerseId,
+      readerVerseId,
       zoomLevel
     );
     lastInjectedViewerStateRef.current = syncSignature;
@@ -4077,9 +4222,11 @@ ${shareUrl}`;
   }, [openShareUrl, shareLinks.systemUrl]);
   const zoomOutDisabled = contentMode === "verse" ? verseFontSizePx <= verseZoomConfig.min : zoomLevel <= MIN_ZOOM_LEVEL;
   const zoomInDisabled = contentMode === "verse" ? verseFontSizePx >= verseZoomConfig.max || viewMode === "book" && bookVerseCanZoomIn === false : zoomLevel >= MAX_ZOOM_LEVEL;
-  const pageBadgeText = contentMode === "verse" && viewMode === "continuous" ? `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ""}` : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ""}`;
+  const displayedPageNumber = contentMode === "verse" && viewMode === "book" ? nativeBookPageNumberState : pageNumber;
+  const pageBadgeText = contentMode === "verse" && viewMode === "continuous" ? `Page ${displayedPageNumber}${pageCount ? ` / ${pageCount}` : ""}` : `Page ${displayedPageNumber}${pageCount ? ` / ${pageCount}` : ""}`;
   const activeVerseAudio = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
-  const nativeBookPageNumber = pageNumberRef.current || pageNumber;
+  const readerVersePageNumber = readerVerseId && useNativeVersePaging ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1 : 0;
+  const nativeBookPageNumber = readerVersePageNumber > 0 ? readerVersePageNumber : nativeBookPageNumberState || pageNumber;
   const nativeBookVerse = (useNativeBookVerseView || useNativeFullScreenOverlay && viewMode === "book") && completeVerses.length ? completeVerses[Math.max(
     0,
     Math.min(
@@ -4095,21 +4242,43 @@ ${shareUrl}`;
     (verse) => verse !== null
   );
   const reserveOverlayControlsSpace = effectiveVerseLayout?.reserveControlsSpace !== false;
-  const centerSinglePageVerse = effectiveVerseLayout?.centerSinglePage === true && nativeBookVerses.length === 1;
-  const inlineBookPageFillStyle = centerSinglePageVerse ? {
+  const inlineBookPageFillStyle = {
     minHeight: Math.max(
       260,
       viewerHeight - (reserveOverlayControlsSpace ? 114 : 20)
     ),
     justifyContent: "center"
-  } : null;
-  const fullScreenBookPageFillStyle = centerSinglePageVerse ? {
-    minHeight: Math.max(
-      260,
-      visibleViewportHeight - (reserveOverlayControlsSpace ? 114 : 20)
-    ),
+  };
+  const fullScreenBookPageFillStyle = {
+    minHeight: Math.max(260, visibleViewportHeight),
     justifyContent: "center"
-  } : null;
+  };
+  const nativeBookVerseFontSizePx = activeBookSpreadMode === "double" ? Math.max(18, Math.round(verseFontSizePx * 0.86)) : verseFontSizePx;
+  const nativeBookTurnAnimatedStyle = react.useMemo(() => {
+    const entryOffset = nativeBookTurnDirection === "next" ? 42 : -42;
+    const entryRotation = nativeBookTurnDirection === "next" ? "-8deg" : "8deg";
+    return {
+      opacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.35, 1]
+      }),
+      transform: [
+        { perspective: 900 },
+        {
+          translateX: nativeBookTurnProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [entryOffset, 0]
+          })
+        },
+        {
+          rotateY: nativeBookTurnProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [entryRotation, "0deg"]
+          })
+        }
+      ]
+    };
+  }, [nativeBookTurnDirection, nativeBookTurnProgress]);
   const verseAudioCurrentSeconds = Math.max(
     0,
     verseAudioStatus.currentTime || 0
@@ -4382,10 +4551,10 @@ ${shareUrl}`;
             ReactNative.Pressable,
             {
               onPress: goToPreviousPage,
-              disabled: pageNumber <= 1,
+              disabled: displayedPageNumber <= 1,
               style: [
                 styles.overlayZoomButton,
-                pageNumber <= 1 ? styles.overlayButtonDisabled : null
+                displayedPageNumber <= 1 ? styles.overlayButtonDisabled : null
               ],
               accessibilityLabel: "Previous page",
               children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
@@ -4460,10 +4629,10 @@ ${shareUrl}`;
             ReactNative.Pressable,
             {
               onPress: goToNextPage,
-              disabled: Boolean(pageCount && pageNumber >= pageCount),
+              disabled: Boolean(pageCount && displayedPageNumber >= pageCount),
               style: [
                 styles.overlayZoomButton,
-                pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
+                pageCount && displayedPageNumber >= pageCount ? styles.overlayButtonDisabled : null
               ],
               accessibilityLabel: "Next page",
               children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Next" })
@@ -4491,95 +4660,81 @@ ${shareUrl}`;
             { backgroundColor: resolvedReaderTheme.background }
           ],
           children: [
-            useFullScreenBookWebView ? /* @__PURE__ */ jsxRuntime.jsx(
-              ReactNative.View,
-              {
-                style: styles.nativeFullScreenBookSurface,
-                onTouchStart: showOverlay,
-                children: /* @__PURE__ */ jsxRuntime.jsx(
-                  reactNativeWebview.WebView,
-                  {
-                    ref: fullScreenWebViewRef,
-                    originWhitelist: ["about:blank"],
-                    source: fullScreenWebViewSource,
-                    style: styles.nativeFullScreenWebView,
-                    javaScriptEnabled: true,
-                    domStorageEnabled: true,
-                    startInLoadingState: false,
-                    setSupportMultipleWindows: false,
-                    mixedContentMode: "never",
-                    scrollEnabled: true,
-                    nestedScrollEnabled: true,
-                    bounces: false,
-                    showsVerticalScrollIndicator: false,
-                    showsHorizontalScrollIndicator: false,
-                    scalesPageToFit: false,
-                    setBuiltInZoomControls: false,
-                    setDisplayZoomControls: false,
-                    onLoadStart: () => {
-                      setLoadingPdf(true);
-                      setViewerReady(false);
-                      setLoadingError(null);
-                    },
-                    onLoadEnd: () => {
-                      setLoadingPdf(false);
-                      setViewerReady(true);
-                    },
-                    onMessage: handleFullScreenWebViewMessage
-                  },
-                  `fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`
-                )
-              }
-            ) : useNativeFullScreenBookView ? /* @__PURE__ */ jsxRuntime.jsx(
+            useNativeFullScreenBookView ? /* @__PURE__ */ jsxRuntime.jsx(
               NativeScrollView,
               {
                 style: [
                   styles.nativeFullScreenScroll,
                   { backgroundColor: resolvedReaderTheme.background }
                 ],
-                contentContainerStyle: [
-                  styles.nativeFullScreenBookContent,
-                  activeBookSpreadMode === "double" ? styles.nativeFullScreenBookContentDouble : null,
-                  !reserveOverlayControlsSpace ? styles.noOverlayControlsPadding : null
-                ],
-                nestedScrollEnabled: true,
+                contentContainerStyle: styles.nativeFullScreenBookScrollContent,
                 showsVerticalScrollIndicator: false,
+                nestedScrollEnabled: true,
                 onTouchStart: showOverlay,
-                children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsx(
-                  ReactNative.View,
+                children: /* @__PURE__ */ jsxRuntime.jsx(
+                  NativeAnimatedView,
                   {
                     style: [
-                      styles.nativeBookPage,
-                      styles.nativeFullScreenBookPage,
-                      activeBookSpreadMode === "double" ? styles.nativeFullScreenBookPageDouble : null,
-                      fullScreenBookPageFillStyle,
-                      {
-                        borderColor: resolvedReaderTheme.accent,
-                        backgroundColor: resolvedReaderTheme.page,
-                        shadowColor: resolvedReaderTheme.shadow
-                      }
+                      styles.nativeFullScreenBookContent,
+                      activeBookSpreadMode === "double" ? styles.nativeFullScreenBookContentDouble : null,
+                      styles.nativeFullScreenBookContentEdgeToEdge,
+                      nativeBookTurnAnimatedStyle
                     ],
-                    children: /* @__PURE__ */ jsxRuntime.jsx(
-                      ReactNative.Text,
+                    children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsxs(
+                      ReactNative.View,
                       {
                         style: [
-                          styles.nativeBookVerseText,
-                          COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
-                          { color: resolvedReaderTheme.text },
+                          styles.nativeBookPage,
+                          styles.nativeFullScreenBookPage,
+                          activeBookSpreadMode === "double" ? styles.nativeFullScreenBookPageDouble : null,
+                          fullScreenBookPageFillStyle,
                           {
-                            fontSize: verseFontSizePx,
-                            lineHeight: Math.round(verseFontSizePx * 1.45)
+                            borderColor: resolvedReaderTheme.accent,
+                            backgroundColor: resolvedReaderTheme.page,
+                            shadowColor: resolvedReaderTheme.shadow
                           }
                         ],
-                        children: renderNativeRichText(
-                          verse.contentHtml,
-                          `fullscreen-book-${verse.id}`
-                        )
-                      }
-                    )
-                  },
-                  `fullscreen-book-${verse.id}`
-                ))
+                        children: [
+                          /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.View,
+                            {
+                              pointerEvents: "none",
+                              style: styles.nativeBookPageOrnamentOuter
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.View,
+                            {
+                              pointerEvents: "none",
+                              style: styles.nativeBookPageOrnamentInner
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.nativeBookPageContent, children: /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.Text,
+                            {
+                              style: [
+                                styles.nativeBookVerseText,
+                                COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                                { color: resolvedReaderTheme.text },
+                                {
+                                  fontSize: nativeBookVerseFontSizePx,
+                                  lineHeight: Math.round(
+                                    nativeBookVerseFontSizePx * 1.45
+                                  )
+                                }
+                              ],
+                              children: renderNativeRichText(
+                                verse.contentHtml,
+                                `fullscreen-book-${verse.id}`
+                              )
+                            }
+                          ) })
+                        ]
+                      },
+                      `fullscreen-book-${nativeBookPageNumber}-${verse.id}`
+                    ))
+                  }
+                )
               }
             ) : /* @__PURE__ */ jsxRuntime.jsx(
               NativeScrollView,
@@ -4623,7 +4778,7 @@ ${shareUrl}`;
                 children: completeVerses.map((verse) => {
                   const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
                   const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
-                  return /* @__PURE__ */ jsxRuntime.jsx(
+                  return /* @__PURE__ */ jsxRuntime.jsxs(
                     ReactNative.View,
                     {
                       onLayout: (event) => {
@@ -4643,24 +4798,42 @@ ${shareUrl}`;
                         },
                         isActive ? styles.nativeFullScreenVerseBlockActive : null
                       ],
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.Text,
-                        {
-                          style: [
-                            styles.nativeFullScreenVerseText,
-                            textStyle,
-                            { color: resolvedReaderTheme.text },
-                            {
-                              fontSize: verseFontSizePx,
-                              lineHeight: Math.round(verseFontSizePx * 1.45)
-                            }
-                          ],
-                          children: renderNativeRichText(
-                            verse.contentHtml,
-                            `fullscreen-complete-${verse.id}`
-                          )
-                        }
-                      )
+                      children: [
+                        /* @__PURE__ */ jsxRuntime.jsx(
+                          ReactNative.View,
+                          {
+                            pointerEvents: "none",
+                            style: styles.completeVerseOrnamentOuter
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntime.jsx(
+                          ReactNative.View,
+                          {
+                            pointerEvents: "none",
+                            style: styles.completeVerseOrnamentInner
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntime.jsx(
+                          ReactNative.Text,
+                          {
+                            style: [
+                              styles.nativeFullScreenVerseText,
+                              textStyle,
+                              { color: resolvedReaderTheme.text },
+                              {
+                                fontSize: nativeBookVerseFontSizePx,
+                                lineHeight: Math.round(
+                                  nativeBookVerseFontSizePx * 1.45
+                                )
+                              }
+                            ],
+                            children: renderNativeRichText(
+                              verse.contentHtml,
+                              `fullscreen-complete-${verse.id}`
+                            )
+                          }
+                        )
+                      ]
                     },
                     verse.id
                   );
@@ -4794,7 +4967,7 @@ ${shareUrl}`;
                     )
                   }
                 ),
-                contentMode === "pdf" ? /* @__PURE__ */ jsxRuntime.jsx(
+                contentMode === "pdf" ? /* @__PURE__ */ jsxRuntime.jsxs(
                   ReactNative.Pressable,
                   {
                     onPress: () => void handleDownload(),
@@ -4806,16 +4979,32 @@ ${shareUrl}`;
                       }
                     ],
                     accessibilityLabel: "Download PDF",
-                    children: /* @__PURE__ */ jsxRuntime.jsx(
-                      ReactNative.Text,
-                      {
-                        style: [
-                          styles.actionIcon,
-                          { color: resolvedReaderTheme.accent }
-                        ],
-                        children: downloading ? "\u2026" : "\u2B07"
-                      }
-                    )
+                    children: [
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.View,
+                        {
+                          pointerEvents: "none",
+                          style: styles.completeVerseOrnamentOuter
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.View,
+                        {
+                          pointerEvents: "none",
+                          style: styles.completeVerseOrnamentInner
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Text,
+                        {
+                          style: [
+                            styles.actionIcon,
+                            { color: resolvedReaderTheme.accent }
+                          ],
+                          children: downloading ? "\u2026" : "\u2B07"
+                        }
+                      )
+                    ]
                   }
                 ) : null
               ] }) }),
@@ -4937,10 +5126,16 @@ ${shareUrl}`;
         /* @__PURE__ */ jsxRuntime.jsxs(
           ReactNative.View,
           {
+            ref: viewerWrapRef,
             style: [
               styles.viewerWrap,
               { borderColor: resolvedReaderTheme.border },
-              useNativeCompleteVerseView || useNativeBookVerseView ? { height: viewerHeight } : inlineFullScreenActive ? styles.viewerWrapFullScreen : { height: viewerHeight }
+              useNativeCompleteVerseView || useNativeBookVerseView ? {
+                height: Math.max(
+                  viewerHeight,
+                  useNativeBookVerseView ? embeddedBookContentHeight + 2 : embeddedContinuousContentHeight + 2
+                )
+              } : inlineFullScreenActive ? styles.viewerWrapFullScreen : { height: viewerHeight }
             ],
             onLayout: contentMode === "verse" ? (event) => {
               const nextHeight = Math.round(
@@ -4949,6 +5144,7 @@ ${shareUrl}`;
               if (nextHeight > 0 && nextHeight !== viewerWrapHeight) {
                 setViewerWrapHeight(nextHeight);
               }
+              measureViewerWindow();
             } : void 0,
             ...viewMode === "book" && contentMode === "verse" ? panResponder.panHandlers : {},
             children: [
@@ -4978,59 +5174,89 @@ ${shareUrl}`;
                 NativeScrollView,
                 {
                   style: [
-                    styles.completeScroll,
+                    styles.nativeBookScroll,
                     { backgroundColor: resolvedReaderTheme.background }
                   ],
-                  contentContainerStyle: [
-                    styles.nativeBookScrollContent,
-                    isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null,
-                    !reserveOverlayControlsSpace ? styles.noOverlayControlsPadding : null
-                  ],
-                  nestedScrollEnabled: true,
-                  scrollEventThrottle: 64,
+                  contentContainerStyle: styles.nativeBookOuterScrollContent,
                   showsVerticalScrollIndicator: false,
+                  nestedScrollEnabled: true,
+                  onContentSizeChange: (_width, height) => {
+                    const nextHeight = Math.ceil(height);
+                    setEmbeddedBookContentHeight(
+                      (current) => current === nextHeight ? current : nextHeight
+                    );
+                  },
                   onTouchStart: showOverlay,
                   children: /* @__PURE__ */ jsxRuntime.jsx(
                     ReactNative.View,
                     {
                       style: [
-                        styles.nativeBookPages,
-                        activeBookSpreadMode === "double" ? styles.nativeBookPagesDouble : null
+                        styles.nativeBookScrollContent,
+                        isEmbeddedLandscape ? styles.nativeBookScrollContentCompact : null,
+                        !reserveOverlayControlsSpace ? styles.noOverlayControlsPadding : null
                       ],
-                      children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.View,
+                      children: /* @__PURE__ */ jsxRuntime.jsx(
+                        NativeAnimatedView,
                         {
                           style: [
-                            styles.nativeBookPage,
-                            activeBookSpreadMode === "double" ? styles.nativeBookPageDouble : null,
-                            inlineBookPageFillStyle,
-                            {
-                              borderColor: resolvedReaderTheme.accent,
-                              backgroundColor: resolvedReaderTheme.page,
-                              shadowColor: resolvedReaderTheme.shadow
-                            }
+                            styles.nativeBookPages,
+                            activeBookSpreadMode === "double" ? styles.nativeBookPagesDouble : null,
+                            nativeBookTurnAnimatedStyle
                           ],
-                          children: /* @__PURE__ */ jsxRuntime.jsx(
-                            ReactNative.Text,
+                          children: nativeBookVerses.map((verse) => /* @__PURE__ */ jsxRuntime.jsxs(
+                            ReactNative.View,
                             {
                               style: [
-                                styles.nativeBookVerseText,
-                                COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
-                                { color: resolvedReaderTheme.text },
+                                styles.nativeBookPage,
+                                activeBookSpreadMode === "double" ? styles.nativeBookPageDouble : null,
+                                inlineBookPageFillStyle,
                                 {
-                                  fontSize: verseFontSizePx,
-                                  lineHeight: Math.round(verseFontSizePx * 1.45)
+                                  borderColor: resolvedReaderTheme.accent,
+                                  backgroundColor: resolvedReaderTheme.page,
+                                  shadowColor: resolvedReaderTheme.shadow
                                 }
                               ],
-                              children: renderNativeRichText(
-                                verse.contentHtml,
-                                `book-${verse.id}`
-                              )
-                            }
-                          )
-                        },
-                        `book-${verse.id}`
-                      ))
+                              children: [
+                                /* @__PURE__ */ jsxRuntime.jsx(
+                                  ReactNative.View,
+                                  {
+                                    pointerEvents: "none",
+                                    style: styles.nativeBookPageOrnamentOuter
+                                  }
+                                ),
+                                /* @__PURE__ */ jsxRuntime.jsx(
+                                  ReactNative.View,
+                                  {
+                                    pointerEvents: "none",
+                                    style: styles.nativeBookPageOrnamentInner
+                                  }
+                                ),
+                                /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.nativeBookPageContent, children: /* @__PURE__ */ jsxRuntime.jsx(
+                                  ReactNative.Text,
+                                  {
+                                    style: [
+                                      styles.nativeBookVerseText,
+                                      COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic,
+                                      { color: resolvedReaderTheme.text },
+                                      {
+                                        fontSize: nativeBookVerseFontSizePx,
+                                        lineHeight: Math.round(
+                                          nativeBookVerseFontSizePx * 1.45
+                                        )
+                                      }
+                                    ],
+                                    children: renderNativeRichText(
+                                      verse.contentHtml,
+                                      `book-${verse.id}`
+                                    )
+                                  }
+                                ) })
+                              ]
+                            },
+                            `book-${nativeBookPageNumber}-${verse.id}`
+                          ))
+                        }
+                      )
                     }
                   )
                 }
@@ -5063,7 +5289,11 @@ ${shareUrl}`;
                       event.nativeEvent.contentOffset.y
                     );
                   },
-                  onContentSizeChange: () => {
+                  onContentSizeChange: (_width, height) => {
+                    const nextHeight = Math.ceil(height);
+                    setEmbeddedContinuousContentHeight(
+                      (current) => current === nextHeight ? current : nextHeight
+                    );
                     if (!autoAlignCurrentVerse) return;
                     scrollCompleteToVerse(
                       pendingCompleteScrollVerseIdRef.current || readerVerseId,
@@ -5080,7 +5310,7 @@ ${shareUrl}`;
                   children: completeVerses.map((verse) => {
                     const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
                     const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
-                    return /* @__PURE__ */ jsxRuntime.jsx(
+                    return /* @__PURE__ */ jsxRuntime.jsxs(
                       ReactNative.View,
                       {
                         onLayout: (event) => {
@@ -5101,24 +5331,40 @@ ${shareUrl}`;
                           },
                           isActive ? styles.completeVerseBlockActive : null
                         ],
-                        children: /* @__PURE__ */ jsxRuntime.jsx(
-                          ReactNative.Text,
-                          {
-                            style: [
-                              styles.completeVerseText,
-                              textStyle,
-                              { color: resolvedReaderTheme.text },
-                              {
-                                fontSize: verseFontSizePx,
-                                lineHeight: Math.round(verseFontSizePx * 1.45)
-                              }
-                            ],
-                            children: renderNativeRichText(
-                              verse.contentHtml,
-                              `complete-${verse.id}`
-                            )
-                          }
-                        )
+                        children: [
+                          /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.View,
+                            {
+                              pointerEvents: "none",
+                              style: styles.completeVerseOrnamentOuter
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.View,
+                            {
+                              pointerEvents: "none",
+                              style: styles.completeVerseOrnamentInner
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.Text,
+                            {
+                              style: [
+                                styles.completeVerseText,
+                                textStyle,
+                                { color: resolvedReaderTheme.text },
+                                {
+                                  fontSize: verseFontSizePx,
+                                  lineHeight: Math.round(verseFontSizePx * 1.45)
+                                }
+                              ],
+                              children: renderNativeRichText(
+                                verse.contentHtml,
+                                `complete-${verse.id}`
+                              )
+                            }
+                          )
+                        ]
                       },
                       verse.id
                     );
@@ -5374,208 +5620,223 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && !hideControls && showOverlayControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayBottomCenter, children: [
-                hasVerseAudio && !hideVerseAudioControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: playPreviousMappedVerse,
-                      disabled: !canPlayPreviousMappedVerse,
-                      style: [
-                        styles.overlayAudioButton,
-                        styles.overlayAudioPlayButton,
-                        !canPlayPreviousMappedVerse ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Play previous mapped verse",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        Ionicons__default.default,
+              !loadingError && !hideControls && (showOverlayControls || Boolean(overlayViewport) && useNativeVerseView) && (!overlayViewport || stickyOverlayVisible) ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(
+                NativeAnimatedView,
+                {
+                  onLayout: (event) => {
+                    const height = Math.ceil(event.nativeEvent.layout.height);
+                    setOverlayControlsHeight(
+                      (current) => current === height ? current : height
+                    );
+                  },
+                  style: [
+                    styles.overlayBottomCenter,
+                    stickyOverlayTranslate !== null ? { transform: [{ translateY: stickyOverlayTranslate }] } : null
+                  ],
+                  children: [
+                    hasVerseAudio && !hideVerseAudioControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "auto", style: styles.overlayAudioPanel, children: /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayAudioControls, children: [
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
                         {
-                          name: "play-skip-back-outline",
-                          size: 20,
-                          color: "#fff"
-                        }
-                      )
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: restartMappedVerse,
-                      disabled: !canRestartMappedVerse,
-                      style: [
-                        styles.overlayAudioButton,
-                        styles.overlayAudioPlayButton,
-                        !canRestartMappedVerse ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Restart mapped verse",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "refresh-outline", size: 20, color: "#fff" })
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: toggleVerseAudio,
-                      style: [
-                        styles.overlayAudioButton,
-                        styles.overlayAudioPlayButton
-                      ],
-                      accessibilityLabel: verseAudioStatus.playing ? "Pause audio" : "Play audio",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        Ionicons__default.default,
-                        {
-                          name: verseAudioStatus.playing ? "pause-outline" : "play-outline",
-                          size: 20,
-                          color: "#fff"
-                        }
-                      )
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: playNextMappedVerse,
-                      disabled: !canPlayNextMappedVerse,
-                      style: [
-                        styles.overlayAudioButton,
-                        styles.overlayAudioPlayButton,
-                        !canPlayNextMappedVerse ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Play next mapped verse",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        Ionicons__default.default,
-                        {
-                          name: "play-skip-forward-outline",
-                          size: 20,
-                          color: "#fff"
-                        }
-                      )
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onLayout: (event) => {
-                        const nextWidth = Math.max(
-                          1,
-                          Math.round(event.nativeEvent.layout.width || 1)
-                        );
-                        setAudioSliderWidth(
-                          (current) => current === nextWidth ? current : nextWidth
-                        );
-                      },
-                      onPress: (event) => {
-                        seekAudioByLocationX(
-                          event.nativeEvent.locationX || 0
-                        );
-                      },
-                      disabled: !activeVerseAudio,
-                      style: [
-                        styles.overlayAudioSlider,
-                        !activeVerseAudio ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Seek mapped audio",
-                      ...audioSliderPanResponder.panHandlers,
-                      children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayAudioSliderTrack, children: /* @__PURE__ */ jsxRuntime.jsx(
-                        ReactNative.View,
-                        {
+                          onPress: playPreviousMappedVerse,
+                          disabled: !canPlayPreviousMappedVerse,
                           style: [
-                            styles.overlayAudioSliderFill,
+                            styles.overlayAudioButton,
+                            styles.overlayAudioPlayButton,
+                            !canPlayPreviousMappedVerse ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Play previous mapped verse",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(
+                            Ionicons__default.default,
                             {
-                              width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%`
+                              name: "play-skip-back-outline",
+                              size: 20,
+                              color: "#fff"
                             }
-                          ]
+                          )
                         }
-                      ) })
-                    }
-                  ),
-                  verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
-                ] }) }) : null,
-                /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
-                  viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: goToPreviousPage,
-                      disabled: pageNumber <= 1,
-                      style: [
-                        styles.overlayZoomButton,
-                        pageNumber <= 1 ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Previous page",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
-                    }
-                  ) : null,
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
-                      disabled: zoomOutDisabled,
-                      style: [
-                        styles.overlayZoomButton,
-                        zoomOutDisabled ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Zoom out",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        Ionicons__default.default,
+                      ),
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
                         {
-                          name: "remove-outline",
-                          size: 20,
-                          color: zoomOutDisabled ? "#d4d4d8" : "#fff"
+                          onPress: restartMappedVerse,
+                          disabled: !canRestartMappedVerse,
+                          style: [
+                            styles.overlayAudioButton,
+                            styles.overlayAudioPlayButton,
+                            !canRestartMappedVerse ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Restart mapped verse",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "refresh-outline", size: 20, color: "#fff" })
                         }
-                      )
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: () => contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
-                      disabled: zoomInDisabled,
-                      style: [
-                        styles.overlayZoomButton,
-                        zoomInDisabled ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Zoom in",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        Ionicons__default.default,
+                      ),
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
                         {
-                          name: "add-outline",
-                          size: 20,
-                          color: zoomInDisabled ? "#d4d4d8" : "#fff"
+                          onPress: toggleVerseAudio,
+                          style: [
+                            styles.overlayAudioButton,
+                            styles.overlayAudioPlayButton
+                          ],
+                          accessibilityLabel: verseAudioStatus.playing ? "Pause audio" : "Play audio",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(
+                            Ionicons__default.default,
+                            {
+                              name: verseAudioStatus.playing ? "pause-outline" : "play-outline",
+                              size: 20,
+                              color: "#fff"
+                            }
+                          )
                         }
-                      )
-                    }
-                  ),
-                  contentMode === "verse" ? /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: toggleVerseFullScreen,
-                      style: styles.overlayZoomButton,
-                      accessibilityLabel: isVerseFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(
-                        Ionicons__default.default,
+                      ),
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
                         {
-                          name: isVerseFullScreen ? "contract-outline" : "expand-outline",
-                          size: 20,
-                          color: "#fff"
+                          onPress: playNextMappedVerse,
+                          disabled: !canPlayNextMappedVerse,
+                          style: [
+                            styles.overlayAudioButton,
+                            styles.overlayAudioPlayButton,
+                            !canPlayNextMappedVerse ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Play next mapped verse",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(
+                            Ionicons__default.default,
+                            {
+                              name: "play-skip-forward-outline",
+                              size: 20,
+                              color: "#fff"
+                            }
+                          )
                         }
-                      )
-                    }
-                  ) : null,
-                  viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
-                    ReactNative.Pressable,
-                    {
-                      onPress: goToNextPage,
-                      disabled: Boolean(pageCount && pageNumber >= pageCount),
-                      style: [
-                        styles.overlayZoomButton,
-                        pageCount && pageNumber >= pageCount ? styles.overlayButtonDisabled : null
-                      ],
-                      accessibilityLabel: "Next page",
-                      children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Next" })
-                    }
-                  ) : null
-                ] }),
-                effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
-              ] }) }) : null
+                      ),
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
+                        {
+                          onLayout: (event) => {
+                            const nextWidth = Math.max(
+                              1,
+                              Math.round(event.nativeEvent.layout.width || 1)
+                            );
+                            setAudioSliderWidth(
+                              (current) => current === nextWidth ? current : nextWidth
+                            );
+                          },
+                          onPress: (event) => {
+                            seekAudioByLocationX(
+                              event.nativeEvent.locationX || 0
+                            );
+                          },
+                          disabled: !activeVerseAudio,
+                          style: [
+                            styles.overlayAudioSlider,
+                            !activeVerseAudio ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Seek mapped audio",
+                          ...audioSliderPanResponder.panHandlers,
+                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayAudioSliderTrack, children: /* @__PURE__ */ jsxRuntime.jsx(
+                            ReactNative.View,
+                            {
+                              style: [
+                                styles.overlayAudioSliderFill,
+                                {
+                                  width: `${Math.max(0, Math.min(100, activeVerseAudioProgress * 100))}%`
+                                }
+                              ]
+                            }
+                          ) })
+                        }
+                      ),
+                      verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
+                    ] }) }) : null,
+                    /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
+                      viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
+                        {
+                          onPress: goToPreviousPage,
+                          disabled: displayedPageNumber <= 1,
+                          style: [
+                            styles.overlayZoomButton,
+                            displayedPageNumber <= 1 ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Previous page",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
+                        }
+                      ) : null,
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
+                        {
+                          onPress: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
+                          disabled: zoomOutDisabled,
+                          style: [
+                            styles.overlayZoomButton,
+                            zoomOutDisabled ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Zoom out",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(
+                            Ionicons__default.default,
+                            {
+                              name: "remove-outline",
+                              size: 20,
+                              color: zoomOutDisabled ? "#d4d4d8" : "#fff"
+                            }
+                          )
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
+                        {
+                          onPress: () => contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
+                          disabled: zoomInDisabled,
+                          style: [
+                            styles.overlayZoomButton,
+                            zoomInDisabled ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Zoom in",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(
+                            Ionicons__default.default,
+                            {
+                              name: "add-outline",
+                              size: 20,
+                              color: zoomInDisabled ? "#d4d4d8" : "#fff"
+                            }
+                          )
+                        }
+                      ),
+                      contentMode === "verse" ? /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
+                        {
+                          onPress: toggleVerseFullScreen,
+                          style: styles.overlayZoomButton,
+                          accessibilityLabel: isVerseFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(
+                            Ionicons__default.default,
+                            {
+                              name: isVerseFullScreen ? "contract-outline" : "expand-outline",
+                              size: 20,
+                              color: "#fff"
+                            }
+                          )
+                        }
+                      ) : null,
+                      viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+                        ReactNative.Pressable,
+                        {
+                          onPress: goToNextPage,
+                          disabled: Boolean(pageCount && displayedPageNumber >= pageCount),
+                          style: [
+                            styles.overlayZoomButton,
+                            pageCount && displayedPageNumber >= pageCount ? styles.overlayButtonDisabled : null
+                          ],
+                          accessibilityLabel: "Next page",
+                          children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Next" })
+                        }
+                      ) : null
+                    ] }),
+                    effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
+                  ]
+                }
+              ) }) : null
             ]
           }
         ),
@@ -5652,13 +5913,15 @@ var styles = ReactNative.StyleSheet.create({
     overflow: "hidden"
   },
   nativeFullScreenVerseBlock: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    paddingRight: 52,
+    paddingVertical: 30,
+    paddingHorizontal: 28,
+    paddingRight: 58,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#e7e5e4",
-    backgroundColor: "#fffbea"
+    backgroundColor: "#fffbea",
+    position: "relative",
+    overflow: "hidden"
   },
   nativeFullScreenVerseBlockActive: {
     borderColor: "#f97316"
@@ -5836,6 +6099,17 @@ var styles = ReactNative.StyleSheet.create({
     width: "100%",
     backgroundColor: "#fafaf9"
   },
+  nativeBookScroll: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#fafaf9"
+  },
+  nativeBookOuterScrollContent: {
+    flexGrow: 0
+  },
+  nativeFullScreenBookScrollContent: {
+    flexGrow: 1
+  },
   completeScrollContent: {
     padding: 10,
     paddingBottom: 104,
@@ -5865,11 +6139,36 @@ var styles = ReactNative.StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e7e5e4",
     backgroundColor: "#fff",
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    paddingRight: 52,
+    paddingVertical: 30,
+    paddingHorizontal: 28,
+    paddingRight: 58,
     gap: 8,
-    position: "relative"
+    position: "relative",
+    overflow: "hidden"
+  },
+  completeVerseOrnamentOuter: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    bottom: 8,
+    left: 8,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "#f97316",
+    borderRadius: 8,
+    opacity: 0.9
+  },
+  completeVerseOrnamentInner: {
+    position: "absolute",
+    top: 17,
+    right: 17,
+    bottom: 17,
+    left: 17,
+    borderWidth: 2,
+    borderStyle: "dotted",
+    borderColor: "#ec4899",
+    borderRadius: 5,
+    opacity: 0.78
   },
   completeVerseBlockActive: {
     borderColor: "#f97316",
@@ -5909,23 +6208,56 @@ var styles = ReactNative.StyleSheet.create({
     width: "100%",
     borderWidth: 3,
     borderRadius: 8,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    paddingBottom: 92,
-    overflow: "hidden",
+    paddingTop: 48,
+    paddingHorizontal: 44,
+    paddingBottom: 48,
     shadowOpacity: 0.08,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1
+  },
+  nativeBookPageContent: {
+    zIndex: 4,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  nativeBookPageOrnamentOuter: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    bottom: 8,
+    left: 8,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "#f97316",
+    borderRadius: 5,
+    opacity: 0.92
+  },
+  nativeBookPageOrnamentInner: {
+    position: "absolute",
+    top: 17,
+    right: 17,
+    bottom: 17,
+    left: 17,
+    borderWidth: 2,
+    borderStyle: "dotted",
+    borderColor: "#ec4899",
+    borderRadius: 3,
+    opacity: 0.8
   },
   nativeBookPageDouble: {
     flex: 1,
     width: void 0
   },
   nativeFullScreenBookContent: {
-    minHeight: "100%",
+    flexGrow: 1,
     padding: 10,
     paddingBottom: 104
+  },
+  nativeFullScreenBookContentEdgeToEdge: {
+    padding: 0,
+    paddingBottom: 0
   },
   noOverlayControlsPadding: {
     paddingBottom: 0
@@ -5936,7 +6268,7 @@ var styles = ReactNative.StyleSheet.create({
     alignItems: "stretch"
   },
   nativeFullScreenBookPage: {
-    minHeight: "100%"
+    width: "100%"
   },
   nativeFullScreenBookPageDouble: {
     flex: 1,
@@ -5945,7 +6277,6 @@ var styles = ReactNative.StyleSheet.create({
   nativeBookVerseText: {
     color: "#111827",
     textAlign: "center",
-    flexShrink: 1,
     width: "100%"
   },
   loadingWrap: {

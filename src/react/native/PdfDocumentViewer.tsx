@@ -23,6 +23,9 @@ import { PAGE_FLIP_BROWSER_SCRIPT } from './assets/pageFlipBrowserScript';
 const NativeModal = (ReactNative as any).Modal;
 const NativeScrollView = (ReactNative as any).ScrollView;
 const NativeDimensions = (ReactNative as any).Dimensions;
+const NativeAnimated = (ReactNative as any).Animated;
+const NativeAnimatedView = NativeAnimated.View;
+const NativeEasing = (ReactNative as any).Easing;
 const { useAudioPlayer, useAudioPlayerStatus } = ExpoAudio;
 const maybeSetAudioModeAsync = (
   ExpoAudio as unknown as {
@@ -106,6 +109,20 @@ export type PdfDocumentViewerProps = {
   hideVerseAudioControls?: boolean;
   externalVerseAudioState?: ExternalVerseAudioState | null;
   readerTheme?: ReaderTheme;
+  overlayViewport?: {
+    top: number;
+    bottom: number;
+    scrollY: {
+      addListener: (callback: (state: { value: number }) => void) => string;
+      removeListener: (id: string) => void;
+      interpolate: (config: {
+        inputRange: number[];
+        outputRange: number[];
+        extrapolate: 'clamp';
+      }) => unknown;
+    };
+    getScrollOffset: () => number;
+  };
 };
 
 export type ReaderVerse = {
@@ -1294,8 +1311,8 @@ const buildVerseHtml = (
       .page.book-sheet {
         margin: 0;
         height: 100%;
-        border-radius: 8px;
-        border: 1px solid rgba(120, 53, 15, 0.22);
+        border-radius: 6px;
+        border: 1px solid rgba(120, 53, 15, 0.2);
         background: ${theme.page};
         box-shadow:
           inset 0 0 0 1px rgba(255, 255, 255, 0.72),
@@ -1312,6 +1329,30 @@ const buildVerseHtml = (
         backface-visibility: hidden;
         transform-origin: center center;
         will-change: transform, opacity;
+      }
+      .page-ornament {
+        position: absolute;
+        inset: 8px;
+        pointer-events: none;
+        z-index: 3;
+        border-radius: 3px;
+        background:
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) top 5px left 16px / 32px 12px repeat-x,
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) bottom 5px left 16px / 32px 12px repeat-x,
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) left 5px top 16px / 12px 32px repeat-y,
+          radial-gradient(circle, #ec4899 0 2px, transparent 2.4px) right 5px top 16px / 12px 32px repeat-y,
+          repeating-linear-gradient(135deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) top / 100% 12px no-repeat,
+          repeating-linear-gradient(45deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) bottom / 100% 12px no-repeat,
+          repeating-linear-gradient(45deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) left / 12px 100% no-repeat,
+          repeating-linear-gradient(135deg, transparent 0 7px, #f97316 7px 10px, transparent 10px 16px) right / 12px 100% no-repeat;
+        filter: drop-shadow(0 0 0.6px rgba(194, 65, 12, 0.42));
+      }
+      .page-ornament::before {
+        content: '';
+        position: absolute;
+        inset: 9px;
+        border: 1px solid rgba(249, 115, 22, 0.62);
+        border-radius: 2px;
       }
       .page.book-sheet.active {
         border-color: rgba(120, 53, 15, 0.24);
@@ -1426,6 +1467,8 @@ const buildVerseHtml = (
         height: 100%;
         max-width: 88%;
         min-height: 0;
+        padding: 34px 30px;
+        box-sizing: border-box;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
@@ -1859,7 +1902,7 @@ ${pageFlipBrowserScript}
           const configuredPagePadding = Number(layout.pagePaddingPx);
           const pagePadding = Number.isFinite(configuredPagePadding)
             ? Math.max(0, configuredPagePadding)
-            : 18;
+            : 30;
           const maxVersesPerPage =
             currentViewMode === 'book'
               ? 1
@@ -2016,7 +2059,10 @@ ${pageFlipBrowserScript}
           for (const verse of pageData) {
             contentWrap.appendChild(createVerseBlock(verse));
           }
+          const ornament = document.createElement('div');
+          ornament.className = 'page-ornament';
           wrapper.appendChild(contentWrap);
+          wrapper.appendChild(ornament);
           return wrapper;
         };
 
@@ -2704,6 +2750,7 @@ export default function PdfDocumentViewer({
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
   readerTheme,
+  overlayViewport,
 }: PdfDocumentViewerProps) {
   const [windowSize, setWindowSize] = useState(
     () => NativeDimensions?.get?.('window') || { width: 0, height: 0 }
@@ -2818,6 +2865,13 @@ export default function PdfDocumentViewer({
   >({});
   const [audioSliderWidth, setAudioSliderWidth] = useState(1);
   const [viewerWrapHeight, setViewerWrapHeight] = useState(0);
+  const viewerWrapRef = useRef<any>(null);
+  const [viewerContentTop, setViewerContentTop] = useState<number | null>(null);
+  const [stickyOverlayVisible, setStickyOverlayVisible] = useState(false);
+  const [overlayControlsHeight, setOverlayControlsHeight] = useState(96);
+  const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = useState(0);
+  const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] =
+    useState(0);
   const [pdfBookViewerHeight, setPdfBookViewerHeight] = useState(480);
   const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = useState(true);
   const effectiveVerseLayout = useMemo<VerseLayoutConfig | undefined>(() => {
@@ -2885,6 +2939,7 @@ export default function PdfDocumentViewer({
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressCompleteModeSyncRef = useRef(false);
   const pendingModeSwitchPageRef = useRef<number | null>(null);
+  const nativeBookTurnProgress = useRef(new NativeAnimated.Value(1)).current;
   const programmaticViewerSyncRef = useRef<{
     mode: ReaderViewMode;
     page: number;
@@ -2918,8 +2973,7 @@ export default function PdfDocumentViewer({
           : 'pdf';
   const useNativeFullScreenOverlay =
     contentMode === 'verse' && isVerseFullScreen;
-  const useFullScreenBookWebView =
-    useNativeFullScreenOverlay && viewMode === 'book';
+  const useFullScreenBookWebView = false;
   const useNativeFullScreenBookView =
     useNativeFullScreenOverlay &&
     viewMode === 'book' &&
@@ -2933,6 +2987,54 @@ export default function PdfDocumentViewer({
     contentMode === 'pdf' && viewMode === 'book'
       ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight)
       : completeViewerHeight;
+  const measureViewerWindow = useCallback(() => {
+    if (!overlayViewport) return;
+    viewerWrapRef.current?.measureInWindow?.(
+      (_x: number, y: number) => {
+        const contentTop = y + overlayViewport.getScrollOffset();
+        setViewerContentTop((current) =>
+          current !== null && Math.abs(current - contentTop) < 1
+            ? current
+            : contentTop
+        );
+      }
+    );
+  }, [overlayViewport]);
+  useEffect(measureViewerWindow, [measureViewerWindow]);
+  useEffect(() => {
+    if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
+      return;
+    const updateVisibility = (scrollY: number) => {
+      const viewerY = viewerContentTop - scrollY;
+      const visibleHeight =
+        Math.min(viewerY + viewerWrapHeight, overlayViewport.bottom) -
+        Math.max(viewerY, overlayViewport.top);
+      const visible = visibleHeight >= overlayControlsHeight + 20;
+      setStickyOverlayVisible((current) =>
+        current === visible ? current : visible
+      );
+    };
+    updateVisibility(overlayViewport.getScrollOffset());
+    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
+      updateVisibility(value);
+    });
+    return () => overlayViewport.scrollY.removeListener(listenerId);
+  }, [overlayViewport, viewerContentTop, viewerWrapHeight, overlayControlsHeight]);
+  const stickyOverlayTranslate = useMemo(() => {
+    if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
+      return null;
+    const minTop = 10;
+    const maxTop = Math.max(minTop + 1, viewerWrapHeight - overlayControlsHeight - 10);
+    const baseTop = viewerWrapHeight - overlayControlsHeight - 6;
+    const entryOffset =
+      minTop -
+      (overlayViewport.bottom - viewerContentTop - overlayControlsHeight - 20);
+    return overlayViewport.scrollY.interpolate({
+      inputRange: [entryOffset, entryOffset + maxTop - minTop],
+      outputRange: [minTop - baseTop, maxTop - baseTop],
+      extrapolate: 'clamp',
+    });
+  }, [overlayViewport, viewerContentTop, viewerWrapHeight, overlayControlsHeight]);
   const useNativeCompleteVerseView =
     contentMode === 'verse' && viewMode === 'continuous' && !isVerseFullScreen;
   const useNativeBookVerseView =
@@ -3091,10 +3193,19 @@ export default function PdfDocumentViewer({
   }, []);
 
   const [pageNumber, setPageNumber] = useState(externalInitialPageNumber);
+  const [nativeBookPageNumberState, setNativeBookPageNumberState] = useState(
+    externalInitialPageNumber
+  );
+  const [nativeBookTurnDirection, setNativeBookTurnDirection] = useState<
+    'next' | 'prev'
+  >('next');
   const isPageHydrated = true;
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
+    setNativeBookPageNumberState((current) =>
+      current === pageNumber ? current : pageNumber
+    );
   }, [pageNumber]);
 
   useEffect(() => {
@@ -3384,6 +3495,7 @@ export default function PdfDocumentViewer({
     const currentPage = pageNumberRef.current || pageNumber;
     if (currentPage > nextPageCount) {
       pageNumberRef.current = nextPageCount;
+      setNativeBookPageNumberState(nextPageCount);
       void setPageNumber(nextPageCount);
     }
   }, [completeVerses.length, useNativeVersePaging]);
@@ -3543,6 +3655,7 @@ export default function PdfDocumentViewer({
       if (!pageForVerse) return;
 
       pageNumberRef.current = pageForVerse;
+      setNativeBookPageNumberState(pageForVerse);
       pendingModeSwitchPageRef.current = pageForVerse;
       pendingCompleteScrollVerseIdRef.current = verseId;
       void setPageNumber(pageForVerse);
@@ -3583,6 +3696,8 @@ export default function PdfDocumentViewer({
 
   useEffect(() => {
     if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
+    const isPlaying = externalVerseAudioState.isPlaying === true;
+    if (!isPlaying) return;
 
     const audioAssetUrl = String(externalVerseAudioState.audioAssetUrl).trim();
     const currentMs = Math.max(
@@ -3597,7 +3712,6 @@ export default function PdfDocumentViewer({
 
     const matched = playableVerseMappings[matchedIndex];
     const verseId = String(matched.verseId);
-    const isPlaying = externalVerseAudioState.isPlaying === true;
     const verseChanged =
       activeVerseAudioIndex !== matchedIndex ||
       activeVerseId !== verseId ||
@@ -3721,6 +3835,7 @@ export default function PdfDocumentViewer({
         );
         if (viewMode !== 'book' && pageForVerse && pageForVerse !== pageNumber) {
           pageNumberRef.current = pageForVerse;
+          setNativeBookPageNumberState(pageForVerse);
           void setPageNumber(pageForVerse);
           const script = `
             (function() {
@@ -3915,6 +4030,7 @@ export default function PdfDocumentViewer({
   useEffect(() => {
     if (!hasVerseAudio || !verseAudioStatus.isLoaded || !currentVerseAudioUrl)
       return;
+    if (!verseAudioStatus.playing) return;
 
     const currentMs = Math.max(
       0,
@@ -4219,6 +4335,7 @@ export default function PdfDocumentViewer({
         if (!Number.isInteger(nextPage) || nextPage <= 0) return;
         if (nextPage === pageNumberRef.current) return;
         pageNumberRef.current = nextPage;
+        setNativeBookPageNumberState(nextPage);
         void setPageNumber(nextPage);
       } catch {
         // ignore malformed payloads
@@ -4290,8 +4407,68 @@ export default function PdfDocumentViewer({
     []
   );
 
+  const playNativeBookTurn = useCallback(
+    (direction: 'next' | 'prev') => {
+      setNativeBookTurnDirection(direction);
+      nativeBookTurnProgress.stopAnimation();
+      nativeBookTurnProgress.setValue(0);
+      NativeAnimated.timing(nativeBookTurnProgress, {
+        toValue: 1,
+        duration: 360,
+        easing: NativeEasing.out(NativeEasing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [nativeBookTurnProgress]
+  );
+
+  const navigateNativeVerseBookPage = useCallback(
+    (targetPage: number, direction: 'next' | 'prev' = 'next') => {
+      const safePageCount =
+        completeVerses.length || pageCountRef.current || pageCount || 1;
+      const safePage = Math.max(
+        1,
+        Math.min(Math.trunc(targetPage), safePageCount)
+      );
+      if (safePage !== pageNumberRef.current) {
+        playNativeBookTurn(direction);
+      }
+      const targetVerse = completeVerses[safePage - 1] || null;
+      const targetVerseId =
+        targetVerse?.id === null || targetVerse?.id === undefined
+          ? null
+          : String(targetVerse.id);
+
+      pageNumberRef.current = safePage;
+      setNativeBookPageNumberState(safePage);
+      pendingModeSwitchPageRef.current = safePage;
+      void setPageNumber(safePage);
+
+      if (targetVerseId) {
+        setReaderVerseId((current) =>
+          current === targetVerseId ? current : targetVerseId
+        );
+        setActiveVerseId((current) =>
+          current === targetVerseId ? current : targetVerseId
+        );
+        syncActiveVerseToWebView(targetVerseId, verseAudioStatus.playing, true);
+      }
+    },
+    [
+      completeVerses,
+      pageCount,
+      playNativeBookTurn,
+      setPageNumber,
+      syncActiveVerseToWebView,
+      verseAudioStatus.playing,
+    ]
+  );
+
   const goToPreviousPage = useCallback(() => {
-    const currentPage = pageNumberRef.current || pageNumber;
+    const currentPage =
+      contentMode === 'verse' && viewMode === 'book'
+        ? nativeBookPageNumberState || pageNumber
+        : pageNumberRef.current || pageNumber;
     const currentAnchor =
       activeBookSpreadMode === 'double' && currentPage % 2 === 0
         ? currentPage - 1
@@ -4303,18 +4480,20 @@ export default function PdfDocumentViewer({
       if (useFullScreenBookWebView) {
         requestBookPageChange('prev');
       } else {
-        pageNumberRef.current = previousPage;
-        pendingModeSwitchPageRef.current = previousPage;
-        void setPageNumber(previousPage);
+        navigateNativeVerseBookPage(previousPage, 'prev');
       }
     } else {
       pageNumberRef.current = previousPage;
+      setNativeBookPageNumberState(previousPage);
       void setPageNumber(previousPage);
     }
     showOverlay();
   }, [
     activeBookSpreadMode,
+    contentMode,
+    nativeBookPageNumberState,
     pageNumber,
+    navigateNativeVerseBookPage,
     requestBookPageChange,
     setPageNumber,
     showOverlay,
@@ -4323,7 +4502,10 @@ export default function PdfDocumentViewer({
   ]);
 
   const goToNextPage = useCallback(() => {
-    const currentPage = pageNumberRef.current || pageNumber;
+    const currentPage =
+      contentMode === 'verse' && viewMode === 'book'
+        ? nativeBookPageNumberState || pageNumber
+        : pageNumberRef.current || pageNumber;
     const currentAnchor =
       activeBookSpreadMode === 'double' && currentPage % 2 === 0
         ? currentPage - 1
@@ -4337,19 +4519,21 @@ export default function PdfDocumentViewer({
       if (useFullScreenBookWebView) {
         requestBookPageChange('next');
       } else {
-        pageNumberRef.current = nextPage;
-        pendingModeSwitchPageRef.current = nextPage;
-        void setPageNumber(nextPage);
+        navigateNativeVerseBookPage(nextPage, 'next');
       }
     } else {
       pageNumberRef.current = nextPage;
+      setNativeBookPageNumberState(nextPage);
       void setPageNumber(nextPage);
     }
     showOverlay();
   }, [
     activeBookSpreadMode,
+    contentMode,
+    nativeBookPageNumberState,
     pageCount,
     pageNumber,
+    navigateNativeVerseBookPage,
     requestBookPageChange,
     setPageNumber,
     showOverlay,
@@ -4361,6 +4545,7 @@ export default function PdfDocumentViewer({
     const firstVerseId = completeVerses[0]?.id || null;
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
+    setNativeBookPageNumberState(1);
     void setPageNumber(1);
     setReaderVerseId((current) =>
       current === firstVerseId ? current : firstVerseId
@@ -4527,7 +4712,7 @@ export default function PdfDocumentViewer({
     const syncSignature = JSON.stringify({
       viewMode,
       pageNumber: syncPage,
-      readerVerseId: viewMode === 'book' ? '' : readerVerseId || '',
+      readerVerseId: readerVerseId || '',
       zoomLevel: Math.round(zoomLevel * 100) / 100,
     });
     if (lastInjectedViewerStateRef.current === syncSignature) return;
@@ -4535,7 +4720,7 @@ export default function PdfDocumentViewer({
     syncViewerStateToWebView(
       viewMode,
       syncPage,
-      viewMode === 'book' ? null : readerVerseId,
+      readerVerseId,
       zoomLevel
     );
     lastInjectedViewerStateRef.current = syncSignature;
@@ -4662,15 +4847,26 @@ export default function PdfDocumentViewer({
       ? verseFontSizePx >= verseZoomConfig.max ||
         (viewMode === 'book' && bookVerseCanZoomIn === false)
       : zoomLevel >= MAX_ZOOM_LEVEL;
+  const displayedPageNumber =
+    contentMode === 'verse' && viewMode === 'book'
+      ? nativeBookPageNumberState
+      : pageNumber;
   const pageBadgeText =
     contentMode === 'verse' && viewMode === 'continuous'
-      ? `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`
-      : `Page ${pageNumber}${pageCount ? ` / ${pageCount}` : ''}`;
+      ? `Page ${displayedPageNumber}${pageCount ? ` / ${pageCount}` : ''}`
+      : `Page ${displayedPageNumber}${pageCount ? ` / ${pageCount}` : ''}`;
   const activeVerseAudio =
     activeVerseAudioIndex === null
       ? null
       : playableVerseMappings[activeVerseAudioIndex] || null;
-  const nativeBookPageNumber = pageNumberRef.current || pageNumber;
+  const readerVersePageNumber =
+    readerVerseId && useNativeVersePaging
+      ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1
+      : 0;
+  const nativeBookPageNumber =
+    readerVersePageNumber > 0
+      ? readerVersePageNumber
+      : nativeBookPageNumberState || pageNumber;
   const nativeBookVerse =
     (useNativeBookVerseView ||
       (useNativeFullScreenOverlay && viewMode === 'book')) &&
@@ -4699,27 +4895,47 @@ export default function PdfDocumentViewer({
   );
   const reserveOverlayControlsSpace =
     effectiveVerseLayout?.reserveControlsSpace !== false;
-  const centerSinglePageVerse =
-    effectiveVerseLayout?.centerSinglePage === true &&
-    nativeBookVerses.length === 1;
-  const inlineBookPageFillStyle = centerSinglePageVerse
-    ? {
-        minHeight: Math.max(
-          260,
-          viewerHeight - (reserveOverlayControlsSpace ? 114 : 20)
-        ),
-        justifyContent: 'center' as const,
-      }
-    : null;
-  const fullScreenBookPageFillStyle = centerSinglePageVerse
-    ? {
-        minHeight: Math.max(
-          260,
-          visibleViewportHeight - (reserveOverlayControlsSpace ? 114 : 20)
-        ),
-        justifyContent: 'center' as const,
-      }
-    : null;
+  const inlineBookPageFillStyle = {
+    minHeight: Math.max(
+      260,
+      viewerHeight - (reserveOverlayControlsSpace ? 114 : 20)
+    ),
+    justifyContent: 'center' as const,
+  };
+  const fullScreenBookPageFillStyle = {
+    minHeight: Math.max(260, visibleViewportHeight),
+    justifyContent: 'center' as const,
+  };
+  const nativeBookVerseFontSizePx =
+    activeBookSpreadMode === 'double'
+      ? Math.max(18, Math.round(verseFontSizePx * 0.86))
+      : verseFontSizePx;
+  const nativeBookTurnAnimatedStyle = useMemo(() => {
+    const entryOffset = nativeBookTurnDirection === 'next' ? 42 : -42;
+    const entryRotation =
+      nativeBookTurnDirection === 'next' ? '-8deg' : '8deg';
+    return {
+      opacity: nativeBookTurnProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.35, 1],
+      }),
+      transform: [
+        { perspective: 900 },
+        {
+          translateX: nativeBookTurnProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [entryOffset, 0],
+          }),
+        },
+        {
+          rotateY: nativeBookTurnProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [entryRotation, '0deg'],
+          }),
+        },
+      ],
+    };
+  }, [nativeBookTurnDirection, nativeBookTurnProgress]);
   const verseAudioCurrentSeconds = Math.max(
     0,
     verseAudioStatus.currentTime || 0
@@ -5025,10 +5241,10 @@ export default function PdfDocumentViewer({
         {viewMode === 'book' ? (
           <Pressable
             onPress={goToPreviousPage}
-            disabled={pageNumber <= 1}
+            disabled={displayedPageNumber <= 1}
             style={[
               styles.overlayZoomButton,
-              pageNumber <= 1 ? styles.overlayButtonDisabled : null,
+              displayedPageNumber <= 1 ? styles.overlayButtonDisabled : null,
             ]}
             accessibilityLabel="Previous page"
           >
@@ -5096,10 +5312,10 @@ export default function PdfDocumentViewer({
         {viewMode === 'book' ? (
           <Pressable
             onPress={goToNextPage}
-            disabled={Boolean(pageCount && pageNumber >= pageCount)}
+            disabled={Boolean(pageCount && displayedPageNumber >= pageCount)}
             style={[
               styles.overlayZoomButton,
-              pageCount && pageNumber >= pageCount
+              pageCount && displayedPageNumber >= pageCount
                 ? styles.overlayButtonDisabled
                 : null,
             ]}
@@ -5175,22 +5391,24 @@ export default function PdfDocumentViewer({
                   styles.nativeFullScreenScroll,
                   { backgroundColor: resolvedReaderTheme.background },
                 ]}
-                contentContainerStyle={[
-                  styles.nativeFullScreenBookContent,
-                  activeBookSpreadMode === 'double'
-                    ? styles.nativeFullScreenBookContentDouble
-                    : null,
-                  !reserveOverlayControlsSpace
-                    ? styles.noOverlayControlsPadding
-                    : null,
-                ]}
-                nestedScrollEnabled
+                contentContainerStyle={styles.nativeFullScreenBookScrollContent}
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
                 onTouchStart={showOverlay}
               >
+                <NativeAnimatedView
+                  style={[
+                    styles.nativeFullScreenBookContent,
+                    activeBookSpreadMode === 'double'
+                      ? styles.nativeFullScreenBookContentDouble
+                      : null,
+                    styles.nativeFullScreenBookContentEdgeToEdge,
+                    nativeBookTurnAnimatedStyle,
+                  ]}
+                >
                 {nativeBookVerses.map((verse) => (
                   <View
-                    key={`fullscreen-book-${verse.id}`}
+                    key={`fullscreen-book-${nativeBookPageNumber}-${verse.id}`}
                     style={[
                       styles.nativeBookPage,
                       styles.nativeFullScreenBookPage,
@@ -5205,25 +5423,39 @@ export default function PdfDocumentViewer({
                       },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.nativeBookVerseText,
-                        COMPLETE_VERSE_STYLE_MAP[verse.styleKey || 'classic'] ||
-                          COMPLETE_VERSE_STYLE_MAP.classic,
-                        { color: resolvedReaderTheme.text },
-                        {
-                          fontSize: verseFontSizePx,
-                          lineHeight: Math.round(verseFontSizePx * 1.45),
-                        },
-                      ]}
-                    >
-                      {renderNativeRichText(
-                        verse.contentHtml,
-                        `fullscreen-book-${verse.id}`
-                      )}
-                    </Text>
+                    <View
+                      pointerEvents="none"
+                      style={styles.nativeBookPageOrnamentOuter}
+                    />
+                    <View
+                      pointerEvents="none"
+                      style={styles.nativeBookPageOrnamentInner}
+                    />
+                    <View style={styles.nativeBookPageContent}>
+                      <Text
+                        style={[
+                          styles.nativeBookVerseText,
+                          COMPLETE_VERSE_STYLE_MAP[
+                            verse.styleKey || 'classic'
+                          ] || COMPLETE_VERSE_STYLE_MAP.classic,
+                          { color: resolvedReaderTheme.text },
+                          {
+                            fontSize: nativeBookVerseFontSizePx,
+                            lineHeight: Math.round(
+                              nativeBookVerseFontSizePx * 1.45
+                            ),
+                          },
+                        ]}
+                      >
+                        {renderNativeRichText(
+                          verse.contentHtml,
+                          `fullscreen-book-${verse.id}`
+                        )}
+                      </Text>
+                    </View>
                   </View>
                 ))}
+                </NativeAnimatedView>
               </NativeScrollView>
             ) : (
               <NativeScrollView
@@ -5305,16 +5537,26 @@ export default function PdfDocumentViewer({
                         isActive
                           ? styles.nativeFullScreenVerseBlockActive
                           : null,
-                      ]}
-                    >
+                    ]}
+                  >
+                      <View
+                        pointerEvents="none"
+                        style={styles.completeVerseOrnamentOuter}
+                      />
+                      <View
+                        pointerEvents="none"
+                        style={styles.completeVerseOrnamentInner}
+                      />
                       <Text
                         style={[
                           styles.nativeFullScreenVerseText,
                           textStyle,
                           { color: resolvedReaderTheme.text },
                           {
-                            fontSize: verseFontSizePx,
-                            lineHeight: Math.round(verseFontSizePx * 1.45),
+                            fontSize: nativeBookVerseFontSizePx,
+                            lineHeight: Math.round(
+                              nativeBookVerseFontSizePx * 1.45
+                            ),
                           },
                         ]}
                       >
@@ -5482,6 +5724,14 @@ export default function PdfDocumentViewer({
                     ]}
                     accessibilityLabel="Download PDF"
                   >
+                    <View
+                      pointerEvents="none"
+                      style={styles.completeVerseOrnamentOuter}
+                    />
+                    <View
+                      pointerEvents="none"
+                      style={styles.completeVerseOrnamentInner}
+                    />
                     <Text
                       style={[
                         styles.actionIcon,
@@ -5592,11 +5842,19 @@ export default function PdfDocumentViewer({
       ) : null}
 
       <View
+        ref={viewerWrapRef}
         style={[
           styles.viewerWrap,
           { borderColor: resolvedReaderTheme.border },
           useNativeCompleteVerseView || useNativeBookVerseView
-            ? { height: viewerHeight }
+            ? {
+                height: Math.max(
+                  viewerHeight,
+                  useNativeBookVerseView
+                    ? embeddedBookContentHeight + 2
+                    : embeddedContinuousContentHeight + 2
+                ),
+              }
             : inlineFullScreenActive
               ? styles.viewerWrapFullScreen
               : { height: viewerHeight },
@@ -5610,6 +5868,7 @@ export default function PdfDocumentViewer({
                 if (nextHeight > 0 && nextHeight !== viewerWrapHeight) {
                   setViewerWrapHeight(nextHeight);
                 }
+                measureViewerWindow();
               }
             : undefined
         }
@@ -5642,34 +5901,43 @@ export default function PdfDocumentViewer({
           useNativeBookVerseView ? (
             <NativeScrollView
               style={[
-                styles.completeScroll,
+                styles.nativeBookScroll,
                 { backgroundColor: resolvedReaderTheme.background },
               ]}
-              contentContainerStyle={[
-                styles.nativeBookScrollContent,
-                isEmbeddedLandscape
-                  ? styles.nativeBookScrollContentCompact
-                  : null,
-                !reserveOverlayControlsSpace
-                  ? styles.noOverlayControlsPadding
-                  : null,
-              ]}
-              nestedScrollEnabled
-              scrollEventThrottle={64}
+              contentContainerStyle={styles.nativeBookOuterScrollContent}
               showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              onContentSizeChange={(_width: number, height: number) => {
+                const nextHeight = Math.ceil(height);
+                setEmbeddedBookContentHeight((current) =>
+                  current === nextHeight ? current : nextHeight
+                );
+              }}
               onTouchStart={showOverlay}
             >
               <View
+                style={[
+                  styles.nativeBookScrollContent,
+                  isEmbeddedLandscape
+                    ? styles.nativeBookScrollContentCompact
+                    : null,
+                  !reserveOverlayControlsSpace
+                    ? styles.noOverlayControlsPadding
+                    : null,
+                ]}
+              >
+              <NativeAnimatedView
                 style={[
                   styles.nativeBookPages,
                   activeBookSpreadMode === 'double'
                     ? styles.nativeBookPagesDouble
                     : null,
+                  nativeBookTurnAnimatedStyle,
                 ]}
               >
                 {nativeBookVerses.map((verse) => (
                   <View
-                    key={`book-${verse.id}`}
+                    key={`book-${nativeBookPageNumber}-${verse.id}`}
                     style={[
                       styles.nativeBookPage,
                       activeBookSpreadMode === 'double'
@@ -5683,26 +5951,39 @@ export default function PdfDocumentViewer({
                       },
                     ]}
                   >
-                  <Text
-                    style={[
-                      styles.nativeBookVerseText,
-                      COMPLETE_VERSE_STYLE_MAP[
-                        verse.styleKey || 'classic'
-                      ] || COMPLETE_VERSE_STYLE_MAP.classic,
-                      { color: resolvedReaderTheme.text },
-                      {
-                        fontSize: verseFontSizePx,
-                        lineHeight: Math.round(verseFontSizePx * 1.45),
-                      },
-                    ]}
-                  >
-                    {renderNativeRichText(
-                      verse.contentHtml,
-                      `book-${verse.id}`
-                    )}
-                  </Text>
+                    <View
+                      pointerEvents="none"
+                      style={styles.nativeBookPageOrnamentOuter}
+                    />
+                    <View
+                      pointerEvents="none"
+                      style={styles.nativeBookPageOrnamentInner}
+                    />
+                    <View style={styles.nativeBookPageContent}>
+                      <Text
+                        style={[
+                          styles.nativeBookVerseText,
+                          COMPLETE_VERSE_STYLE_MAP[
+                            verse.styleKey || 'classic'
+                          ] || COMPLETE_VERSE_STYLE_MAP.classic,
+                          { color: resolvedReaderTheme.text },
+                          {
+                            fontSize: nativeBookVerseFontSizePx,
+                            lineHeight: Math.round(
+                              nativeBookVerseFontSizePx * 1.45
+                            ),
+                          },
+                        ]}
+                      >
+                        {renderNativeRichText(
+                          verse.contentHtml,
+                          `book-${verse.id}`
+                        )}
+                      </Text>
+                    </View>
                   </View>
                 ))}
+              </NativeAnimatedView>
               </View>
             </NativeScrollView>
           ) : useNativeCompleteVerseView &&
@@ -5741,7 +6022,11 @@ export default function PdfDocumentViewer({
                   event.nativeEvent.contentOffset.y
                 );
               }}
-              onContentSizeChange={() => {
+              onContentSizeChange={(_width: number, height: number) => {
+                const nextHeight = Math.ceil(height);
+                setEmbeddedContinuousContentHeight((current) =>
+                  current === nextHeight ? current : nextHeight
+                );
                 if (!autoAlignCurrentVerse) return;
                 scrollCompleteToVerse(
                   pendingCompleteScrollVerseIdRef.current || readerVerseId,
@@ -5794,6 +6079,14 @@ export default function PdfDocumentViewer({
                       isActive ? styles.completeVerseBlockActive : null,
                     ]}
                   >
+                    <View
+                      pointerEvents="none"
+                      style={styles.completeVerseOrnamentOuter}
+                    />
+                    <View
+                      pointerEvents="none"
+                      style={styles.completeVerseOrnamentInner}
+                    />
                     <Text
                       style={[
                         styles.completeVerseText,
@@ -6105,9 +6398,25 @@ export default function PdfDocumentViewer({
             </Pressable>
           </View>
         )}
-        {!loadingError && !hideControls && showOverlayControls ? (
+        {!loadingError &&
+        !hideControls &&
+        (showOverlayControls || (Boolean(overlayViewport) && useNativeVerseView)) &&
+        (!overlayViewport || stickyOverlayVisible) ? (
           <View pointerEvents="box-none" style={styles.viewerOverlay}>
-            <View style={styles.overlayBottomCenter}>
+            <NativeAnimatedView
+              onLayout={(event: { nativeEvent: { layout: { height: number } } }) => {
+                const height = Math.ceil(event.nativeEvent.layout.height);
+                setOverlayControlsHeight((current) =>
+                  current === height ? current : height
+                );
+              }}
+              style={[
+                styles.overlayBottomCenter,
+                stickyOverlayTranslate !== null
+                  ? { transform: [{ translateY: stickyOverlayTranslate }] }
+                  : null,
+              ]}
+            >
               {hasVerseAudio && !hideVerseAudioControls ? (
                 <View pointerEvents="auto" style={styles.overlayAudioPanel}>
                   <View style={styles.overlayAudioControls}>
@@ -6231,10 +6540,10 @@ export default function PdfDocumentViewer({
                 {viewMode === 'book' ? (
                   <Pressable
                     onPress={goToPreviousPage}
-                    disabled={pageNumber <= 1}
+                    disabled={displayedPageNumber <= 1}
                     style={[
                       styles.overlayZoomButton,
-                      pageNumber <= 1 ? styles.overlayButtonDisabled : null,
+                      displayedPageNumber <= 1 ? styles.overlayButtonDisabled : null,
                     ]}
                     accessibilityLabel="Previous page"
                   >
@@ -6303,10 +6612,10 @@ export default function PdfDocumentViewer({
                 {viewMode === 'book' ? (
                   <Pressable
                     onPress={goToNextPage}
-                    disabled={Boolean(pageCount && pageNumber >= pageCount)}
+                    disabled={Boolean(pageCount && displayedPageNumber >= pageCount)}
                     style={[
                       styles.overlayZoomButton,
-                      pageCount && pageNumber >= pageCount
+                      pageCount && displayedPageNumber >= pageCount
                         ? styles.overlayButtonDisabled
                         : null,
                     ]}
@@ -6322,7 +6631,7 @@ export default function PdfDocumentViewer({
                   <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
                 </View>
               ) : null}
-            </View>
+            </NativeAnimatedView>
           </View>
         ) : null}
       </View>
@@ -6405,13 +6714,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   nativeFullScreenVerseBlock: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    paddingRight: 52,
+    paddingVertical: 30,
+    paddingHorizontal: 28,
+    paddingRight: 58,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e7e5e4',
     backgroundColor: '#fffbea',
+    position: 'relative',
+    overflow: 'hidden',
   },
   nativeFullScreenVerseBlockActive: {
     borderColor: '#f97316',
@@ -6589,6 +6900,17 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#fafaf9',
   },
+  nativeBookScroll: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#fafaf9',
+  },
+  nativeBookOuterScrollContent: {
+    flexGrow: 0,
+  },
+  nativeFullScreenBookScrollContent: {
+    flexGrow: 1,
+  },
   completeScrollContent: {
     padding: 10,
     paddingBottom: 104,
@@ -6618,11 +6940,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e7e5e4',
     backgroundColor: '#fff',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    paddingRight: 52,
+    paddingVertical: 30,
+    paddingHorizontal: 28,
+    paddingRight: 58,
     gap: 8,
     position: 'relative',
+    overflow: 'hidden',
+  },
+  completeVerseOrnamentOuter: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    bottom: 8,
+    left: 8,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#f97316',
+    borderRadius: 8,
+    opacity: 0.9,
+  },
+  completeVerseOrnamentInner: {
+    position: 'absolute',
+    top: 17,
+    right: 17,
+    bottom: 17,
+    left: 17,
+    borderWidth: 2,
+    borderStyle: 'dotted',
+    borderColor: '#ec4899',
+    borderRadius: 5,
+    opacity: 0.78,
   },
   completeVerseBlockActive: {
     borderColor: '#f97316',
@@ -6662,23 +7009,56 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 3,
     borderRadius: 8,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    paddingBottom: 92,
-    overflow: 'hidden',
+    paddingTop: 48,
+    paddingHorizontal: 44,
+    paddingBottom: 48,
     shadowOpacity: 0.08,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
+  },
+  nativeBookPageContent: {
+    zIndex: 4,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nativeBookPageOrnamentOuter: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    bottom: 8,
+    left: 8,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#f97316',
+    borderRadius: 5,
+    opacity: 0.92,
+  },
+  nativeBookPageOrnamentInner: {
+    position: 'absolute',
+    top: 17,
+    right: 17,
+    bottom: 17,
+    left: 17,
+    borderWidth: 2,
+    borderStyle: 'dotted',
+    borderColor: '#ec4899',
+    borderRadius: 3,
+    opacity: 0.8,
   },
   nativeBookPageDouble: {
     flex: 1,
     width: undefined,
   },
   nativeFullScreenBookContent: {
-    minHeight: '100%',
+    flexGrow: 1,
     padding: 10,
     paddingBottom: 104,
+  },
+  nativeFullScreenBookContentEdgeToEdge: {
+    padding: 0,
+    paddingBottom: 0,
   },
   noOverlayControlsPadding: {
     paddingBottom: 0,
@@ -6689,7 +7069,7 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   nativeFullScreenBookPage: {
-    minHeight: '100%',
+    width: '100%',
   },
   nativeFullScreenBookPageDouble: {
     flex: 1,
@@ -6698,7 +7078,6 @@ const styles = StyleSheet.create({
   nativeBookVerseText: {
     color: '#111827',
     textAlign: 'center',
-    flexShrink: 1,
     width: '100%',
   },
   loadingWrap: {
