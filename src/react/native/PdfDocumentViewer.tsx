@@ -3013,21 +3013,14 @@ export default function PdfDocumentViewer({
     );
   }, [overlayViewport]);
   useEffect(measureViewerWindow, [measureViewerWindow]);
-  useEffect(() => {
-    if (!overlayViewport) return;
-    const listenerId = overlayViewport.scrollY.addListener(() => {
-      const now = Date.now();
-      if (now - lastViewerMeasureRef.current < 200) return;
-      lastViewerMeasureRef.current = now;
-      measureViewerWindow();
-    });
-    return () => overlayViewport.scrollY.removeListener(listenerId);
-  }, [overlayViewport, measureViewerWindow]);
   const stickyOverlayTranslate = useMemo(() => {
     if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
       return null;
     const minTop = 10;
-    const maxTop = Math.max(minTop + 1, viewerWrapHeight - overlayControlsHeight - 10);
+    const maxTop = Math.max(
+      minTop + 1,
+      viewerWrapHeight - overlayControlsHeight - 10
+    );
     const baseTop = viewerWrapHeight - overlayControlsHeight - 6;
     const entryOffset =
       minTop -
@@ -3658,6 +3651,11 @@ export default function PdfDocumentViewer({
       setShowOverlayControls(false);
     }, 2600);
   }, []);
+
+  useEffect(() => {
+    if (!overlayViewport || !useNativeVerseView) return;
+    showOverlay();
+  }, [overlayViewport, showOverlay, useNativeVerseView]);
 
   const syncActiveVerseToWebView = useCallback(
     (verseId: string | null, isPlaying = false, shouldScroll = false) => {
@@ -5624,7 +5622,7 @@ export default function PdfDocumentViewer({
           </Pressable>
         ) : null}
       </View>
-      {effectiveVerseLayout?.showPageBadge !== false ? (
+      {viewMode === 'book' && effectiveVerseLayout?.showPageBadge !== false ? (
         <View style={styles.overlayPageBadge}>
           <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
         </View>
@@ -6729,7 +6727,7 @@ export default function PdfDocumentViewer({
         )}
         {!loadingError &&
         !hideControls &&
-        (showOverlayControls || (Boolean(overlayViewport) && useNativeVerseView)) ? (
+        showOverlayControls ? (
           <View pointerEvents="box-none" style={styles.viewerOverlay}>
             <NativeAnimatedView
               onLayout={(event: { nativeEvent: { layout: { height: number } } }) => {
@@ -6954,7 +6952,7 @@ export default function PdfDocumentViewer({
                 ) : null}
               </View>
 
-              {effectiveVerseLayout?.showPageBadge !== false ? (
+              {viewMode === 'book' && effectiveVerseLayout?.showPageBadge !== false ? (
                 <View style={styles.overlayPageBadge}>
                   <Text style={styles.overlayPageText}>{pageBadgeText}</Text>
                 </View>

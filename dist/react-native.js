@@ -2577,7 +2577,7 @@ function PdfDocumentViewer({
   const [viewerWrapHeight, setViewerWrapHeight] = useState(0);
   const viewerWrapRef = useRef(null);
   const [viewerContentTop, setViewerContentTop] = useState(null);
-  const lastViewerMeasureRef = useRef(0);
+  useRef(0);
   const [overlayControlsHeight, setOverlayControlsHeight] = useState(96);
   const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = useState(0);
   const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] = useState(0);
@@ -2668,21 +2668,14 @@ function PdfDocumentViewer({
     );
   }, [overlayViewport]);
   useEffect(measureViewerWindow, [measureViewerWindow]);
-  useEffect(() => {
-    if (!overlayViewport) return;
-    const listenerId = overlayViewport.scrollY.addListener(() => {
-      const now = Date.now();
-      if (now - lastViewerMeasureRef.current < 200) return;
-      lastViewerMeasureRef.current = now;
-      measureViewerWindow();
-    });
-    return () => overlayViewport.scrollY.removeListener(listenerId);
-  }, [overlayViewport, measureViewerWindow]);
   const stickyOverlayTranslate = useMemo(() => {
     if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
       return null;
     const minTop = 10;
-    const maxTop = Math.max(minTop + 1, viewerWrapHeight - overlayControlsHeight - 10);
+    const maxTop = Math.max(
+      minTop + 1,
+      viewerWrapHeight - overlayControlsHeight - 10
+    );
     const baseTop = viewerWrapHeight - overlayControlsHeight - 6;
     const entryOffset = minTop - (overlayViewport.bottom - viewerContentTop - overlayControlsHeight - 20);
     return overlayViewport.scrollY.interpolate({
@@ -3185,6 +3178,10 @@ function PdfDocumentViewer({
       setShowOverlayControls(false);
     }, 2600);
   }, []);
+  useEffect(() => {
+    if (!overlayViewport || !useNativeVerseView) return;
+    showOverlay();
+  }, [overlayViewport, showOverlay, useNativeVerseView]);
   const syncActiveVerseToWebView = useCallback(
     (verseId, isPlaying = false, shouldScroll = false) => {
       const safeVerseId = verseId ? escapeJsString(verseId) : "";
@@ -4887,7 +4884,7 @@ ${shareUrl}`;
             }
           ) : null
         ] }),
-        effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
+        viewMode === "book" && effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
       ]
     }
   );
@@ -5898,7 +5895,7 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && !hideControls && (showOverlayControls || Boolean(overlayViewport) && useNativeVerseView) ? /* @__PURE__ */ jsx(View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxs(
+              !loadingError && !hideControls && showOverlayControls ? /* @__PURE__ */ jsx(View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxs(
                 NativeAnimatedView,
                 {
                   onLayout: (event) => {
@@ -6111,7 +6108,7 @@ ${shareUrl}`;
                         }
                       ) : null
                     ] }),
-                    effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
+                    viewMode === "book" && effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsx(View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsx(Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
                   ]
                 }
               ) }) : null

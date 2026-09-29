@@ -2605,7 +2605,7 @@ function PdfDocumentViewer({
   const [viewerWrapHeight, setViewerWrapHeight] = react.useState(0);
   const viewerWrapRef = react.useRef(null);
   const [viewerContentTop, setViewerContentTop] = react.useState(null);
-  const lastViewerMeasureRef = react.useRef(0);
+  react.useRef(0);
   const [overlayControlsHeight, setOverlayControlsHeight] = react.useState(96);
   const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = react.useState(0);
   const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] = react.useState(0);
@@ -2696,21 +2696,14 @@ function PdfDocumentViewer({
     );
   }, [overlayViewport]);
   react.useEffect(measureViewerWindow, [measureViewerWindow]);
-  react.useEffect(() => {
-    if (!overlayViewport) return;
-    const listenerId = overlayViewport.scrollY.addListener(() => {
-      const now = Date.now();
-      if (now - lastViewerMeasureRef.current < 200) return;
-      lastViewerMeasureRef.current = now;
-      measureViewerWindow();
-    });
-    return () => overlayViewport.scrollY.removeListener(listenerId);
-  }, [overlayViewport, measureViewerWindow]);
   const stickyOverlayTranslate = react.useMemo(() => {
     if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
       return null;
     const minTop = 10;
-    const maxTop = Math.max(minTop + 1, viewerWrapHeight - overlayControlsHeight - 10);
+    const maxTop = Math.max(
+      minTop + 1,
+      viewerWrapHeight - overlayControlsHeight - 10
+    );
     const baseTop = viewerWrapHeight - overlayControlsHeight - 6;
     const entryOffset = minTop - (overlayViewport.bottom - viewerContentTop - overlayControlsHeight - 20);
     return overlayViewport.scrollY.interpolate({
@@ -3213,6 +3206,10 @@ function PdfDocumentViewer({
       setShowOverlayControls(false);
     }, 2600);
   }, []);
+  react.useEffect(() => {
+    if (!overlayViewport || !useNativeVerseView) return;
+    showOverlay();
+  }, [overlayViewport, showOverlay, useNativeVerseView]);
   const syncActiveVerseToWebView = react.useCallback(
     (verseId, isPlaying = false, shouldScroll = false) => {
       const safeVerseId = verseId ? escapeJsString(verseId) : "";
@@ -4915,7 +4912,7 @@ ${shareUrl}`;
             }
           ) : null
         ] }),
-        effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
+        viewMode === "book" && effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
       ]
     }
   );
@@ -5926,7 +5923,7 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && !hideControls && (showOverlayControls || Boolean(overlayViewport) && useNativeVerseView) ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(
+              !loadingError && !hideControls && showOverlayControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(
                 NativeAnimatedView,
                 {
                   onLayout: (event) => {
@@ -6139,7 +6136,7 @@ ${shareUrl}`;
                         }
                       ) : null
                     ] }),
-                    effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
+                    viewMode === "book" && effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
                   ]
                 }
               ) }) : null
