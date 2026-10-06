@@ -19,7 +19,6 @@ import {
 } from "react-native";
 import { File, Paths } from "expo-file-system";
 import * as ExpoLinking from "expo-linking";
-import * as Sharing from "expo-sharing";
 import * as ExpoAudio from "expo-audio";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
@@ -131,6 +130,7 @@ export type PdfDocumentViewerProps = {
       }) => unknown;
     };
     getScrollOffset: () => number;
+    scrollToOffset: (offset: number, animated?: boolean) => void;
   };
 };
 
@@ -190,6 +190,7 @@ type VerseTypographyConfig = {
 type SwipeGestureState = {
   dx: number;
   dy: number;
+  vy?: number;
 };
 
 type LocationTouchEvent = {
@@ -458,7 +459,7 @@ const buildPdfHtml = (
   viewMode: ReaderViewMode,
   zoomLevel: number,
   neighborPageCount: number,
-  maxBookHeight: number,
+  outerScrollEnabled: boolean,
 ) => `
 <!DOCTYPE html>
 <html>
@@ -536,7 +537,6 @@ const buildPdfHtml = (
       (function() {
         const title = '${escapeJsString(escapeHtml(title))}';
         const pdfUrl = '${escapeJsString(pdfUrl)}';
-        const maxBookHeight = ${Math.max(320, Math.floor(maxBookHeight))};
         const initialPage = Math.max(1, ${Math.max(1, Math.trunc(targetPage))});
         const initialViewMode = '${viewMode}';
         let currentZoom = ${Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel))};
@@ -548,6 +548,8 @@ const buildPdfHtml = (
         let pdf = null;
         let currentPage = initialPage;
         let currentViewMode = initialViewMode;
+        let outerScrollActive = ${outerScrollEnabled ? 'true' : 'false'};
+        let firstOuterViewportReceived = false;
         let renderToken = 0;
         const pageRenderCache = new Map();
         const pageRenderInFlight = new Map();
@@ -592,7 +594,12 @@ const buildPdfHtml = (
                 document.documentElement.scrollHeight || 0,
                 pagesNode.scrollHeight || 0
               );
-          postMessage({ type: 'content-height', height, viewMode: currentViewMode });
+          postMessage({
+            type: 'content-height',
+            height,
+            viewMode: currentViewMode,
+            outerScroll: outerScrollActive,
+          });
         };
 
         const scheduleContentHeightUpdates = () => {
@@ -605,26 +612,29 @@ const buildPdfHtml = (
 
         const applyViewModeLayout = (mode) => {
           const isCompleteMode = mode === 'continuous';
+          const useOuterScroll = isCompleteMode && outerScrollActive;
           // Keep both axes on one scroll owner. Splitting horizontal overflow onto
           // #pages and vertical overflow onto the WebView drops Y movement after a
           // gesture begins on a zoomed, horizontally overflowing PDF page.
-          document.documentElement.style.overflow = 'hidden';
-          document.body.style.overflow = 'hidden';
-          document.documentElement.style.height = '100%';
-          document.body.style.height = '100%';
+          document.documentElement.style.overflow = useOuterScroll ? 'visible' : 'hidden';
+          document.body.style.overflow = useOuterScroll ? 'visible' : 'hidden';
+          document.documentElement.style.height = useOuterScroll ? 'auto' : '100%';
+          document.body.style.height = useOuterScroll ? 'auto' : '100%';
           if (appNode) {
-            appNode.style.height = '100%';
+            appNode.style.display = useOuterScroll ? 'block' : 'flex';
+            appNode.style.height = useOuterScroll ? 'auto' : '100%';
+            appNode.style.overflow = useOuterScroll ? 'visible' : 'hidden';
           }
           document.body.style.overscrollBehavior = 'contain';
           pagesNode.style.touchAction = isCompleteMode ? 'auto' : 'pan-x pan-y';
-          pagesNode.style.flex = '1';
-          pagesNode.style.height = '100%';
+          pagesNode.style.flex = useOuterScroll ? 'none' : '1';
+          pagesNode.style.height = useOuterScroll ? 'auto' : '100%';
           pagesNode.classList.toggle('continuous', isCompleteMode);
           pagesNode.style.display = isCompleteMode ? 'block' : 'flex';
           pagesNode.style.alignItems = isCompleteMode ? 'stretch' : 'center';
           pagesNode.style.justifyContent = 'flex-start';
           pagesNode.style.overflowX = 'auto';
-          pagesNode.style.overflowY = 'auto';
+          pagesNode.style.overflowY = useOuterScroll ? 'hidden' : 'auto';
         };
 
         let lastInteractionAt = 0;
@@ -675,14 +685,10 @@ const buildPdfHtml = (
           const renderTask = (async () => {
             const page = await pdf.getPage(safePage);
             const unscaledViewport = page.getViewport({ scale: 1 });
-            const targetWidth = Math.max(280, Math.min(window.innerWidth - 24, 900)) * currentZoom;
+            const availableWidth = Math.max(280, Math.min(window.innerWidth - 24, 900));
+            const targetWidth = availableWidth * currentZoom;
             const widthScale = targetWidth / unscaledViewport.width;
-            const heightScale =
-              Math.max(280, maxBookHeight - 26) / unscaledViewport.height;
-            const scale =
-              currentViewMode === 'book'
-                ? Math.min(widthScale, heightScale * currentZoom)
-                : widthScale;
+            const scale = widthScale;
             const renderPixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
             const viewport = page.getViewport({ scale: scale * renderPixelRatio });
             const cssViewport = page.getViewport({ scale });
@@ -770,7 +776,7 @@ const buildPdfHtml = (
 
             postMessage({
               type: 'book-page-size',
-              height: Math.min(maxBookHeight, Math.ceil(wrapper.getBoundingClientRect().height + 24)),
+              height: Math.ceil(wrapper.getBoundingClientRect().height + 24),
             });
             postMessage({ type: 'page-change', pageNumber: targetPage });
             if (announceReady) {
@@ -831,6 +837,7 @@ const buildPdfHtml = (
             wrapper.style.minHeight = cssViewport.height + 'px';
             wrapper.replaceChildren(canvas);
             await page.render({ canvasContext: context, viewport }).promise;
+            if (outerScrollActive) scheduleContentHeightUpdates();
           })();
 
           continuousRenderInFlight.set(safePage, task);
@@ -864,6 +871,18 @@ const buildPdfHtml = (
           }
         };
 
+        const focusContinuousPage = (node) => {
+          if (!node) return;
+          if (outerScrollActive) {
+            postMessage({
+              type: 'scroll-to-page',
+              top: Math.max(0, Math.floor(node.getBoundingClientRect().top + window.scrollY)),
+            });
+          } else {
+            node.scrollIntoView({ block: 'start' });
+          }
+        };
+
         const renderAllPages = async (requestedPage) => {
           if (!pdf) return;
           const myToken = ++renderToken;
@@ -874,10 +893,10 @@ const buildPdfHtml = (
             createContinuousPlaceholders();
             const targetWrapper = document.getElementById('pdf-page-' + targetPage);
             currentPage = targetPage;
-            targetWrapper?.scrollIntoView({ block: 'start' });
+            focusContinuousPage(targetWrapper);
             await renderContinuousWindow(targetPage, myToken);
             if (myToken !== renderToken) return;
-            targetWrapper?.scrollIntoView({ block: 'start' });
+            focusContinuousPage(targetWrapper);
             postMessage({ type: 'page-change', pageNumber: currentPage });
             postMessage({ type: 'ready' });
             scheduleContentHeightUpdates();
@@ -889,12 +908,14 @@ const buildPdfHtml = (
           }
         };
 
-        const updateCompleteModePage = () => {
+        const updateCompleteModePage = (visibleCenterY) => {
           if (!pdf || currentViewMode !== 'continuous') return;
           const nodes = Array.from(document.querySelectorAll('[data-page-number]'));
           let bestPage = currentPage;
           let bestDistance = Infinity;
-          const targetY = window.innerHeight * 0.35;
+          const targetY = Number.isFinite(visibleCenterY)
+            ? visibleCenterY
+            : window.innerHeight * 0.35;
 
           for (const node of nodes) {
             const rect = node.getBoundingClientRect();
@@ -938,7 +959,7 @@ const buildPdfHtml = (
               const target = document.getElementById('pdf-page-' + clampPage(requested));
               if (target) {
                 currentPage = clampPage(requested);
-                target.scrollIntoView({ block: 'start' });
+                focusContinuousPage(target);
                 postMessage({ type: 'page-change', pageNumber: currentPage });
                 void renderContinuousWindow(currentPage, renderToken);
               }
@@ -952,6 +973,35 @@ const buildPdfHtml = (
         };
 
         window.__PDF_READER_BRIDGE__ = {
+          setOuterViewport: (top, bottom) => {
+            if (currentViewMode !== 'continuous') return;
+            if (!outerScrollActive) {
+              outerScrollActive = true;
+              applyViewModeLayout(currentViewMode);
+              window.scrollTo(0, 0);
+              pagesNode.scrollTop = 0;
+              scheduleContentHeightUpdates();
+            }
+            if (!firstOuterViewportReceived) {
+              firstOuterViewportReceived = true;
+              if (currentPage > 1) {
+                focusContinuousPage(
+                  document.getElementById('pdf-page-' + currentPage),
+                );
+              }
+            }
+            const visibleTop = Number(top);
+            const visibleBottom = Number(bottom);
+            if (
+              Number.isFinite(visibleTop) &&
+              Number.isFinite(visibleBottom) &&
+              visibleBottom > 0
+            ) {
+              updateCompleteModePage(
+                (Math.max(0, visibleTop) + visibleBottom) / 2,
+              );
+            }
+          },
           goToPage: (pageNumber) => {
             if (!pdf) return;
             const requested = Number(pageNumber);
@@ -960,7 +1010,7 @@ const buildPdfHtml = (
               const target = document.getElementById('pdf-page-' + clampPage(requested));
               if (target) {
                 currentPage = clampPage(requested);
-                target.scrollIntoView({ block: 'start' });
+                focusContinuousPage(target);
                 postMessage({ type: 'page-change', pageNumber: currentPage });
                 void renderContinuousWindow(currentPage, renderToken);
               }
@@ -978,7 +1028,7 @@ const buildPdfHtml = (
                 const target = document.getElementById('pdf-page-' + clampPage(requestedPage));
                 if (target) {
                   currentPage = clampPage(requestedPage);
-                  target.scrollIntoView({ block: 'start' });
+                  focusContinuousPage(target);
                   postMessage({ type: 'page-change', pageNumber: currentPage });
                   void renderContinuousWindow(currentPage, renderToken);
                 }
@@ -1014,6 +1064,10 @@ const buildPdfHtml = (
         let completeModeScrollRaf = 0;
         let completeModeScrollDebounce = 0;
         const handleCompleteModeScroll = () => {
+          if (outerScrollActive) {
+            notifyInteraction();
+            return;
+          }
           if (currentViewMode !== 'continuous') {
             notifyInteraction();
             return;
@@ -2807,8 +2861,6 @@ export default function PdfDocumentViewer({
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(true);
   const [viewerReady, setViewerReady] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
   const [pageCount, setPageCount] = useState<number>(0);
   const requestedViewMode: ReaderViewMode = controlledViewMode;
   const requestedZoomLevel = Math.max(
@@ -2878,6 +2930,8 @@ export default function PdfDocumentViewer({
   const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] =
     useState(0);
   const [pdfBookViewerHeight, setPdfBookViewerHeight] = useState(480);
+  const [pdfContinuousViewerHeight, setPdfContinuousViewerHeight] =
+    useState(480);
   const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = useState(true);
   const effectiveVerseLayout = useMemo<VerseLayoutConfig | undefined>(() => {
     return verseLayout;
@@ -2926,10 +2980,6 @@ export default function PdfDocumentViewer({
       : Math.floor(effectiveVerseLayout?.readerHeightPx || 480),
   );
   const bookViewerHeight = verseViewerHeight;
-  const maxPdfBookViewerHeight = Math.max(
-    320,
-    Math.floor(visibleViewportHeight * 0.8),
-  );
   const completeViewerHeight = isVerseFullScreen
     ? visibleViewportHeight
     : verseViewerHeight;
@@ -3002,8 +3052,10 @@ export default function PdfDocumentViewer({
   const inlineFullScreenActive =
     contentMode === "verse" && isVerseFullScreen && !useNativeFullScreenOverlay;
   const viewerHeight =
-    contentMode === "pdf" && viewMode === "book"
-      ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight)
+    contentMode === "pdf"
+      ? viewMode === "book"
+        ? pdfBookViewerHeight
+        : pdfContinuousViewerHeight
       : completeViewerHeight;
   const measureViewerWindow = useCallback(() => {
     if (!overlayViewport) return;
@@ -3017,6 +3069,59 @@ export default function PdfDocumentViewer({
     });
   }, [overlayViewport]);
   useEffect(measureViewerWindow, [measureViewerWindow]);
+  useEffect(() => {
+    if (
+      !overlayViewport ||
+      !viewerReady ||
+      contentMode !== "pdf" ||
+      viewMode !== "continuous"
+    ) {
+      return;
+    }
+
+    let frame = 0;
+    const sendOuterScroll = (scrollOffset: number) => {
+      if (viewerContentTop === null) {
+        measureViewerWindow();
+        return;
+      }
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const top = scrollOffset + overlayViewport.top - viewerContentTop;
+        const bottom = scrollOffset + overlayViewport.bottom - viewerContentTop;
+        const script = `
+          (function() {
+            if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.setOuterViewport === 'function') {
+              window.__PDF_READER_BRIDGE__.setOuterViewport(
+                ${JSON.stringify(top)},
+                ${JSON.stringify(bottom)}
+              );
+            }
+          })();
+          true;
+        `;
+        webViewRef.current?.injectJavaScript(script);
+      });
+    };
+
+    sendOuterScroll(overlayViewport.getScrollOffset());
+    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
+      sendOuterScroll(value);
+    });
+
+    return () => {
+      overlayViewport.scrollY.removeListener(listenerId);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [
+    contentMode,
+    measureViewerWindow,
+    overlayViewport,
+    viewerReady,
+    viewMode,
+    viewerContentTop,
+  ]);
   const stickyOverlayTranslate = useMemo(() => {
     if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0)
       return null;
@@ -3547,6 +3652,7 @@ export default function PdfDocumentViewer({
   }, [label]);
 
   const effectivePdfUrl = localPdfUrl || pdfUrl;
+  const hasOuterScrollHost = Boolean(overlayViewport);
   const usesLocalFileFallback = Boolean(effectivePdfUrl?.startsWith("file://"));
   const verseLayoutSignature = JSON.stringify(effectiveBookVerseLayout || null);
 
@@ -3579,7 +3685,7 @@ export default function PdfDocumentViewer({
             initialViewModeRef.current,
             initialZoomLevelRef.current,
             neighborPageCount,
-            maxPdfBookViewerHeight,
+            hasOuterScrollHost,
           ),
     [
       contentMode,
@@ -3590,7 +3696,7 @@ export default function PdfDocumentViewer({
       verses,
       viewerReloadKey,
       neighborPageCount,
-      maxPdfBookViewerHeight,
+      hasOuterScrollHost,
       verseZoomConfig.max,
       verseZoomConfig.min,
       verseZoomConfig.defaultSize,
@@ -3599,23 +3705,30 @@ export default function PdfDocumentViewer({
     ],
   );
 
-  const localServerOrigin = useMemo(() => {
-    const match = effectivePdfUrl?.match(
-      /^(https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?)/i,
-    );
-    return match?.[1] || null;
+  const pdfDocumentOrigin = useMemo(() => {
+    if (!effectivePdfUrl) return null;
+    try {
+      const url = new URL(effectivePdfUrl);
+      return url.protocol === "http:" || url.protocol === "https:"
+        ? url.origin
+        : null;
+    } catch {
+      return null;
+    }
   }, [effectivePdfUrl]);
   const webViewSource = useMemo(
     () =>
-      localServerOrigin
-        ? { html: pdfHtml, baseUrl: localServerOrigin }
+      pdfDocumentOrigin
+        ? { html: pdfHtml, baseUrl: pdfDocumentOrigin }
         : { html: pdfHtml },
-    [localServerOrigin, pdfHtml],
+    [pdfDocumentOrigin, pdfHtml],
   );
   const webViewOriginWhitelist = useMemo(
     () =>
-      localServerOrigin ? ["about:blank", localServerOrigin] : ["about:blank"],
-    [localServerOrigin],
+      pdfDocumentOrigin
+        ? ["about:blank", pdfDocumentOrigin]
+        : ["about:blank"],
+    [pdfDocumentOrigin],
   );
 
   const fullScreenVerseHtml = useMemo(
@@ -4721,6 +4834,47 @@ export default function PdfDocumentViewer({
     ],
   );
 
+  const pdfVerticalScrollStartRef = useRef(0);
+  const pdfVerticalScrollResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponderCapture: (
+          _event: unknown,
+          gestureState: SwipeGestureState,
+        ) =>
+          Boolean(overlayViewport) &&
+          Math.abs(gestureState.dy) > 7 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.15,
+        onPanResponderGrant: () => {
+          pdfVerticalScrollStartRef.current =
+            overlayViewport?.getScrollOffset() || 0;
+          showOverlay();
+        },
+        onPanResponderMove: (
+          _event: unknown,
+          gestureState: SwipeGestureState,
+        ) => {
+          overlayViewport?.scrollToOffset(
+            pdfVerticalScrollStartRef.current - gestureState.dy,
+            false,
+          );
+        },
+        onPanResponderRelease: (
+          _event: unknown,
+          gestureState: SwipeGestureState,
+        ) => {
+          const projectedOffset =
+            pdfVerticalScrollStartRef.current -
+            gestureState.dy -
+            (gestureState.vy || 0) * 180;
+          overlayViewport?.scrollToOffset(projectedOffset, true);
+        },
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [overlayViewport, showOverlay],
+  );
+
   const syncViewerStateToWebView = useCallback(
     (
       mode: ReaderViewMode,
@@ -4862,39 +5016,6 @@ export default function PdfDocumentViewer({
     webViewRef.current?.injectJavaScript(script);
     fullScreenWebViewRef.current?.injectJavaScript(script);
   }, [loadingError, viewerReady, zoomLevel]);
-
-  const handleDownload = async () => {
-    if (contentMode !== "pdf" || !resolvedDownloadUrl) {
-      return;
-    }
-    try {
-      setDownloadError(null);
-      setDownloading(true);
-
-      const downloaded = await File.downloadFileAsync(
-        resolvedDownloadUrl,
-        new File(Paths.cache, downloadName),
-        { idempotent: true },
-      );
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(downloaded.uri, {
-          mimeType: "application/pdf",
-          dialogTitle: downloadName,
-          UTI: "com.adobe.pdf",
-        });
-        return;
-      }
-
-      Alert.alert("Downloaded", downloadName);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to download PDF";
-      setDownloadError(message);
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   const shareMessage = useMemo(() => {
     if (shareUrl) {
@@ -6055,36 +6176,6 @@ export default function PdfDocumentViewer({
                     }
                   />
                 </Pressable>
-                {contentMode === "pdf" ? (
-                  <Pressable
-                    onPress={() => void handleDownload()}
-                    style={[
-                      styles.actionButton,
-                      {
-                        borderColor: resolvedReaderTheme.border,
-                        backgroundColor: resolvedReaderTheme.buttonSurface,
-                      },
-                    ]}
-                    accessibilityLabel="Download PDF"
-                  >
-                    <View
-                      pointerEvents="none"
-                      style={styles.completeVerseOrnamentOuter}
-                    />
-                    <View
-                      pointerEvents="none"
-                      style={styles.completeVerseOrnamentInner}
-                    />
-                    <Text
-                      style={[
-                        styles.actionIcon,
-                        { color: resolvedReaderTheme.accent },
-                      ]}
-                    >
-                      {downloading ? "…" : "⬇"}
-                    </Text>
-                  </Pressable>
-                ) : null}
               </>
             )}
           </View>
@@ -6202,21 +6293,23 @@ export default function PdfDocumentViewer({
               : { height: viewerHeight },
         ]}
         onLayout={
-          contentMode === "verse"
-            ? (event: { nativeEvent: { layout: { height?: number } } }) => {
+          (event: { nativeEvent: { layout: { height?: number } } }) => {
+            if (contentMode === "verse") {
                 const nextHeight = Math.round(
                   event.nativeEvent.layout.height || 0,
                 );
                 if (nextHeight > 0 && nextHeight !== viewerWrapHeight) {
                   setViewerWrapHeight(nextHeight);
                 }
-                measureViewerWindow();
-              }
-            : undefined
+            }
+            measureViewerWindow();
+          }
         }
         {...(viewMode === "book" && contentMode === "verse"
           ? panResponder.panHandlers
-          : {})}
+          : contentMode === "pdf" && overlayViewport
+            ? pdfVerticalScrollResponder.panHandlers
+            : {})}
       >
         {loadingPdf &&
         !useNativeCompleteVerseView &&
@@ -6431,10 +6524,8 @@ export default function PdfDocumentViewer({
                       {
                         borderColor: isActive
                           ? resolvedReaderTheme.accent
-                          : resolvedReaderTheme.border,
-                        backgroundColor: isActive
-                          ? resolvedReaderTheme.accentSurface
-                          : resolvedReaderTheme.page,
+                          : resolvedReaderTheme.accent,
+                        backgroundColor: resolvedReaderTheme.accentSurface,
                         shadowColor: resolvedReaderTheme.shadow,
                       },
                       isActive ? styles.completeVerseBlockActive : null,
@@ -6512,7 +6603,7 @@ export default function PdfDocumentViewer({
               onTouchStart={showOverlay}
               onRenderProcessGone={() => {
                 const message =
-                  "The PDF viewer stopped unexpectedly. Please use Download PDF.";
+                  "The PDF viewer stopped unexpectedly. Please try again.";
                 setLoadingError(message);
                 setLoadingPdf(false);
                 setViewerReady(false);
@@ -6578,13 +6669,38 @@ export default function PdfDocumentViewer({
                     return;
                   }
                   if (payload?.type === "content-height") {
+                    if (
+                      contentMode === "pdf" &&
+                      payload.viewMode === "continuous" &&
+                      payload.outerScroll === true
+                    ) {
+                      const nextHeight = Math.max(
+                        320,
+                        Math.ceil(Number(payload.height) || 0),
+                      );
+                      setPdfContinuousViewerHeight((current) =>
+                        current === nextHeight ? current : nextHeight,
+                      );
+                    }
+                    return;
+                  }
+                  if (payload?.type === "scroll-to-page") {
+                    const pageTop = Number(payload.top);
+                    if (
+                      contentMode === "pdf" &&
+                      Number.isFinite(pageTop) &&
+                      overlayViewport &&
+                      viewerContentTop !== null
+                    ) {
+                      overlayViewport.scrollToOffset(viewerContentTop + pageTop);
+                    }
                     return;
                   }
                   if (payload?.type === "book-page-size") {
                     if (contentMode !== "pdf") return;
-                    const nextHeight = Math.min(
-                      maxPdfBookViewerHeight,
-                      Math.max(320, Math.ceil(Number(payload.height) || 0)),
+                    const nextHeight = Math.max(
+                      320,
+                      Math.ceil(Number(payload.height) || 0),
                     );
                     setPdfBookViewerHeight((current) =>
                       current === nextHeight ? current : nextHeight,
@@ -6598,11 +6714,16 @@ export default function PdfDocumentViewer({
                         : "Failed to load PDF.";
                     const errorCode =
                       typeof payload.code === "string" ? payload.code : "";
+                    const isLocalPdfSource =
+                      effectivePdfUrl?.startsWith("file://") ||
+                      /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\//i.test(
+                        effectivePdfUrl || "",
+                      );
 
                     if (
                       contentMode === "pdf" &&
                       enableLocalFallback &&
-                      errorCode === "fetch-failed" &&
+                      (errorCode === "fetch-failed" || isLocalPdfSource) &&
                       !triedLocalFileFallback
                     ) {
                       setTriedLocalFileFallback(true);
@@ -6627,6 +6748,20 @@ export default function PdfDocumentViewer({
                                 { idempotent: true },
                               );
                           if (!downloaded.uri || !downloaded.exists) {
+                            if (cachedLocalFile) {
+                              console.warn(
+                                "[PdfDocumentViewer] Cached PDF disappeared before it could be served; retrying the source URL.",
+                                {
+                                  uri: downloaded.uri,
+                                  exists: downloaded.exists,
+                                },
+                              );
+                              setLocalPdfUrl(resolvedDownloadUrl);
+                              setViewerReloadKey((value) => value + 1);
+                              setLoadingPdf(true);
+                              setLoadingError(null);
+                              return;
+                            }
                             setLoadingError(
                               `Downloaded fallback file does not exist at: ${downloaded.uri}`,
                             );
@@ -6662,10 +6797,16 @@ export default function PdfDocumentViewer({
 
                             if (!ServerClass) {
                               if (cachedLocalFile) {
+                                console.warn(
+                                  "[PdfDocumentViewer] Native static server is unavailable; reopening the source PDF URL.",
+                                );
                                 setLocalPdfUrl(resolvedDownloadUrl);
+                                setViewerReloadKey((value) => value + 1);
+                                setLoadingPdf(true);
+                                setLoadingError(null);
                               } else {
                                 setLoadingError(
-                                  "In-app local PDF fallback is unavailable in this build. Please use Download PDF.",
+                                  "In-app local PDF fallback is unavailable in this build. Please try again later.",
                                 );
                                 setLoadingPdf(false);
                               }
@@ -7021,9 +7162,6 @@ export default function PdfDocumentViewer({
         ) : null}
       </View>
 
-      {downloadError ? (
-        <Text style={styles.errorText}>{downloadError}</Text>
-      ) : null}
     </View>
   );
 

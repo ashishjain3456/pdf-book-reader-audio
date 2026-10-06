@@ -86,6 +86,7 @@ type PdfDocumentViewerProps = {
             }) => unknown;
         };
         getScrollOffset: () => number;
+        scrollToOffset: (offset: number, animated?: boolean) => void;
     };
 };
 type ReaderVerse = {
