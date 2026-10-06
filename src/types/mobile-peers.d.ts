@@ -1,11 +1,12 @@
-declare module 'expo-file-system' {
+declare module "expo-file-system" {
   export class File {
     constructor(...parts: string[]);
     readonly uri: string;
+    readonly exists: boolean;
     static downloadFileAsync(
       url: string,
       destination: File,
-      options?: { idempotent?: boolean }
+      options?: { idempotent?: boolean },
     ): Promise<File>;
   }
 
@@ -14,12 +15,12 @@ declare module 'expo-file-system' {
   };
 }
 
-declare module 'expo-secure-store' {
+declare module "expo-secure-store" {
   export function getItemAsync(key: string): Promise<string | null>;
   export function setItemAsync(key: string, value: string): Promise<void>;
 }
 
-declare module 'expo-sharing' {
+declare module "expo-sharing" {
   export function isAvailableAsync(): Promise<boolean>;
   export function shareAsync(
     url: string,
@@ -27,11 +28,11 @@ declare module 'expo-sharing' {
       mimeType?: string;
       dialogTitle?: string;
       UTI?: string;
-    }
+    },
   ): Promise<void>;
 }
 
-declare module 'expo-audio' {
+declare module "expo-audio" {
   export type AudioStatus = {
     isLoaded: boolean;
     playing: boolean;
@@ -47,21 +48,21 @@ declare module 'expo-audio' {
 
   export function useAudioPlayer(
     source: string | null,
-    options?: { updateInterval?: number }
+    options?: { updateInterval?: number },
   ): AudioPlayer;
   export function useAudioPlayerStatus(player: AudioPlayer): AudioStatus;
 }
 
-declare module 'react-native-webview' {
-  import * as React from 'react';
+declare module "react-native-webview" {
+  import * as React from "react";
 
   export class WebView extends React.Component<Record<string, unknown>> {
     injectJavaScript(script: string): void;
   }
 }
 
-declare module 'react-native' {
-  import type { ComponentType } from 'react';
+declare module "react-native" {
+  import type { ComponentType } from "react";
 
   export const View: ComponentType<Record<string, unknown>>;
   export const Text: ComponentType<Record<string, unknown>>;
@@ -73,7 +74,7 @@ declare module 'react-native' {
     };
   };
   export const Platform: {
-    OS: 'ios' | 'android' | 'web' | string;
+    OS: "ios" | "android" | "web" | string;
   };
   export const NativeModules: {
     FPStaticServer?: {
@@ -92,24 +93,28 @@ declare module 'react-native' {
   };
 }
 
-declare module 'react-native-static-server' {
+declare module "@dr.pogodin/react-native-static-server" {
   export default class StaticServer {
-    constructor(
-      port: number,
-      root: string,
-      options?: { localOnly?: boolean }
-    );
+    constructor(options: {
+      fileDir: string;
+      hostname?: string;
+      nonLocal?: boolean;
+      port?: number;
+      stopInBackground?: boolean;
+    });
 
     start(): Promise<string>;
     stop(): Promise<void>;
   }
 }
 
-declare module 'pdfjs-dist/legacy/build/pdf.mjs' {
+declare module "pdfjs-dist/legacy/build/pdf.mjs" {
   const pdfjs: {
     version: string;
     GlobalWorkerOptions: { workerSrc: string };
-    getDocument: (src: string | Record<string, unknown>) => { promise: Promise<unknown> };
+    getDocument: (src: string | Record<string, unknown>) => {
+      promise: Promise<unknown>;
+    };
   };
 
   export default pdfjs;

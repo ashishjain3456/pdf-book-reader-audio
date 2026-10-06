@@ -103,10 +103,6 @@ var formatTime = (seconds) => {
   const remainingSeconds = safeSeconds % 60;
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 };
-var hasNativeStaticServer = () => {
-  const nativeServer = ReactNative.NativeModules.FPStaticServer;
-  return nativeServer && typeof nativeServer.start === "function" && typeof nativeServer.stop === "function";
-};
 var escapeHtml = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 var stripHtmlText = (value) => String(value || "").replace(/<\s*br\s*\/?>/gi, "\n").replace(/<\s*\/p\s*>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\n{3,}/g, "\n\n").trim();
 var decodeHtmlText = (value) => String(value || "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -2689,14 +2685,12 @@ function PdfDocumentViewer({
   const viewerHeight = contentMode === "pdf" && viewMode === "book" ? Math.min(maxPdfBookViewerHeight, pdfBookViewerHeight) : completeViewerHeight;
   const measureViewerWindow = react.useCallback(() => {
     if (!overlayViewport) return;
-    viewerWrapRef.current?.measureInWindow?.(
-      (_x, y) => {
-        const contentTop = y + overlayViewport.getScrollOffset();
-        setViewerContentTop(
-          (current) => current !== null && Math.abs(current - contentTop) < 1 ? current : contentTop
-        );
-      }
-    );
+    viewerWrapRef.current?.measureInWindow?.((_x, y) => {
+      const contentTop = y + overlayViewport.getScrollOffset();
+      setViewerContentTop(
+        (current) => current !== null && Math.abs(current - contentTop) < 1 ? current : contentTop
+      );
+    });
   }, [overlayViewport]);
   react.useEffect(measureViewerWindow, [measureViewerWindow]);
   const stickyOverlayTranslate = react.useMemo(() => {
@@ -2714,7 +2708,12 @@ function PdfDocumentViewer({
       outputRange: [minTop - baseTop, maxTop - baseTop],
       extrapolate: "clamp"
     });
-  }, [overlayViewport, viewerContentTop, viewerWrapHeight, overlayControlsHeight]);
+  }, [
+    overlayViewport,
+    viewerContentTop,
+    viewerWrapHeight,
+    overlayControlsHeight
+  ]);
   const useNativeCompleteVerseView = contentMode === "verse" && viewMode === "continuous" && !isVerseFullScreen;
   const useNativeBookVerseView = contentMode === "verse" && viewMode === "book" && !isVerseFullScreen;
   const useNativeVerseView = useNativeCompleteVerseView || useNativeBookVerseView;
@@ -3107,7 +3106,7 @@ function PdfDocumentViewer({
     return normalized.toLowerCase().endsWith(".pdf") ? normalized : `${normalized}.pdf`;
   }, [label]);
   const effectivePdfUrl = localPdfUrl || pdfUrl;
-  const usesLocalFileFallback = Boolean(localPdfUrl?.startsWith("file://"));
+  const usesLocalFileFallback = Boolean(effectivePdfUrl?.startsWith("file://"));
   const verseLayoutSignature = JSON.stringify(effectiveBookVerseLayout || null);
   const pdfHtml = react.useMemo(
     () => contentMode === "verse" ? buildVerseHtml(
@@ -3154,9 +3153,20 @@ function PdfDocumentViewer({
       resolvedReaderTheme
     ]
   );
-  const webViewSource = react.useMemo(() => {
-    return { html: pdfHtml };
-  }, [pdfHtml]);
+  const localServerOrigin = react.useMemo(() => {
+    const match = effectivePdfUrl?.match(
+      /^(https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?)/i
+    );
+    return match?.[1] || null;
+  }, [effectivePdfUrl]);
+  const webViewSource = react.useMemo(
+    () => localServerOrigin ? { html: pdfHtml, baseUrl: localServerOrigin } : { html: pdfHtml },
+    [localServerOrigin, pdfHtml]
+  );
+  const webViewOriginWhitelist = react.useMemo(
+    () => localServerOrigin ? ["about:blank", localServerOrigin] : ["about:blank"],
+    [localServerOrigin]
+  );
   const fullScreenVerseHtml = react.useMemo(
     () => contentMode === "verse" ? buildVerseHtml(
       verses || [],
@@ -3275,7 +3285,8 @@ function PdfDocumentViewer({
     const pageForVerse = getNativeVersePage(externalActiveVerseId);
     if (!pageForVerse) return;
     const lastExternalVerse = lastExternalVerseRef.current;
-    if (lastExternalVerse?.documentId === readerDocumentId && lastExternalVerse.verseId === externalActiveVerseId) return;
+    if (lastExternalVerse?.documentId === readerDocumentId && lastExternalVerse.verseId === externalActiveVerseId)
+      return;
     lastExternalVerseRef.current = {
       documentId: readerDocumentId,
       verseId: externalActiveVerseId
@@ -3534,10 +3545,7 @@ function PdfDocumentViewer({
       playbackState: extendedStatus.playbackState,
       timeControlStatus: extendedStatus.timeControlStatus
     });
-  }, [
-    currentVerseAudioUrl,
-    verseAudioStatus
-  ]);
+  }, [currentVerseAudioUrl, verseAudioStatus]);
   react.useEffect(() => {
     if (!hasVerseAudio) {
       setActiveVerseAudioIndex(null);
@@ -3900,10 +3908,9 @@ function PdfDocumentViewer({
       }
     };
   }, []);
-  const requestBookPageChange = react.useCallback(
-    (direction) => {
-      const methodName = direction === "next" ? "goToNextPage" : "goToPreviousPage";
-      const script = `
+  const requestBookPageChange = react.useCallback((direction) => {
+    const methodName = direction === "next" ? "goToNextPage" : "goToPreviousPage";
+    const script = `
         (function() {
           if (window.__PDF_READER_BRIDGE__ && typeof window.__PDF_READER_BRIDGE__.${methodName} === 'function') {
             window.__PDF_READER_BRIDGE__.${methodName}();
@@ -3911,11 +3918,9 @@ function PdfDocumentViewer({
         })();
         true;
       `;
-      webViewRef.current?.injectJavaScript(script);
-      fullScreenWebViewRef.current?.injectJavaScript(script);
-    },
-    []
-  );
+    webViewRef.current?.injectJavaScript(script);
+    fullScreenWebViewRef.current?.injectJavaScript(script);
+  }, []);
   const playNativeBookTurn = react.useCallback(
     (sourcePage, targetPage) => {
       const direction = targetPage > sourcePage ? "next" : "prev";
@@ -4186,12 +4191,7 @@ function PdfDocumentViewer({
       zoomLevel: Math.round(zoomLevel * 100) / 100
     });
     if (lastInjectedViewerStateRef.current === syncSignature) return;
-    syncViewerStateToWebView(
-      viewMode,
-      syncPage,
-      readerVerseId,
-      zoomLevel
-    );
+    syncViewerStateToWebView(viewMode, syncPage, readerVerseId, zoomLevel);
     lastInjectedViewerStateRef.current = syncSignature;
     pendingModeSwitchPageRef.current = null;
     lastSyncedViewModeRef.current = viewMode;
@@ -4322,10 +4322,7 @@ ${shareUrl}`;
   ]);
   const nativeBookVerse = (useNativeBookVerseView || useNativeFullScreenOverlay && viewMode === "book") && completeVerses.length ? completeVerses[Math.max(
     0,
-    Math.min(
-      completeVerses.length - 1,
-      nativeBookPageNumber - 1
-    )
+    Math.min(completeVerses.length - 1, nativeBookPageNumber - 1)
   )] : null;
   const nativeSecondBookVerse = nativeBookVerse && activeBookSpreadMode === "double" && nativeBookPageNumber < completeVerses.length && completeVerses[nativeBookPageNumber]?.id !== nativeBookVerse.id ? completeVerses[nativeBookPageNumber] || null : null;
   const nativeBookVerses = [nativeBookVerse, nativeSecondBookVerse].filter(
@@ -4439,7 +4436,14 @@ ${shareUrl}`;
   );
   const renderNativeBookTurn = (fullScreen) => {
     if (!nativeBookTurn || !nativeBookTurnVisuals) return null;
-    const { direction, double, pageWidth, pageHeight, sourceVerses, backVerse } = nativeBookTurn;
+    const {
+      direction,
+      double,
+      pageWidth,
+      pageHeight,
+      sourceVerses,
+      backVerse
+    } = nativeBookTurn;
     const frontVerse = double ? sourceVerses[direction === "next" ? 1 : 0] : sourceVerses[0];
     const stationaryVerse = double ? sourceVerses[direction === "next" ? 0 : 1] : null;
     if (!frontVerse) return null;
@@ -4727,14 +4731,7 @@ ${shareUrl}`;
                 !canPlayPreviousMappedVerse ? styles.overlayButtonDisabled : null
               ],
               accessibilityLabel: "Play previous mapped verse",
-              children: /* @__PURE__ */ jsxRuntime.jsx(
-                Ionicons__default.default,
-                {
-                  name: "play-skip-back-outline",
-                  size: 20,
-                  color: "#fff"
-                }
-              )
+              children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "play-skip-back-outline", size: 20, color: "#fff" })
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsx(
@@ -5690,7 +5687,7 @@ ${shareUrl}`;
                 reactNativeWebview.WebView,
                 {
                   ref: webViewRef,
-                  originWhitelist: ["about:blank"],
+                  originWhitelist: webViewOriginWhitelist,
                   source: webViewSource,
                   style: [
                     styles.webview,
@@ -5807,28 +5804,25 @@ ${shareUrl}`;
                           setLoadingPdf(true);
                           setLoadingError(null);
                           void (async () => {
+                            const cachedLocalFileUri = effectivePdfUrl?.startsWith(
+                              "file://"
+                            ) ? effectivePdfUrl : null;
                             try {
-                              const downloaded = await expoFileSystem.File.downloadFileAsync(
+                              const cachedLocalFile = cachedLocalFileUri ? new expoFileSystem.File(cachedLocalFileUri) : null;
+                              const downloaded = cachedLocalFile ? cachedLocalFile : await expoFileSystem.File.downloadFileAsync(
                                 resolvedDownloadUrl,
                                 new expoFileSystem.File(expoFileSystem.Paths.cache, downloadName),
                                 { idempotent: true }
                               );
-                              if (!downloaded.uri) {
+                              if (!downloaded.uri || !downloaded.exists) {
                                 setLoadingError(
                                   `Downloaded fallback file does not exist at: ${downloaded.uri}`
                                 );
                                 setLoadingPdf(false);
                                 return;
                               }
-                              if (ReactNative.Platform.OS === "android") {
+                              if (ReactNative.Platform.OS === "android" || ReactNative.Platform.OS === "ios") {
                                 await stopStaticServer();
-                                if (!hasNativeStaticServer()) {
-                                  setLoadingError(
-                                    "In-app local PDF fallback requires a development build. Please use Download PDF in Expo Go."
-                                  );
-                                  setLoadingPdf(false);
-                                  return;
-                                }
                                 const filePath = downloaded.uri.replace(
                                   "file://",
                                   ""
@@ -5842,39 +5836,54 @@ ${shareUrl}`;
                                 );
                                 let ServerClass = null;
                                 try {
-                                  const mod = await import('react-native-static-server');
+                                  const mod = await import('@dr.pogodin/react-native-static-server');
                                   ServerClass = mod?.default || null;
                                 } catch {
                                   ServerClass = null;
                                 }
                                 if (!ServerClass) {
-                                  setLoadingError(
-                                    "In-app local PDF fallback is unavailable in this build. Please use Download PDF."
-                                  );
-                                  setLoadingPdf(false);
+                                  if (cachedLocalFile) {
+                                    setLocalPdfUrl(resolvedDownloadUrl);
+                                  } else {
+                                    setLoadingError(
+                                      "In-app local PDF fallback is unavailable in this build. Please use Download PDF."
+                                    );
+                                    setLoadingPdf(false);
+                                  }
                                   return;
                                 }
-                                const server = new ServerClass(0, dirPath, {
-                                  localOnly: true
+                                const server = new ServerClass({
+                                  fileDir: dirPath,
+                                  hostname: "127.0.0.1",
+                                  nonLocal: false,
+                                  port: 0
                                 });
-                                if (!server || typeof server.start !== "function") {
-                                  setLocalPdfUrl(downloaded.uri);
+                                const serverUrl = await server.start();
+                                if (!serverUrl) {
+                                  setLocalPdfUrl(
+                                    cachedLocalFile ? resolvedDownloadUrl : downloaded.uri
+                                  );
                                 } else {
-                                  const serverUrl = await server.start();
-                                  if (!serverUrl) {
-                                    setLocalPdfUrl(downloaded.uri);
-                                  } else {
-                                    staticServerRef.current = server;
-                                    setLocalPdfUrl(
-                                      `${serverUrl}/${encodeURIComponent(fileBase)}`
-                                    );
-                                  }
+                                  staticServerRef.current = server;
+                                  setLocalPdfUrl(
+                                    `${serverUrl}/${encodeURIComponent(fileBase)}`
+                                  );
                                 }
+                              } else if (cachedLocalFile) {
+                                setLocalPdfUrl(resolvedDownloadUrl);
+                                setViewerReloadKey((value) => value + 1);
                               } else {
                                 setLocalPdfUrl(downloaded.uri);
                               }
                               setViewerReloadKey((value) => value + 1);
                             } catch (fallbackError) {
+                              if (cachedLocalFileUri) {
+                                setLocalPdfUrl(resolvedDownloadUrl);
+                                setViewerReloadKey((value) => value + 1);
+                                setLoadingPdf(true);
+                                setLoadingError(null);
+                                return;
+                              }
                               const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Unable to load this PDF in-app.";
                               setLoadingError(`Fallback error: ${fallbackMessage}`);
                               setLoadingPdf(false);
@@ -6039,9 +6048,7 @@ ${shareUrl}`;
                             );
                           },
                           onPress: (event) => {
-                            seekAudioByLocationX(
-                              event.nativeEvent.locationX || 0
-                            );
+                            seekAudioByLocationX(event.nativeEvent.locationX || 0);
                           },
                           disabled: !activeVerseAudio,
                           style: [
@@ -6139,7 +6146,9 @@ ${shareUrl}`;
                         ReactNative.Pressable,
                         {
                           onPress: goToNextPage,
-                          disabled: Boolean(pageCount && displayedPageNumber >= pageCount),
+                          disabled: Boolean(
+                            pageCount && displayedPageNumber >= pageCount
+                          ),
                           style: [
                             styles.overlayZoomButton,
                             pageCount && displayedPageNumber >= pageCount ? styles.overlayButtonDisabled : null

@@ -1,7 +1,7 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { V as VerseAudioMapping } from './contracts-UxLvblLy.js';
 
-type ReaderViewMode = 'book' | 'continuous';
+type ReaderViewMode = "book" | "continuous";
 type ReaderState = {
     currentPage: number;
     pageCount: number;
@@ -59,7 +59,7 @@ type PdfDocumentViewerProps = {
         message: string;
         code?: string;
     }) => void;
-    mode?: 'auto' | 'pdf' | 'verse';
+    mode?: "auto" | "pdf" | "verse";
     verses?: ReaderVerse[];
     verseAudioMappings?: VerseAudioMapping[];
     verseLayout?: VerseLayoutConfig;
@@ -82,7 +82,7 @@ type PdfDocumentViewerProps = {
             interpolate: (config: {
                 inputRange: number[];
                 outputRange: number[];
-                extrapolate: 'clamp';
+                extrapolate: "clamp";
             }) => unknown;
         };
         getScrollOffset: () => number;
@@ -104,7 +104,7 @@ type VerseLayoutConfig = {
     minFontSizePx?: number;
     defaultFontSizePx?: number;
     maxFontSizePx?: number;
-    bookSpreadMode?: 'single' | 'double';
+    bookSpreadMode?: "single" | "double";
     enablePageTurnEffect?: boolean;
     showSecondPage?: boolean;
     allowDoubleSpread?: boolean;
