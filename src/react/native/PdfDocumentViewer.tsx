@@ -106,6 +106,7 @@ export type PdfDocumentViewerProps = {
   renderRightActions?: (context: ReaderActionsContext) => React.ReactNode;
   onFullScreenChange?: (isFullScreen: boolean) => void;
   hideControls?: boolean;
+  hidePageNavigationControls?: boolean;
   hideVerseAudioControls?: boolean;
   externalVerseAudioState?: ExternalVerseAudioState | null;
   externalActiveVerseId?: string | null;
@@ -1453,7 +1454,7 @@ const buildVerseHtml = (
         border: 0;
         border-radius: 0;
         padding: 10px 12px;
-        background: ${theme.page};
+        background: ${theme.accentSurface};
         position: relative;
         box-sizing: border-box;
         width: 100%;
@@ -2748,6 +2749,7 @@ export default function PdfDocumentViewer({
   renderRightActions,
   onFullScreenChange,
   hideControls = false,
+  hidePageNavigationControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
   externalActiveVerseId = null,
@@ -2758,6 +2760,7 @@ export default function PdfDocumentViewer({
     () => NativeDimensions?.get?.('window') || { width: 0, height: 0 }
   );
   const windowWidth = windowSize.width || 0;
+  const windowHeight = windowSize.height || 0;
   useEffect(() => {
     const subscription = NativeDimensions?.addEventListener?.(
       'change',
@@ -2886,14 +2889,17 @@ export default function PdfDocumentViewer({
         ? 'double'
         : 'single'
   );
-  const visibleViewportHeight = Math.max(
+  const configuredViewportHeight = Math.max(
     320,
     Math.floor(
       Number(effectiveVerseLayout?.viewportHeightPx) > 0
         ? Number(effectiveVerseLayout?.viewportHeightPx)
-        : 640
+      : 640
     )
   );
+  const visibleViewportHeight = isVerseFullScreen
+    ? Math.max(320, Math.floor(windowHeight || configuredViewportHeight))
+    : configuredViewportHeight;
   const fullScreenViewportWidth = Math.max(
     320,
     Math.floor(
@@ -4666,6 +4672,7 @@ export default function PdfDocumentViewer({
           gestureState: SwipeGestureState
         ) =>
           viewMode === 'book' &&
+          !hidePageNavigationControls &&
           Math.abs(gestureState.dx) > 40 &&
           Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
         onPanResponderRelease: (
@@ -4682,7 +4689,13 @@ export default function PdfDocumentViewer({
         },
         onPanResponderTerminationRequest: () => true,
       }),
-    [goToNextPage, goToPreviousPage, showOverlay, viewMode]
+    [
+      goToNextPage,
+      goToPreviousPage,
+      hidePageNavigationControls,
+      showOverlay,
+      viewMode,
+    ]
   );
 
   const syncViewerStateToWebView = useCallback(
@@ -5003,14 +5016,11 @@ export default function PdfDocumentViewer({
   const reserveOverlayControlsSpace =
     effectiveVerseLayout?.reserveControlsSpace !== false;
   const inlineBookPageFillStyle = {
-    minHeight: Math.max(
-      260,
-      viewerHeight - (reserveOverlayControlsSpace ? 114 : 20)
-    ),
+    minHeight: 260,
     justifyContent: 'center' as const,
   };
   const fullScreenBookPageFillStyle = {
-    minHeight: Math.max(260, visibleViewportHeight),
+    minHeight: 260,
     justifyContent: 'center' as const,
   };
   const nativeBookVerseFontSizePx =
@@ -5535,7 +5545,7 @@ export default function PdfDocumentViewer({
         </View>
       ) : null}
       <View style={styles.overlayZoomGroup}>
-        {viewMode === 'book' ? (
+        {viewMode === 'book' && !hidePageNavigationControls ? (
           <Pressable
             onPress={goToPreviousPage}
             disabled={displayedPageNumber <= 1}
@@ -5606,7 +5616,7 @@ export default function PdfDocumentViewer({
         >
           <Ionicons name="contract-outline" size={20} color="#fff" />
         </Pressable>
-        {viewMode === 'book' ? (
+        {viewMode === 'book' && !hidePageNavigationControls ? (
           <Pressable
             onPress={goToNextPage}
             disabled={Boolean(pageCount && displayedPageNumber >= pageCount)}
@@ -5688,7 +5698,10 @@ export default function PdfDocumentViewer({
                   styles.nativeFullScreenScroll,
                   { backgroundColor: resolvedReaderTheme.background },
                 ]}
-                contentContainerStyle={styles.nativeFullScreenBookScrollContent}
+                contentContainerStyle={[
+                  styles.nativeFullScreenBookScrollContent,
+                  styles.nativeFullScreenBookScrollContentCentered,
+                ]}
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled
                 onTouchStart={showOverlay}
@@ -5701,6 +5714,7 @@ export default function PdfDocumentViewer({
                   }}
                   style={[
                     styles.nativeFullScreenBookContent,
+                    styles.nativeFullScreenBookContentCentered,
                     activeBookSpreadMode === 'double'
                       ? styles.nativeFullScreenBookContentDouble
                       : null,
@@ -5722,7 +5736,7 @@ export default function PdfDocumentViewer({
                       fullScreenBookPageFillStyle,
                       {
                         borderColor: resolvedReaderTheme.accent,
-                        backgroundColor: resolvedReaderTheme.page,
+                        backgroundColor: resolvedReaderTheme.accentSurface,
                         shadowColor: resolvedReaderTheme.shadow,
                       },
                     ]}
@@ -5844,7 +5858,7 @@ export default function PdfDocumentViewer({
                             : resolvedReaderTheme.border,
                           backgroundColor: isActive
                             ? resolvedReaderTheme.accentSurface
-                            : resolvedReaderTheme.page,
+                            : resolvedReaderTheme.accentSurface,
                         },
                         isActive
                           ? styles.nativeFullScreenVerseBlockActive
@@ -6160,12 +6174,11 @@ export default function PdfDocumentViewer({
           { borderColor: resolvedReaderTheme.border },
           useNativeCompleteVerseView || useNativeBookVerseView
             ? {
-                height: Math.max(
-                  viewerHeight,
-                  useNativeBookVerseView
+                height: useNativeBookVerseView
+                  ? embeddedBookContentHeight > 0
                     ? embeddedBookContentHeight + 2
-                    : embeddedContinuousContentHeight + 2
-                ),
+                    : viewerHeight
+                  : Math.max(viewerHeight, embeddedContinuousContentHeight + 2),
               }
             : inlineFullScreenActive
               ? styles.viewerWrapFullScreen
@@ -6197,7 +6210,10 @@ export default function PdfDocumentViewer({
               { backgroundColor: resolvedReaderTheme.background },
             ]}
           >
-            <ActivityIndicator />
+            <ActivityIndicator
+              size="large"
+              color={resolvedReaderTheme.accent}
+            />
             <Text
               style={[
                 styles.loadingText,
@@ -6265,7 +6281,7 @@ export default function PdfDocumentViewer({
                       inlineBookPageFillStyle,
                       {
                         borderColor: resolvedReaderTheme.accent,
-                        backgroundColor: resolvedReaderTheme.page,
+                        backgroundColor: resolvedReaderTheme.accentSurface,
                         shadowColor: resolvedReaderTheme.shadow,
                       },
                     ]}
@@ -6863,7 +6879,7 @@ export default function PdfDocumentViewer({
                 </View>
               ) : null}
               <View style={styles.overlayZoomGroup}>
-                {viewMode === 'book' ? (
+                {viewMode === 'book' && !hidePageNavigationControls ? (
                   <Pressable
                     onPress={goToPreviousPage}
                     disabled={displayedPageNumber <= 1}
@@ -6935,7 +6951,7 @@ export default function PdfDocumentViewer({
                     />
                   </Pressable>
                 ) : null}
-                {viewMode === 'book' ? (
+                {viewMode === 'book' && !hidePageNavigationControls ? (
                   <Pressable
                     onPress={goToNextPage}
                     disabled={Boolean(pageCount && displayedPageNumber >= pageCount)}
@@ -7237,6 +7253,9 @@ const styles = StyleSheet.create({
   nativeFullScreenBookScrollContent: {
     flexGrow: 1,
   },
+  nativeFullScreenBookScrollContentCentered: {
+    justifyContent: 'center',
+  },
   completeScrollContent: {
     padding: 10,
     paddingBottom: 104,
@@ -7441,6 +7460,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 10,
     paddingBottom: 104,
+  },
+  nativeFullScreenBookContentCentered: {
+    flexGrow: 0,
+    alignSelf: 'stretch',
+    padding: 0,
+    paddingBottom: 0,
   },
   nativeFullScreenBookContentEdgeToEdge: {
     padding: 0,

@@ -1208,7 +1208,7 @@ var buildVerseHtml = (verses, title, targetPage, viewMode, layout, typography, m
         border: 0;
         border-radius: 0;
         padding: 10px 12px;
-        background: ${theme.page};
+        background: ${theme.accentSurface};
         position: relative;
         box-sizing: border-box;
         width: 100%;
@@ -2498,6 +2498,7 @@ function PdfDocumentViewer({
   renderRightActions,
   onFullScreenChange,
   hideControls = false,
+  hidePageNavigationControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
   externalActiveVerseId = null,
@@ -2508,6 +2509,7 @@ function PdfDocumentViewer({
     () => NativeDimensions?.get?.("window") || { width: 0, height: 0 }
   );
   const windowWidth = windowSize.width || 0;
+  const windowHeight = windowSize.height || 0;
   react.useEffect(() => {
     const subscription = NativeDimensions?.addEventListener?.(
       "change",
@@ -2617,12 +2619,13 @@ function PdfDocumentViewer({
   const [bookSpreadMode, setBookSpreadMode] = react.useState(
     () => verseLayout?.bookSpreadMode === "double" && verseLayout?.showSecondPage !== false ? "double" : "single"
   );
-  const visibleViewportHeight = Math.max(
+  const configuredViewportHeight = Math.max(
     320,
     Math.floor(
       Number(effectiveVerseLayout?.viewportHeightPx) > 0 ? Number(effectiveVerseLayout?.viewportHeightPx) : 640
     )
   );
+  const visibleViewportHeight = isVerseFullScreen ? Math.max(320, Math.floor(windowHeight || configuredViewportHeight)) : configuredViewportHeight;
   const fullScreenViewportWidth = Math.max(
     320,
     Math.floor(
@@ -4071,7 +4074,7 @@ function PdfDocumentViewer({
         showOverlay();
         return false;
       },
-      onMoveShouldSetPanResponder: (_event, gestureState) => viewMode === "book" && Math.abs(gestureState.dx) > 40 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
+      onMoveShouldSetPanResponder: (_event, gestureState) => viewMode === "book" && !hidePageNavigationControls && Math.abs(gestureState.dx) > 40 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
       onPanResponderRelease: (_event, gestureState) => {
         if (gestureState.dx < -44) {
           goToNextPage();
@@ -4083,7 +4086,13 @@ function PdfDocumentViewer({
       },
       onPanResponderTerminationRequest: () => true
     }),
-    [goToNextPage, goToPreviousPage, showOverlay, viewMode]
+    [
+      goToNextPage,
+      goToPreviousPage,
+      hidePageNavigationControls,
+      showOverlay,
+      viewMode
+    ]
   );
   const syncViewerStateToWebView = react.useCallback(
     (mode2, requestedPage, anchorVerseId, requestedZoom = zoomLevel) => {
@@ -4324,14 +4333,11 @@ ${shareUrl}`;
   );
   const reserveOverlayControlsSpace = effectiveVerseLayout?.reserveControlsSpace !== false;
   const inlineBookPageFillStyle = {
-    minHeight: Math.max(
-      260,
-      viewerHeight - (reserveOverlayControlsSpace ? 114 : 20)
-    ),
+    minHeight: 260,
     justifyContent: "center"
   };
   const fullScreenBookPageFillStyle = {
-    minHeight: Math.max(260, visibleViewportHeight),
+    minHeight: 260,
     justifyContent: "center"
   };
   const nativeBookVerseFontSizePx = activeBookSpreadMode === "double" ? Math.max(18, Math.round(verseFontSizePx * 0.86)) : verseFontSizePx;
@@ -4820,7 +4826,7 @@ ${shareUrl}`;
           verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
         ] }) }) : null,
         /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
-          viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+          viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
             ReactNative.Pressable,
             {
               onPress: goToPreviousPage,
@@ -4898,7 +4904,7 @@ ${shareUrl}`;
               children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "contract-outline", size: 20, color: "#fff" })
             }
           ),
-          viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+          viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
             ReactNative.Pressable,
             {
               onPress: goToNextPage,
@@ -4940,7 +4946,10 @@ ${shareUrl}`;
                   styles.nativeFullScreenScroll,
                   { backgroundColor: resolvedReaderTheme.background }
                 ],
-                contentContainerStyle: styles.nativeFullScreenBookScrollContent,
+                contentContainerStyle: [
+                  styles.nativeFullScreenBookScrollContent,
+                  styles.nativeFullScreenBookScrollContentCentered
+                ],
                 showsVerticalScrollIndicator: false,
                 nestedScrollEnabled: true,
                 onTouchStart: showOverlay,
@@ -4952,6 +4961,7 @@ ${shareUrl}`;
                     },
                     style: [
                       styles.nativeFullScreenBookContent,
+                      styles.nativeFullScreenBookContentCentered,
                       activeBookSpreadMode === "double" ? styles.nativeFullScreenBookContentDouble : null,
                       styles.nativeFullScreenBookContentEdgeToEdge,
                       nativeBookTurn ? { minHeight: nativeBookTurn.pageHeight } : null
@@ -4967,7 +4977,7 @@ ${shareUrl}`;
                             fullScreenBookPageFillStyle,
                             {
                               borderColor: resolvedReaderTheme.accent,
-                              backgroundColor: resolvedReaderTheme.page,
+                              backgroundColor: resolvedReaderTheme.accentSurface,
                               shadowColor: resolvedReaderTheme.shadow
                             }
                           ],
@@ -5082,7 +5092,7 @@ ${shareUrl}`;
                         styles.nativeFullScreenVerseBlock,
                         {
                           borderColor: isActive ? resolvedReaderTheme.accent : resolvedReaderTheme.border,
-                          backgroundColor: isActive ? resolvedReaderTheme.accentSurface : resolvedReaderTheme.page
+                          backgroundColor: isActive ? resolvedReaderTheme.accentSurface : resolvedReaderTheme.accentSurface
                         },
                         isActive ? styles.nativeFullScreenVerseBlockActive : null
                       ],
@@ -5419,10 +5429,7 @@ ${shareUrl}`;
               styles.viewerWrap,
               { borderColor: resolvedReaderTheme.border },
               useNativeCompleteVerseView || useNativeBookVerseView ? {
-                height: Math.max(
-                  viewerHeight,
-                  useNativeBookVerseView ? embeddedBookContentHeight + 2 : embeddedContinuousContentHeight + 2
-                )
+                height: useNativeBookVerseView ? embeddedBookContentHeight > 0 ? embeddedBookContentHeight + 2 : viewerHeight : Math.max(viewerHeight, embeddedContinuousContentHeight + 2)
               } : inlineFullScreenActive ? styles.viewerWrapFullScreen : { height: viewerHeight }
             ],
             onLayout: contentMode === "verse" ? (event) => {
@@ -5444,7 +5451,13 @@ ${shareUrl}`;
                     { backgroundColor: resolvedReaderTheme.background }
                   ],
                   children: [
-                    /* @__PURE__ */ jsxRuntime.jsx(ReactNative.ActivityIndicator, {}),
+                    /* @__PURE__ */ jsxRuntime.jsx(
+                      ReactNative.ActivityIndicator,
+                      {
+                        size: "large",
+                        color: resolvedReaderTheme.accent
+                      }
+                    ),
                     /* @__PURE__ */ jsxRuntime.jsx(
                       ReactNative.Text,
                       {
@@ -5504,7 +5517,7 @@ ${shareUrl}`;
                                   inlineBookPageFillStyle,
                                   {
                                     borderColor: resolvedReaderTheme.accent,
-                                    backgroundColor: resolvedReaderTheme.page,
+                                    backgroundColor: resolvedReaderTheme.accentSurface,
                                     shadowColor: resolvedReaderTheme.shadow
                                   }
                                 ],
@@ -6053,7 +6066,7 @@ ${shareUrl}`;
                       verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
                     ] }) }) : null,
                     /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
-                      viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+                      viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
                         ReactNative.Pressable,
                         {
                           onPress: goToPreviousPage,
@@ -6122,7 +6135,7 @@ ${shareUrl}`;
                           )
                         }
                       ) : null,
-                      viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+                      viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
                         ReactNative.Pressable,
                         {
                           onPress: goToNextPage,
@@ -6413,6 +6426,9 @@ var styles = ReactNative.StyleSheet.create({
   nativeFullScreenBookScrollContent: {
     flexGrow: 1
   },
+  nativeFullScreenBookScrollContentCentered: {
+    justifyContent: "center"
+  },
   completeScrollContent: {
     padding: 10,
     paddingBottom: 104,
@@ -6617,6 +6633,12 @@ var styles = ReactNative.StyleSheet.create({
     flexGrow: 1,
     padding: 10,
     paddingBottom: 104
+  },
+  nativeFullScreenBookContentCentered: {
+    flexGrow: 0,
+    alignSelf: "stretch",
+    padding: 0,
+    paddingBottom: 0
   },
   nativeFullScreenBookContentEdgeToEdge: {
     padding: 0,
