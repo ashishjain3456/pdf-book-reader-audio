@@ -547,8 +547,14 @@ const buildPdfHtml = (
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         let pdf = null;
         let currentPage = initialPage;
+        let continuousAnchorPage = initialPage;
         let currentViewMode = initialViewMode;
-        let outerScrollActive = ${outerScrollEnabled ? 'true' : 'false'};
+        const getBookNeighborCount = () => {
+          if (currentZoom >= 2) return Math.min(neighborPageCount, 1);
+          if (currentZoom >= 1.25) return Math.min(neighborPageCount, 1);
+          return neighborPageCount;
+        };
+        let outerScrollActive = ${outerScrollEnabled ? "true" : "false"};
         let firstOuterViewportReceived = false;
         let renderToken = 0;
         const pageRenderCache = new Map();
@@ -689,9 +695,14 @@ const buildPdfHtml = (
             const targetWidth = availableWidth * currentZoom;
             const widthScale = targetWidth / unscaledViewport.width;
             const scale = widthScale;
-            const renderPixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
-            const viewport = page.getViewport({ scale: scale * renderPixelRatio });
             const cssViewport = page.getViewport({ scale });
+            const pagePixels = cssViewport.width * cssViewport.height;
+            const renderPixelRatio = Math.min(
+              window.devicePixelRatio || 1,
+              1.5,
+              Math.sqrt(4000000 / pagePixels),
+            );
+            const viewport = page.getViewport({ scale: scale * renderPixelRatio });
             const wrapper = document.createElement('div');
             wrapper.className = 'page active';
             wrapper.id = 'pdf-page-' + safePage;
@@ -725,7 +736,8 @@ const buildPdfHtml = (
 
         const pruneBookCache = (anchorPage) => {
           const keepPages = new Set();
-          for (let offset = -neighborPageCount; offset <= neighborPageCount; offset += 1) {
+          const windowSize = getBookNeighborCount();
+          for (let offset = -windowSize; offset <= windowSize; offset += 1) {
             keepPages.add(clampPage(anchorPage + offset));
           }
           for (const pageNumber of Array.from(pageRenderCache.keys())) {
@@ -739,7 +751,8 @@ const buildPdfHtml = (
           if (!pdf || currentViewMode !== 'book') return;
           const centerPage = clampPage(anchorPage);
           const neighbors = [];
-          for (let offset = -neighborPageCount; offset <= neighborPageCount; offset += 1) {
+          const windowSize = getBookNeighborCount();
+          for (let offset = -windowSize; offset <= windowSize; offset += 1) {
             if (offset === 0) continue;
             const candidate = clampPage(centerPage + offset);
             if (candidate === centerPage) continue;
@@ -792,38 +805,83 @@ const buildPdfHtml = (
 
         const continuousRenderInFlight = new Map();
 
-        const createContinuousPlaceholders = () => {
-          clearPages();
+        // A zoomed page's CSS dimensions grow with zoom. Bound the backing store
+        // so a long document cannot allocate several enormous canvases at once.
+        const getCanvasPixelRatio = (cssViewport) => {
+          const requestedRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+          const maxCanvasPixels = 4000000;
+          const pagePixels = cssViewport.width * cssViewport.height;
+          return Math.min(requestedRatio, Math.sqrt(maxCanvasPixels / pagePixels));
+        };
+
+        const getContinuousNeighborCount = () => {
+          if (currentZoom >= 2) return Math.min(neighborPageCount, 1);
+          if (currentZoom >= 1.25) return Math.min(neighborPageCount, 1);
+          return neighborPageCount;
+        };
+
+        const isInCurrentContinuousWindow = (pageNumber) => {
+          const distance = Math.abs(pageNumber - continuousAnchorPage);
+          return distance <= getContinuousNeighborCount();
+        };
+
+        const createContinuousPlaceholders = (preserveRenderedPages = false) => {
+          if (preserveRenderedPages) {
+            destroyPageFlip();
+          } else {
+            clearPages();
+          }
+          const existingPages = new Map(
+            Array.from(pagesNode.querySelectorAll('[data-page-number]')).map((node) => [
+              Number(node.getAttribute('data-page-number')),
+              node,
+            ]),
+          );
           const width = Math.max(280, Math.min(window.innerWidth - 24, 900)) * currentZoom;
           const estimatedHeight = Math.round(width * 1.414);
           for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-            const wrapper = document.createElement('div');
+            const wrapper = existingPages.get(pageNumber) || document.createElement('div');
+            const hasRenderedCanvas = Boolean(wrapper.querySelector('canvas'));
             wrapper.className = 'page';
             wrapper.id = 'pdf-page-' + pageNumber;
             wrapper.setAttribute('data-page-number', String(pageNumber));
-            wrapper.style.width = width + 'px';
-            wrapper.style.minHeight = estimatedHeight + 'px';
-            pagesNode.appendChild(wrapper);
+            if (!hasRenderedCanvas) {
+              wrapper.style.width = width + 'px';
+              wrapper.style.minHeight = estimatedHeight + 'px';
+            }
+            if (wrapper.parentNode !== pagesNode) pagesNode.appendChild(wrapper);
+            existingPages.delete(pageNumber);
+          }
+          for (const wrapper of existingPages.values()) {
+            wrapper.remove();
           }
         };
 
-        const renderContinuousPage = async (pageNumber, token) => {
+        const renderContinuousPage = async (pageNumber, token, forceRender = false) => {
           const safePage = clampPage(pageNumber);
           const existing = continuousRenderInFlight.get(safePage);
-          if (existing) return existing;
+          if (existing) {
+            try {
+              await existing;
+            } catch (error) {
+              if (!forceRender) throw error;
+            }
+            if (!forceRender || token !== renderToken) return;
+            return renderContinuousPage(safePage, token, true);
+          }
 
           const task = (async () => {
             const wrapper = document.getElementById('pdf-page-' + safePage);
-            if (!wrapper || wrapper.querySelector('canvas')) return;
+            if (!wrapper || (!forceRender && wrapper.querySelector('canvas'))) return;
             const page = await pdf.getPage(safePage);
             if (token !== renderToken || currentViewMode !== 'continuous') return;
             const unscaledViewport = page.getViewport({ scale: 1 });
             const targetWidth =
               Math.max(280, Math.min(window.innerWidth - 24, 900)) * currentZoom;
             const scale = targetWidth / unscaledViewport.width;
-            const renderPixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
-            const viewport = page.getViewport({ scale: scale * renderPixelRatio });
             const cssViewport = page.getViewport({ scale });
+            const renderPixelRatio = getCanvasPixelRatio(cssViewport);
+            const viewport = page.getViewport({ scale: scale * renderPixelRatio });
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             if (!context) throw new Error('Canvas is not available.');
@@ -833,10 +891,19 @@ const buildPdfHtml = (
             canvas.style.width = cssViewport.width + 'px';
             canvas.style.height = cssViewport.height + 'px';
             canvas.setAttribute('aria-label', title + ' page ' + safePage);
+            await page.render({ canvasContext: context, viewport }).promise;
+            if (
+              token !== renderToken ||
+              currentViewMode !== 'continuous' ||
+              !isInCurrentContinuousWindow(safePage)
+            ) {
+              canvas.width = 0;
+              canvas.height = 0;
+              return;
+            }
             wrapper.style.width = cssViewport.width + 'px';
             wrapper.style.minHeight = cssViewport.height + 'px';
             wrapper.replaceChildren(canvas);
-            await page.render({ canvasContext: context, viewport }).promise;
             if (outerScrollActive) scheduleContentHeightUpdates();
           })();
 
@@ -848,10 +915,12 @@ const buildPdfHtml = (
           }
         };
 
-        const renderContinuousWindow = async (anchorPage, token) => {
+        const renderContinuousWindow = async (anchorPage, token, forceRender = false) => {
           const centerPage = clampPage(anchorPage);
+          continuousAnchorPage = centerPage;
           const keepPages = new Set();
-          for (let offset = -neighborPageCount; offset <= neighborPageCount; offset += 1) {
+          const windowSize = getContinuousNeighborCount();
+          for (let offset = -windowSize; offset <= windowSize; offset += 1) {
             keepPages.add(clampPage(centerPage + offset));
           }
 
@@ -862,12 +931,30 @@ const buildPdfHtml = (
             }
           }
 
-          await renderContinuousPage(centerPage, token);
-          for (const pageNumber of keepPages) {
-            if (pageNumber === centerPage) continue;
-            void renderContinuousPage(pageNumber, token).catch(() => {
-              // A failed neighbor does not block the current page.
-            });
+          await renderContinuousPage(centerPage, token, forceRender);
+          const neighborPages = Array.from(keepPages).filter(
+            (pageNumber) => pageNumber !== centerPage,
+          );
+          if (forceRender) {
+            void (async () => {
+              for (const pageNumber of neighborPages) {
+                if (token !== renderToken || centerPage !== continuousAnchorPage) break;
+                try {
+                  await renderContinuousPage(pageNumber, token, true);
+                } catch {
+                  // Keep the old page visible if a zoomed neighbor fails to render.
+                }
+              }
+            })();
+          } else {
+            for (const pageNumber of neighborPages) {
+              if (token !== renderToken || centerPage !== continuousAnchorPage) break;
+              try {
+                await renderContinuousPage(pageNumber, token);
+              } catch {
+                // A failed neighbor does not block the current page.
+              }
+            }
           }
         };
 
@@ -883,18 +970,22 @@ const buildPdfHtml = (
           }
         };
 
-        const renderAllPages = async (requestedPage) => {
+        const renderAllPages = async (
+          requestedPage,
+          preserveRenderedPages = false,
+          forceRender = false,
+        ) => {
           if (!pdf) return;
           const myToken = ++renderToken;
 
           try {
             statusNode.style.display = 'none';
             const targetPage = clampPage(requestedPage || currentPage || initialPage);
-            createContinuousPlaceholders();
+            createContinuousPlaceholders(preserveRenderedPages);
             const targetWrapper = document.getElementById('pdf-page-' + targetPage);
             currentPage = targetPage;
             focusContinuousPage(targetWrapper);
-            await renderContinuousWindow(targetPage, myToken);
+            await renderContinuousWindow(targetPage, myToken, forceRender);
             if (myToken !== renderToken) return;
             focusContinuousPage(targetWrapper);
             postMessage({ type: 'page-change', pageNumber: currentPage });
@@ -1052,7 +1143,7 @@ const buildPdfHtml = (
             pageRenderCache.clear();
             const requestedPage = clampPage(page || currentPage);
             if (currentViewMode === 'continuous') {
-              void renderAllPages(requestedPage);
+              void renderAllPages(requestedPage, true, true);
             } else {
               void renderPage(requestedPage);
             }
@@ -3725,9 +3816,7 @@ export default function PdfDocumentViewer({
   );
   const webViewOriginWhitelist = useMemo(
     () =>
-      pdfDocumentOrigin
-        ? ["about:blank", pdfDocumentOrigin]
-        : ["about:blank"],
+      pdfDocumentOrigin ? ["about:blank", pdfDocumentOrigin] : ["about:blank"],
     [pdfDocumentOrigin],
   );
 
@@ -6292,19 +6381,15 @@ export default function PdfDocumentViewer({
               ? styles.viewerWrapFullScreen
               : { height: viewerHeight },
         ]}
-        onLayout={
-          (event: { nativeEvent: { layout: { height?: number } } }) => {
-            if (contentMode === "verse") {
-                const nextHeight = Math.round(
-                  event.nativeEvent.layout.height || 0,
-                );
-                if (nextHeight > 0 && nextHeight !== viewerWrapHeight) {
-                  setViewerWrapHeight(nextHeight);
-                }
+        onLayout={(event: { nativeEvent: { layout: { height?: number } } }) => {
+          if (contentMode === "verse") {
+            const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
+            if (nextHeight > 0 && nextHeight !== viewerWrapHeight) {
+              setViewerWrapHeight(nextHeight);
             }
-            measureViewerWindow();
           }
-        }
+          measureViewerWindow();
+        }}
         {...(viewMode === "book" && contentMode === "verse"
           ? panResponder.panHandlers
           : contentMode === "pdf" && overlayViewport
@@ -6692,7 +6777,9 @@ export default function PdfDocumentViewer({
                       overlayViewport &&
                       viewerContentTop !== null
                     ) {
-                      overlayViewport.scrollToOffset(viewerContentTop + pageTop);
+                      overlayViewport.scrollToOffset(
+                        viewerContentTop + pageTop,
+                      );
                     }
                     return;
                   }
@@ -7161,7 +7248,6 @@ export default function PdfDocumentViewer({
           </View>
         ) : null}
       </View>
-
     </View>
   );
 
