@@ -15,6 +15,17 @@ type ReaderActionsContext = {
     showShareOverlay: boolean;
     toggleShareOverlay: () => void;
     showOverlay: () => void;
+    zoomIn: () => void;
+    zoomOut: () => void;
+    previousPage: () => void;
+    nextPage: () => void;
+    toggleFullScreen: () => void;
+    canZoomIn: boolean;
+    canZoomOut: boolean;
+    canGoPreviousPage: boolean;
+    canGoNextPage: boolean;
+    supportsPageNavigation: boolean;
+    supportsFullScreen: boolean;
 };
 type ExternalVerseAudioState = {
     audioAssetUrl?: string | null;
@@ -67,6 +78,7 @@ type PdfDocumentViewerProps = {
     onFullScreenChange?: (isFullScreen: boolean) => void;
     hideControls?: boolean;
     hidePageNavigationControls?: boolean;
+    hideReaderActionControls?: boolean;
     hideVerseAudioControls?: boolean;
     externalVerseAudioState?: ExternalVerseAudioState | null;
     externalActiveVerseId?: string | null;
@@ -118,6 +130,6 @@ type VerseLayoutConfig = {
     viewportHeightPx?: number;
     readerHeightPx?: number;
 };
-declare function PdfDocumentViewer({ pdfUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideVerseAudioControls, externalVerseAudioState, externalActiveVerseId, readerTheme, overlayViewport, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
+declare function PdfDocumentViewer({ pdfUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, externalActiveVerseId, readerTheme, overlayViewport, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
 
 export { PdfDocumentViewer, type PdfDocumentViewerProps, type ReaderActionsContext, type ReaderState, type ReaderVerse, type ReaderViewMode, VerseAudioMapping, type VerseLayoutConfig };

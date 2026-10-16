@@ -2637,6 +2637,7 @@ function PdfDocumentViewer({
   onFullScreenChange,
   hideControls = false,
   hidePageNavigationControls = false,
+  hideReaderActionControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
   externalActiveVerseId = null,
@@ -3071,16 +3072,29 @@ function PdfDocumentViewer({
         pendingCompleteScrollVerseIdRef.current = verseId;
         return false;
       }
-      completeRestoreGuardUntilRef.current = Date.now() + 700;
-      completeScrollRef.current?.scrollTo({
-        y: Math.max(0, y - 12),
-        animated
-      });
-      setTimeout(() => {
+      const scrollToVerse = (withAnimation) => {
+        if (useNativeCompleteVerseView && overlayViewport) {
+          if (viewerContentTop === null) {
+            pendingCompleteScrollVerseIdRef.current = verseId;
+            return false;
+          }
+          const targetOffset = viewerContentTop + y - overlayViewport.top - 12;
+          overlayViewport.scrollToOffset(
+            Math.max(0, targetOffset),
+            withAnimation
+          );
+          return true;
+        }
         completeScrollRef.current?.scrollTo({
           y: Math.max(0, y - 12),
-          animated: false
+          animated: withAnimation
         });
+        return true;
+      };
+      if (!scrollToVerse(animated)) return false;
+      completeRestoreGuardUntilRef.current = Date.now() + 700;
+      setTimeout(() => {
+        scrollToVerse(false);
       }, 120);
       setTimeout(() => {
         if (pendingCompleteScrollVerseIdRef.current === verseId) {
@@ -3089,8 +3103,13 @@ function PdfDocumentViewer({
       }, 760);
       return true;
     },
-    []
+    [overlayViewport, useNativeCompleteVerseView, viewerContentTop]
   );
+  react.useEffect(() => {
+    if (!useNativeCompleteVerseView || viewerContentTop === null) return;
+    const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+    if (pendingVerseId) scrollCompleteToVerse(pendingVerseId, false);
+  }, [scrollCompleteToVerse, useNativeCompleteVerseView, viewerContentTop]);
   const getNativeVersePage = react.useCallback(
     (verseId) => {
       if (!verseId) return 0;
@@ -3403,7 +3422,7 @@ function PdfDocumentViewer({
     }
     overlayTimerRef.current = setTimeout(() => {
       setShowOverlayControls(false);
-    }, 2600);
+    }, 8e3);
   }, []);
   react.useEffect(() => {
     if (!overlayViewport || !useNativeVerseView) return;
@@ -3468,6 +3487,23 @@ function PdfDocumentViewer({
       lastExternalVerseRef.current = null;
       return;
     }
+    const externalAudioIsDrivingVerse = Boolean(
+      externalVerseAudioState?.isPlaying && externalVerseAudioState.audioAssetUrl
+    );
+    if (viewMode === "continuous" && externalAudioIsDrivingVerse) {
+      const lastExternalVerse2 = lastExternalVerseRef.current;
+      if (lastExternalVerse2?.documentId === readerDocumentId && lastExternalVerse2.verseId === externalActiveVerseId) {
+        return;
+      }
+      lastExternalVerseRef.current = {
+        documentId: readerDocumentId,
+        verseId: externalActiveVerseId
+      };
+      setActiveVerseId(externalActiveVerseId);
+      setReaderVerseId(externalActiveVerseId);
+      scrollCompleteToVerse(externalActiveVerseId, true);
+      return;
+    }
     const pageForVerse = getNativeVersePage(externalActiveVerseId);
     if (!pageForVerse) return;
     const lastExternalVerse = lastExternalVerseRef.current;
@@ -3481,20 +3517,31 @@ function PdfDocumentViewer({
   }, [
     contentMode,
     externalActiveVerseId,
+    externalVerseAudioState?.audioAssetUrl,
+    externalVerseAudioState?.isPlaying,
     getNativeVersePage,
     readerDocumentId,
-    showMappedVerse
+    scrollCompleteToVerse,
+    showMappedVerse,
+    viewMode
   ]);
   react.useEffect(() => {
     if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
     const isPlaying = externalVerseAudioState.isPlaying === true;
     if (!isPlaying) return;
+    if (viewMode === "continuous" && externalActiveVerseId) return;
     const audioAssetUrl = String(externalVerseAudioState.audioAssetUrl).trim();
     const currentMs = Math.max(
       0,
       Math.floor(Number(externalVerseAudioState.currentTimeMs) || 0)
     );
-    const matchedIndex = playableVerseMappings.findIndex((item) => {
+    const externalVerseIndex = externalActiveVerseId ? playableVerseMappings.findIndex(
+      (item) => item.verseId === String(externalActiveVerseId) && item.audioAssetUrl === audioAssetUrl
+    ) : -1;
+    const externalVerseFallbackIndex = externalVerseIndex < 0 && externalActiveVerseId ? playableVerseMappings.findIndex(
+      (item) => item.verseId === String(externalActiveVerseId)
+    ) : -1;
+    const matchedIndex = externalVerseIndex >= 0 ? externalVerseIndex : externalVerseFallbackIndex >= 0 ? externalVerseFallbackIndex : playableVerseMappings.findIndex((item) => {
       if (item.audioAssetUrl !== audioAssetUrl) return false;
       return currentMs >= item.segmentStartMs && currentMs < item.segmentEndMs;
     });
@@ -3524,6 +3571,8 @@ function PdfDocumentViewer({
     externalVerseAudioState?.audioAssetUrl,
     externalVerseAudioState?.currentTimeMs,
     externalVerseAudioState?.isPlaying,
+    externalActiveVerseId,
+    viewMode,
     getNativeVersePage,
     hasVerseAudio,
     pageNumber,
@@ -4050,11 +4099,25 @@ function PdfDocumentViewer({
         if (nextPage === pageNumberRef.current) return;
         pageNumberRef.current = nextPage;
         setNativeBookPageNumberState(nextPage);
+        if (contentMode === "verse") {
+          const pageVerseId = verseIdsByPage[nextPage]?.[0] || completeVerses[nextPage - 1]?.id;
+          if (pageVerseId) setReaderVerseId(pageVerseId);
+        }
         void setPageNumber(nextPage);
       } catch {
       }
     },
-    [adjustVerseFontSize, onError, onReady, setPageNumber, showOverlay]
+    [
+      adjustVerseFontSize,
+      completeVerses,
+      contentMode,
+      onError,
+      onReady,
+      setPageNumber,
+      setReaderVerseId,
+      showOverlay,
+      verseIdsByPage
+    ]
   );
   const enterVerseFullScreen = react.useCallback(() => {
     if (contentMode !== "verse") return;
@@ -4087,6 +4150,12 @@ function PdfDocumentViewer({
     }
     enterVerseFullScreen();
   }, [enterVerseFullScreen, exitVerseFullScreen, isVerseFullScreen]);
+  const fullScreenToggleRef = react.useRef(toggleVerseFullScreen);
+  fullScreenToggleRef.current = toggleVerseFullScreen;
+  const toggleVerseFullScreenFromActions = react.useCallback(
+    () => fullScreenToggleRef.current(),
+    []
+  );
   react.useEffect(() => {
     return () => {
       if (overlayTimerRef.current) {
@@ -4472,6 +4541,12 @@ ${shareUrl}`;
   const zoomOutDisabled = contentMode === "verse" ? verseFontSizePx <= verseZoomConfig.min : zoomLevel <= MIN_ZOOM_LEVEL;
   const zoomInDisabled = contentMode === "verse" ? verseFontSizePx >= verseZoomConfig.max || viewMode === "book" && bookVerseCanZoomIn === false : zoomLevel >= MAX_ZOOM_LEVEL;
   const displayedPageNumber = contentMode === "verse" && viewMode === "book" ? nativeBookPageNumberState : pageNumber;
+  const navigationPageNumber = contentMode === "verse" && viewMode === "book" ? nativeBookPageNumberState || pageNumberRef.current || pageNumber : pageNumberRef.current || pageNumber;
+  const navigationPageAnchor = viewMode === "book" && activeBookSpreadMode === "double" && navigationPageNumber % 2 === 0 ? navigationPageNumber - 1 : navigationPageNumber;
+  const navigationPageStep = viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1;
+  const navigationPageCount = Math.max(pageCount, pageCountRef.current);
+  const canNavigatePreviousPage = viewMode === "book" && !hidePageNavigationControls && navigationPageAnchor > 1;
+  const canNavigateNextPage = viewMode === "book" && !hidePageNavigationControls && (!navigationPageCount || navigationPageAnchor + navigationPageStep <= navigationPageCount);
   const pageBadgeText = contentMode === "verse" && viewMode === "continuous" ? `Page ${displayedPageNumber}${pageCount ? ` / ${pageCount}` : ""}` : `Page ${displayedPageNumber}${pageCount ? ` / ${pageCount}` : ""}`;
   const activeVerseAudio = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
   const readerVersePageNumber = readerVerseId && useNativeVersePaging ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1 : 0;
@@ -5008,10 +5083,10 @@ ${shareUrl}`;
             ReactNative.Pressable,
             {
               onPress: goToPreviousPage,
-              disabled: displayedPageNumber <= 1,
+              disabled: !canNavigatePreviousPage,
               style: [
                 styles.overlayZoomButton,
-                displayedPageNumber <= 1 ? styles.overlayButtonDisabled : null
+                !canNavigatePreviousPage ? styles.overlayButtonDisabled : null
               ],
               accessibilityLabel: "Previous page",
               children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
@@ -5078,6 +5153,7 @@ ${shareUrl}`;
             {
               onPress: exitVerseFullScreen,
               style: styles.overlayZoomButton,
+              testID: "reader-exit-fullscreen",
               accessibilityLabel: "Exit fullscreen reader",
               children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "contract-outline", size: 20, color: "#fff" })
             }
@@ -5086,10 +5162,10 @@ ${shareUrl}`;
             ReactNative.Pressable,
             {
               onPress: goToNextPage,
-              disabled: Boolean(pageCount && displayedPageNumber >= pageCount),
+              disabled: !canNavigateNextPage,
               style: [
                 styles.overlayZoomButton,
-                pageCount && displayedPageNumber >= pageCount ? styles.overlayButtonDisabled : null
+                !canNavigateNextPage ? styles.overlayButtonDisabled : null
               ],
               accessibilityLabel: "Next page",
               children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Next" })
@@ -5112,6 +5188,7 @@ ${shareUrl}`;
       children: /* @__PURE__ */ jsxRuntime.jsxs(
         ReactNative.View,
         {
+          testID: "reader-fullscreen-root",
           style: [
             styles.nativeFullScreenRoot,
             { backgroundColor: resolvedReaderTheme.background }
@@ -5360,7 +5437,18 @@ ${shareUrl}`;
                   setShowShareOverlay((v) => !v);
                   showOverlay();
                 },
-                showOverlay
+                showOverlay,
+                zoomIn: () => contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
+                zoomOut: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
+                previousPage: goToPreviousPage,
+                nextPage: goToNextPage,
+                toggleFullScreen: toggleVerseFullScreenFromActions,
+                canZoomIn: !zoomInDisabled,
+                canZoomOut: !zoomOutDisabled,
+                canGoPreviousPage: canNavigatePreviousPage,
+                canGoNextPage: canNavigateNextPage,
+                supportsPageNavigation: viewMode === "book" && !hidePageNavigationControls,
+                supportsFullScreen: contentMode === "verse"
               }) : /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
                 /* @__PURE__ */ jsxRuntime.jsx(
                   ReactNative.Pressable,
@@ -6100,6 +6188,10 @@ ${shareUrl}`;
                         suppressCompleteModeSyncRef.current = true;
                       }
                       pageNumberRef.current = nextPage;
+                      if (contentMode === "verse") {
+                        const pageVerseId = verseIdsByPage[nextPage]?.[0] || completeVerses[nextPage - 1]?.id;
+                        if (pageVerseId) setReaderVerseId(pageVerseId);
+                      }
                       void setPageNumber(nextPage);
                       if (viewMode === "continuous") {
                         showOverlay();
@@ -6127,7 +6219,7 @@ ${shareUrl}`;
                   }
                 )
               ] }),
-              !loadingError && !hideControls && showOverlayControls ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(
+              !loadingError && !hideControls && showOverlayControls && (!hideReaderActionControls || hasVerseAudio && !hideVerseAudioControls) ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { pointerEvents: "box-none", style: styles.viewerOverlay, children: /* @__PURE__ */ jsxRuntime.jsxs(
                 NativeAnimatedView,
                 {
                   onLayout: (event) => {
@@ -6254,15 +6346,15 @@ ${shareUrl}`;
                       ),
                       verseAudioTimeText ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayAudioTime, children: verseAudioTimeText }) : null
                     ] }) }) : null,
-                    /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
+                    !hideReaderActionControls ? /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayZoomGroup, children: [
                       viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
                         ReactNative.Pressable,
                         {
                           onPress: goToPreviousPage,
-                          disabled: displayedPageNumber <= 1,
+                          disabled: !canNavigatePreviousPage,
                           style: [
                             styles.overlayZoomButton,
-                            displayedPageNumber <= 1 ? styles.overlayButtonDisabled : null
+                            !canNavigatePreviousPage ? styles.overlayButtonDisabled : null
                           ],
                           accessibilityLabel: "Previous page",
                           children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Prev" })
@@ -6313,6 +6405,7 @@ ${shareUrl}`;
                         {
                           onPress: toggleVerseFullScreen,
                           style: styles.overlayZoomButton,
+                          testID: isVerseFullScreen ? "reader-exit-fullscreen" : "reader-enter-fullscreen",
                           accessibilityLabel: isVerseFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
                           children: /* @__PURE__ */ jsxRuntime.jsx(
                             Ionicons__default.default,
@@ -6328,18 +6421,16 @@ ${shareUrl}`;
                         ReactNative.Pressable,
                         {
                           onPress: goToNextPage,
-                          disabled: Boolean(
-                            pageCount && displayedPageNumber >= pageCount
-                          ),
+                          disabled: !canNavigateNextPage,
                           style: [
                             styles.overlayZoomButton,
-                            pageCount && displayedPageNumber >= pageCount ? styles.overlayButtonDisabled : null
+                            !canNavigateNextPage ? styles.overlayButtonDisabled : null
                           ],
                           accessibilityLabel: "Next page",
                           children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayButtonText, children: "Next" })
                         }
                       ) : null
-                    ] }),
+                    ] }) : null,
                     viewMode === "book" && effectiveVerseLayout?.showPageBadge !== false ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayPageBadge, children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.Text, { style: styles.overlayPageText, children: pageBadgeText }) }) : null
                   ]
                 }

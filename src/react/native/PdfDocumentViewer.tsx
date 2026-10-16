@@ -63,6 +63,17 @@ export type ReaderActionsContext = {
   showShareOverlay: boolean;
   toggleShareOverlay: () => void;
   showOverlay: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  previousPage: () => void;
+  nextPage: () => void;
+  toggleFullScreen: () => void;
+  canZoomIn: boolean;
+  canZoomOut: boolean;
+  canGoPreviousPage: boolean;
+  canGoNextPage: boolean;
+  supportsPageNavigation: boolean;
+  supportsFullScreen: boolean;
 };
 
 export type ExternalVerseAudioState = {
@@ -113,6 +124,7 @@ export type PdfDocumentViewerProps = {
   onFullScreenChange?: (isFullScreen: boolean) => void;
   hideControls?: boolean;
   hidePageNavigationControls?: boolean;
+  hideReaderActionControls?: boolean;
   hideVerseAudioControls?: boolean;
   externalVerseAudioState?: ExternalVerseAudioState | null;
   externalActiveVerseId?: string | null;
@@ -2895,6 +2907,7 @@ export default function PdfDocumentViewer({
   onFullScreenChange,
   hideControls = false,
   hidePageNavigationControls = false,
+  hideReaderActionControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
   externalActiveVerseId = null,
@@ -3481,16 +3494,30 @@ export default function PdfDocumentViewer({
         pendingCompleteScrollVerseIdRef.current = verseId;
         return false;
       }
-      completeRestoreGuardUntilRef.current = Date.now() + 700;
-      completeScrollRef.current?.scrollTo({
-        y: Math.max(0, y - 12),
-        animated,
-      });
-      setTimeout(() => {
+      const scrollToVerse = (withAnimation: boolean) => {
+        if (useNativeCompleteVerseView && overlayViewport) {
+          if (viewerContentTop === null) {
+            pendingCompleteScrollVerseIdRef.current = verseId;
+            return false;
+          }
+          const targetOffset = viewerContentTop + y - overlayViewport.top - 12;
+          overlayViewport.scrollToOffset(
+            Math.max(0, targetOffset),
+            withAnimation,
+          );
+          return true;
+        }
         completeScrollRef.current?.scrollTo({
           y: Math.max(0, y - 12),
-          animated: false,
+          animated: withAnimation,
         });
+        return true;
+      };
+
+      if (!scrollToVerse(animated)) return false;
+      completeRestoreGuardUntilRef.current = Date.now() + 700;
+      setTimeout(() => {
+        scrollToVerse(false);
       }, 120);
       setTimeout(() => {
         if (pendingCompleteScrollVerseIdRef.current === verseId) {
@@ -3499,8 +3526,14 @@ export default function PdfDocumentViewer({
       }, 760);
       return true;
     },
-    [],
+    [overlayViewport, useNativeCompleteVerseView, viewerContentTop],
   );
+
+  useEffect(() => {
+    if (!useNativeCompleteVerseView || viewerContentTop === null) return;
+    const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+    if (pendingVerseId) scrollCompleteToVerse(pendingVerseId, false);
+  }, [scrollCompleteToVerse, useNativeCompleteVerseView, viewerContentTop]);
 
   const getNativeVersePage = useCallback(
     (verseId: string | null) => {
@@ -3875,7 +3908,7 @@ export default function PdfDocumentViewer({
     }
     overlayTimerRef.current = setTimeout(() => {
       setShowOverlayControls(false);
-    }, 2600);
+    }, 8000);
   }, []);
 
   useEffect(() => {
@@ -3953,6 +3986,27 @@ export default function PdfDocumentViewer({
       lastExternalVerseRef.current = null;
       return;
     }
+    const externalAudioIsDrivingVerse = Boolean(
+      externalVerseAudioState?.isPlaying &&
+      externalVerseAudioState.audioAssetUrl,
+    );
+    if (viewMode === "continuous" && externalAudioIsDrivingVerse) {
+      const lastExternalVerse = lastExternalVerseRef.current;
+      if (
+        lastExternalVerse?.documentId === readerDocumentId &&
+        lastExternalVerse.verseId === externalActiveVerseId
+      ) {
+        return;
+      }
+      lastExternalVerseRef.current = {
+        documentId: readerDocumentId,
+        verseId: externalActiveVerseId,
+      };
+      setActiveVerseId(externalActiveVerseId);
+      setReaderVerseId(externalActiveVerseId);
+      scrollCompleteToVerse(externalActiveVerseId, true);
+      return;
+    }
     const pageForVerse = getNativeVersePage(externalActiveVerseId);
     if (!pageForVerse) return;
     const lastExternalVerse = lastExternalVerseRef.current;
@@ -3969,25 +4023,51 @@ export default function PdfDocumentViewer({
   }, [
     contentMode,
     externalActiveVerseId,
+    externalVerseAudioState?.audioAssetUrl,
+    externalVerseAudioState?.isPlaying,
     getNativeVersePage,
     readerDocumentId,
+    scrollCompleteToVerse,
     showMappedVerse,
+    viewMode,
   ]);
 
   useEffect(() => {
     if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
     const isPlaying = externalVerseAudioState.isPlaying === true;
     if (!isPlaying) return;
+    if (viewMode === "continuous" && externalActiveVerseId) return;
 
     const audioAssetUrl = String(externalVerseAudioState.audioAssetUrl).trim();
     const currentMs = Math.max(
       0,
       Math.floor(Number(externalVerseAudioState.currentTimeMs) || 0),
     );
-    const matchedIndex = playableVerseMappings.findIndex((item) => {
-      if (item.audioAssetUrl !== audioAssetUrl) return false;
-      return currentMs >= item.segmentStartMs && currentMs < item.segmentEndMs;
-    });
+    const externalVerseIndex = externalActiveVerseId
+      ? playableVerseMappings.findIndex(
+          (item) =>
+            item.verseId === String(externalActiveVerseId) &&
+            item.audioAssetUrl === audioAssetUrl,
+        )
+      : -1;
+    const externalVerseFallbackIndex =
+      externalVerseIndex < 0 && externalActiveVerseId
+        ? playableVerseMappings.findIndex(
+            (item) => item.verseId === String(externalActiveVerseId),
+          )
+        : -1;
+    const matchedIndex =
+      externalVerseIndex >= 0
+        ? externalVerseIndex
+        : externalVerseFallbackIndex >= 0
+          ? externalVerseFallbackIndex
+          : playableVerseMappings.findIndex((item) => {
+              if (item.audioAssetUrl !== audioAssetUrl) return false;
+              return (
+                currentMs >= item.segmentStartMs &&
+                currentMs < item.segmentEndMs
+              );
+            });
     if (matchedIndex < 0) return;
 
     const matched = playableVerseMappings[matchedIndex];
@@ -4021,6 +4101,8 @@ export default function PdfDocumentViewer({
     externalVerseAudioState?.audioAssetUrl,
     externalVerseAudioState?.currentTimeMs,
     externalVerseAudioState?.isPlaying,
+    externalActiveVerseId,
+    viewMode,
     getNativeVersePage,
     hasVerseAudio,
     pageNumber,
@@ -4628,12 +4710,27 @@ export default function PdfDocumentViewer({
         if (nextPage === pageNumberRef.current) return;
         pageNumberRef.current = nextPage;
         setNativeBookPageNumberState(nextPage);
+        if (contentMode === "verse") {
+          const pageVerseId =
+            verseIdsByPage[nextPage]?.[0] || completeVerses[nextPage - 1]?.id;
+          if (pageVerseId) setReaderVerseId(pageVerseId);
+        }
         void setPageNumber(nextPage);
       } catch {
         // ignore malformed payloads
       }
     },
-    [adjustVerseFontSize, onError, onReady, setPageNumber, showOverlay],
+    [
+      adjustVerseFontSize,
+      completeVerses,
+      contentMode,
+      onError,
+      onReady,
+      setPageNumber,
+      setReaderVerseId,
+      showOverlay,
+      verseIdsByPage,
+    ],
   );
 
   const enterVerseFullScreen = useCallback(() => {
@@ -4672,6 +4769,12 @@ export default function PdfDocumentViewer({
     }
     enterVerseFullScreen();
   }, [enterVerseFullScreen, exitVerseFullScreen, isVerseFullScreen]);
+  const fullScreenToggleRef = useRef(toggleVerseFullScreen);
+  fullScreenToggleRef.current = toggleVerseFullScreen;
+  const toggleVerseFullScreenFromActions = useCallback(
+    () => fullScreenToggleRef.current(),
+    [],
+  );
 
   useEffect(() => {
     return () => {
@@ -5173,6 +5276,28 @@ export default function PdfDocumentViewer({
     contentMode === "verse" && viewMode === "book"
       ? nativeBookPageNumberState
       : pageNumber;
+  const navigationPageNumber =
+    contentMode === "verse" && viewMode === "book"
+      ? nativeBookPageNumberState || pageNumberRef.current || pageNumber
+      : pageNumberRef.current || pageNumber;
+  const navigationPageAnchor =
+    viewMode === "book" &&
+    activeBookSpreadMode === "double" &&
+    navigationPageNumber % 2 === 0
+      ? navigationPageNumber - 1
+      : navigationPageNumber;
+  const navigationPageStep =
+    viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1;
+  const navigationPageCount = Math.max(pageCount, pageCountRef.current);
+  const canNavigatePreviousPage =
+    viewMode === "book" &&
+    !hidePageNavigationControls &&
+    navigationPageAnchor > 1;
+  const canNavigateNextPage =
+    viewMode === "book" &&
+    !hidePageNavigationControls &&
+    (!navigationPageCount ||
+      navigationPageAnchor + navigationPageStep <= navigationPageCount);
   const pageBadgeText =
     contentMode === "verse" && viewMode === "continuous"
       ? `Page ${displayedPageNumber}${pageCount ? ` / ${pageCount}` : ""}`
@@ -5772,10 +5897,10 @@ export default function PdfDocumentViewer({
         {viewMode === "book" && !hidePageNavigationControls ? (
           <Pressable
             onPress={goToPreviousPage}
-            disabled={displayedPageNumber <= 1}
+            disabled={!canNavigatePreviousPage}
             style={[
               styles.overlayZoomButton,
-              displayedPageNumber <= 1 ? styles.overlayButtonDisabled : null,
+              !canNavigatePreviousPage ? styles.overlayButtonDisabled : null,
             ]}
             accessibilityLabel="Previous page"
           >
@@ -5836,6 +5961,7 @@ export default function PdfDocumentViewer({
         <Pressable
           onPress={exitVerseFullScreen}
           style={styles.overlayZoomButton}
+          testID="reader-exit-fullscreen"
           accessibilityLabel="Exit fullscreen reader"
         >
           <Ionicons name="contract-outline" size={20} color="#fff" />
@@ -5843,12 +5969,10 @@ export default function PdfDocumentViewer({
         {viewMode === "book" && !hidePageNavigationControls ? (
           <Pressable
             onPress={goToNextPage}
-            disabled={Boolean(pageCount && displayedPageNumber >= pageCount)}
+            disabled={!canNavigateNextPage}
             style={[
               styles.overlayZoomButton,
-              pageCount && displayedPageNumber >= pageCount
-                ? styles.overlayButtonDisabled
-                : null,
+              !canNavigateNextPage ? styles.overlayButtonDisabled : null,
             ]}
             accessibilityLabel="Next page"
           >
@@ -5875,6 +5999,7 @@ export default function PdfDocumentViewer({
           onRequestClose={exitVerseFullScreen}
         >
           <View
+            testID="reader-fullscreen-root"
             style={[
               styles.nativeFullScreenRoot,
               { backgroundColor: resolvedReaderTheme.background },
@@ -6168,6 +6293,24 @@ export default function PdfDocumentViewer({
                   showOverlay();
                 },
                 showOverlay,
+                zoomIn: () =>
+                  contentMode === "verse"
+                    ? zoomInVerse()
+                    : adjustPdfZoom(PDF_ZOOM_STEP),
+                zoomOut: () =>
+                  contentMode === "verse"
+                    ? zoomOutVerse()
+                    : adjustPdfZoom(-PDF_ZOOM_STEP),
+                previousPage: goToPreviousPage,
+                nextPage: goToNextPage,
+                toggleFullScreen: toggleVerseFullScreenFromActions,
+                canZoomIn: !zoomInDisabled,
+                canZoomOut: !zoomOutDisabled,
+                canGoPreviousPage: canNavigatePreviousPage,
+                canGoNextPage: canNavigateNextPage,
+                supportsPageNavigation:
+                  viewMode === "book" && !hidePageNavigationControls,
+                supportsFullScreen: contentMode === "verse",
               })
             ) : (
               <>
@@ -6981,6 +7124,12 @@ export default function PdfDocumentViewer({
                     suppressCompleteModeSyncRef.current = true;
                   }
                   pageNumberRef.current = nextPage;
+                  if (contentMode === "verse") {
+                    const pageVerseId =
+                      verseIdsByPage[nextPage]?.[0] ||
+                      completeVerses[nextPage - 1]?.id;
+                    if (pageVerseId) setReaderVerseId(pageVerseId);
+                  }
                   void setPageNumber(nextPage);
                   if (viewMode === "continuous") {
                     showOverlay();
@@ -7009,7 +7158,11 @@ export default function PdfDocumentViewer({
             </Pressable>
           </View>
         )}
-        {!loadingError && !hideControls && showOverlayControls ? (
+        {!loadingError &&
+        !hideControls &&
+        showOverlayControls &&
+        (!hideReaderActionControls ||
+          (hasVerseAudio && !hideVerseAudioControls)) ? (
           <View pointerEvents="box-none" style={styles.viewerOverlay}>
             <NativeAnimatedView
               onLayout={(event: {
@@ -7144,99 +7297,104 @@ export default function PdfDocumentViewer({
                   </View>
                 </View>
               ) : null}
-              <View style={styles.overlayZoomGroup}>
-                {viewMode === "book" && !hidePageNavigationControls ? (
+              {!hideReaderActionControls ? (
+                <View style={styles.overlayZoomGroup}>
+                  {viewMode === "book" && !hidePageNavigationControls ? (
+                    <Pressable
+                      onPress={goToPreviousPage}
+                      disabled={!canNavigatePreviousPage}
+                      style={[
+                        styles.overlayZoomButton,
+                        !canNavigatePreviousPage
+                          ? styles.overlayButtonDisabled
+                          : null,
+                      ]}
+                      accessibilityLabel="Previous page"
+                    >
+                      <Text style={styles.overlayButtonText}>Prev</Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
-                    onPress={goToPreviousPage}
-                    disabled={displayedPageNumber <= 1}
+                    onPress={() =>
+                      contentMode === "verse"
+                        ? zoomOutVerse()
+                        : adjustPdfZoom(-PDF_ZOOM_STEP)
+                    }
+                    disabled={zoomOutDisabled}
                     style={[
                       styles.overlayZoomButton,
-                      displayedPageNumber <= 1
-                        ? styles.overlayButtonDisabled
-                        : null,
+                      zoomOutDisabled ? styles.overlayButtonDisabled : null,
                     ]}
-                    accessibilityLabel="Previous page"
-                  >
-                    <Text style={styles.overlayButtonText}>Prev</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  onPress={() =>
-                    contentMode === "verse"
-                      ? zoomOutVerse()
-                      : adjustPdfZoom(-PDF_ZOOM_STEP)
-                  }
-                  disabled={zoomOutDisabled}
-                  style={[
-                    styles.overlayZoomButton,
-                    zoomOutDisabled ? styles.overlayButtonDisabled : null,
-                  ]}
-                  accessibilityLabel="Zoom out"
-                >
-                  <Ionicons
-                    name="remove-outline"
-                    size={20}
-                    color={zoomOutDisabled ? "#d4d4d8" : "#fff"}
-                  />
-                </Pressable>
-                <Pressable
-                  onPress={() =>
-                    contentMode === "verse"
-                      ? zoomInVerse()
-                      : adjustPdfZoom(PDF_ZOOM_STEP)
-                  }
-                  disabled={zoomInDisabled}
-                  style={[
-                    styles.overlayZoomButton,
-                    zoomInDisabled ? styles.overlayButtonDisabled : null,
-                  ]}
-                  accessibilityLabel="Zoom in"
-                >
-                  <Ionicons
-                    name="add-outline"
-                    size={20}
-                    color={zoomInDisabled ? "#d4d4d8" : "#fff"}
-                  />
-                </Pressable>
-                {contentMode === "verse" ? (
-                  <Pressable
-                    onPress={toggleVerseFullScreen}
-                    style={styles.overlayZoomButton}
-                    accessibilityLabel={
-                      isVerseFullScreen
-                        ? "Exit fullscreen reader"
-                        : "Enter fullscreen reader"
-                    }
+                    accessibilityLabel="Zoom out"
                   >
                     <Ionicons
-                      name={
-                        isVerseFullScreen
-                          ? "contract-outline"
-                          : "expand-outline"
-                      }
+                      name="remove-outline"
                       size={20}
-                      color="#fff"
+                      color={zoomOutDisabled ? "#d4d4d8" : "#fff"}
                     />
                   </Pressable>
-                ) : null}
-                {viewMode === "book" && !hidePageNavigationControls ? (
                   <Pressable
-                    onPress={goToNextPage}
-                    disabled={Boolean(
-                      pageCount && displayedPageNumber >= pageCount,
-                    )}
+                    onPress={() =>
+                      contentMode === "verse"
+                        ? zoomInVerse()
+                        : adjustPdfZoom(PDF_ZOOM_STEP)
+                    }
+                    disabled={zoomInDisabled}
                     style={[
                       styles.overlayZoomButton,
-                      pageCount && displayedPageNumber >= pageCount
-                        ? styles.overlayButtonDisabled
-                        : null,
+                      zoomInDisabled ? styles.overlayButtonDisabled : null,
                     ]}
-                    accessibilityLabel="Next page"
+                    accessibilityLabel="Zoom in"
                   >
-                    <Text style={styles.overlayButtonText}>Next</Text>
+                    <Ionicons
+                      name="add-outline"
+                      size={20}
+                      color={zoomInDisabled ? "#d4d4d8" : "#fff"}
+                    />
                   </Pressable>
-                ) : null}
-              </View>
+                  {contentMode === "verse" ? (
+                    <Pressable
+                      onPress={toggleVerseFullScreen}
+                      style={styles.overlayZoomButton}
+                      testID={
+                        isVerseFullScreen
+                          ? "reader-exit-fullscreen"
+                          : "reader-enter-fullscreen"
+                      }
+                      accessibilityLabel={
+                        isVerseFullScreen
+                          ? "Exit fullscreen reader"
+                          : "Enter fullscreen reader"
+                      }
+                    >
+                      <Ionicons
+                        name={
+                          isVerseFullScreen
+                            ? "contract-outline"
+                            : "expand-outline"
+                        }
+                        size={20}
+                        color="#fff"
+                      />
+                    </Pressable>
+                  ) : null}
+                  {viewMode === "book" && !hidePageNavigationControls ? (
+                    <Pressable
+                      onPress={goToNextPage}
+                      disabled={!canNavigateNextPage}
+                      style={[
+                        styles.overlayZoomButton,
+                        !canNavigateNextPage
+                          ? styles.overlayButtonDisabled
+                          : null,
+                      ]}
+                      accessibilityLabel="Next page"
+                    >
+                      <Text style={styles.overlayButtonText}>Next</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
 
               {viewMode === "book" &&
               effectiveVerseLayout?.showPageBadge !== false ? (
