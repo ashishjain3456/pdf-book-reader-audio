@@ -127,7 +127,9 @@ export type PdfDocumentViewerProps = {
   hideReaderActionControls?: boolean;
   hideVerseAudioControls?: boolean;
   externalVerseAudioState?: ExternalVerseAudioState | null;
+  onExternalAudioToggle?: () => void;
   externalActiveVerseId?: string | null;
+  initialReaderVerseId?: string | null;
   readerTheme?: ReaderTheme;
   overlayViewport?: {
     top: number;
@@ -208,6 +210,13 @@ type SwipeGestureState = {
 type LocationTouchEvent = {
   nativeEvent: {
     locationX?: number;
+  };
+};
+
+type NativeSwipeTouchEvent = {
+  nativeEvent: {
+    touches?: Array<{ pageX: number; pageY: number }>;
+    changedTouches?: Array<{ pageX: number; pageY: number }>;
   };
 };
 
@@ -2910,7 +2919,9 @@ export default function PdfDocumentViewer({
   hideReaderActionControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
+  onExternalAudioToggle,
   externalActiveVerseId = null,
+  initialReaderVerseId = null,
   readerTheme,
   overlayViewport,
 }: PdfDocumentViewerProps) {
@@ -3005,7 +3016,10 @@ export default function PdfDocumentViewer({
     number | null
   >(null);
   const [activeVerseId, setActiveVerseId] = useState<string | null>(null);
-  const [readerVerseId, setReaderVerseId] = useState<string | null>(null);
+  const [readerVerseId, setReaderVerseId] =
+    useState<string | null>(initialReaderVerseId);
+  const initialReaderVerseIdRef = useRef(initialReaderVerseId);
+  const initialReaderVerseAppliedRef = useRef(false);
   const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = useState<
     string | null
   >(null);
@@ -3089,6 +3103,7 @@ export default function PdfDocumentViewer({
     : verseViewerHeight;
   const webViewRef = useRef<WebView | null>(null);
   const fullScreenWebViewRef = useRef<WebView | null>(null);
+  const fullScreenSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const completeScrollRef = useRef<any>(null);
   const completeVerseYByIdRef = useRef<Record<string, number>>({});
   const pendingCompleteScrollVerseIdRef = useRef<string | null>(null);
@@ -3110,6 +3125,7 @@ export default function PdfDocumentViewer({
   const lastExternalVerseRef = useRef<{
     documentId: string;
     verseId: string;
+    isFullScreen: boolean;
   } | null>(null);
   const nativeBookSpreadLayoutRef = useRef({ width: 0, height: 0 });
   const programmaticViewerSyncRef = useRef<{
@@ -3549,6 +3565,28 @@ export default function PdfDocumentViewer({
     [completeVerses, useNativeVersePaging, versePageById],
   );
 
+  useEffect(() => {
+    const verseId = initialReaderVerseIdRef.current;
+    if (
+      initialReaderVerseAppliedRef.current ||
+      !verseId ||
+      !completeVerses.length
+    ) {
+      return;
+    }
+
+    const restoredPage = getNativeVersePage(verseId);
+    if (!restoredPage) return;
+
+    initialReaderVerseAppliedRef.current = true;
+    pageNumberRef.current = restoredPage;
+    pendingModeSwitchPageRef.current = restoredPage;
+    pendingCompleteScrollVerseIdRef.current = verseId;
+    setNativeBookPageNumberState(restoredPage);
+    void setPageNumber(restoredPage);
+    setReaderVerseId(verseId);
+  }, [completeVerses.length, getNativeVersePage, setPageNumber]);
+
   const updateCompleteAnchorFromOffset = useCallback(
     (offsetY: number) => {
       let bestVerseId: string | null = null;
@@ -3611,9 +3649,11 @@ export default function PdfDocumentViewer({
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
 
-    setReaderVerseId((current) =>
-      current === firstVerseId ? current : firstVerseId,
-    );
+    setReaderVerseId((current) => {
+      if (current && current === initialReaderVerseIdRef.current) return current;
+      if (current && pageVerses?.includes(current)) return current;
+      return current === firstVerseId ? current : firstVerseId;
+    });
   }, [
     completeVerses,
     contentMode,
@@ -3994,13 +4034,15 @@ export default function PdfDocumentViewer({
       const lastExternalVerse = lastExternalVerseRef.current;
       if (
         lastExternalVerse?.documentId === readerDocumentId &&
-        lastExternalVerse.verseId === externalActiveVerseId
+        lastExternalVerse.verseId === externalActiveVerseId &&
+        lastExternalVerse.isFullScreen === isVerseFullScreen
       ) {
         return;
       }
       lastExternalVerseRef.current = {
         documentId: readerDocumentId,
         verseId: externalActiveVerseId,
+        isFullScreen: isVerseFullScreen,
       };
       setActiveVerseId(externalActiveVerseId);
       setReaderVerseId(externalActiveVerseId);
@@ -4012,12 +4054,14 @@ export default function PdfDocumentViewer({
     const lastExternalVerse = lastExternalVerseRef.current;
     if (
       lastExternalVerse?.documentId === readerDocumentId &&
-      lastExternalVerse.verseId === externalActiveVerseId
+      lastExternalVerse.verseId === externalActiveVerseId &&
+      lastExternalVerse.isFullScreen === isVerseFullScreen
     )
       return;
     lastExternalVerseRef.current = {
       documentId: readerDocumentId,
       verseId: externalActiveVerseId,
+      isFullScreen: isVerseFullScreen,
     };
     showMappedVerse(externalActiveVerseId);
   }, [
@@ -4026,6 +4070,7 @@ export default function PdfDocumentViewer({
     externalVerseAudioState?.audioAssetUrl,
     externalVerseAudioState?.isPlaying,
     getNativeVersePage,
+    isVerseFullScreen,
     readerDocumentId,
     scrollCompleteToVerse,
     showMappedVerse,
@@ -4995,6 +5040,14 @@ export default function PdfDocumentViewer({
           showOverlay();
           return false;
         },
+        onMoveShouldSetPanResponderCapture: (
+          _event: unknown,
+          gestureState: SwipeGestureState,
+        ) =>
+          viewMode === "book" &&
+          !hidePageNavigationControls &&
+          Math.abs(gestureState.dx) > 40 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
         onMoveShouldSetPanResponder: (
           _event: unknown,
           gestureState: SwipeGestureState,
@@ -5434,6 +5487,44 @@ export default function PdfDocumentViewer({
       ],
     };
   }, [nativeBookTurn, nativeBookTurnProgress]);
+  const getNativeBookVersePageNumber = (
+    verse: (typeof completeVerses)[number],
+  ) => {
+    const verseIndex = completeVerses.findIndex(
+      (item) => String(item.id) === String(verse.id),
+    );
+    return verseIndex >= 0 ? verseIndex + 1 : nativeBookPageNumber;
+  };
+  const renderNativeBookPageNumber = (
+    verse: (typeof completeVerses)[number],
+  ) => (
+    <Text
+      pointerEvents="none"
+      style={[
+        styles.nativeBookPageNumber,
+        {
+          color: resolvedReaderTheme.text,
+          backgroundColor: resolvedReaderTheme.accentSurface,
+        },
+      ]}
+    >
+      {getNativeBookVersePageNumber(verse)}/{completeVerses.length}
+    </Text>
+  );
+  const renderCompleteVersePageNumber = (index: number) => (
+    <Text
+      pointerEvents="none"
+      style={[
+        styles.nativeBookPageNumber,
+        {
+          color: resolvedReaderTheme.text,
+          backgroundColor: resolvedReaderTheme.accentSurface,
+        },
+      ]}
+    >
+      {index + 1}/{completeVerses.length}
+    </Text>
+  );
   const renderNativeBookPage = (
     verse: (typeof completeVerses)[number],
     key: string,
@@ -5477,6 +5568,7 @@ export default function PdfDocumentViewer({
           {renderNativeRichText(verse.contentHtml, key)}
         </Text>
       </View>
+      {renderNativeBookPageNumber(verse)}
     </View>
   );
   const renderNativeBookTurn = (fullScreen: boolean) => {
@@ -5785,6 +5877,25 @@ export default function PdfDocumentViewer({
     });
     showOverlay();
   }, [allowBookDoubleSpread, pageNumber, setPageNumber, showOverlay]);
+  const confirmGoToFirstPage = useCallback(() => {
+    const alertWithButtons = Alert.alert as unknown as (
+      title: string,
+      message: string,
+      buttons: Array<{
+        text: string;
+        style?: "cancel" | "destructive";
+        onPress?: () => void;
+      }>,
+    ) => void;
+    alertWithButtons(
+      "Restart reading?",
+      "Do you want to go back to the first page?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Reset", style: "destructive", onPress: goToFirstPage },
+      ],
+    );
+  }, [goToFirstPage]);
   const nativeFullScreenControls = (
     <View
       pointerEvents="box-none"
@@ -5938,20 +6049,52 @@ export default function PdfDocumentViewer({
           />
         </Pressable>
         {viewMode === "book" && allowBookDoubleSpread ? (
+          <View style={styles.overlayBookViewControls}>
+            <Pressable
+              onPress={toggleBookSpreadMode}
+              style={styles.overlayZoomButton}
+              accessibilityLabel={
+                activeBookSpreadMode === "double"
+                  ? "Show one page"
+                  : "Show two pages"
+              }
+            >
+              <Ionicons
+                name={
+                  activeBookSpreadMode === "double"
+                    ? "tablet-portrait-outline"
+                    : "book-outline"
+                }
+                size={20}
+                color="#fff"
+              />
+            </Pressable>
+            <Pressable
+              onPress={confirmGoToFirstPage}
+              style={styles.overlayZoomButton}
+              accessibilityRole="button"
+              accessibilityLabel="Reset to first page"
+              testID="reader-reset-to-first-page"
+            >
+              <Ionicons name="refresh-outline" size={20} color="#fff" />
+            </Pressable>
+          </View>
+        ) : null}
+        {externalVerseAudioState?.audioAssetUrl && onExternalAudioToggle ? (
           <Pressable
-            onPress={toggleBookSpreadMode}
+            onPress={onExternalAudioToggle}
             style={styles.overlayZoomButton}
+            accessibilityRole="button"
             accessibilityLabel={
-              activeBookSpreadMode === "double"
-                ? "Show one page"
-                : "Show two pages"
+              externalVerseAudioState.isPlaying ? "Pause audio" : "Play audio"
             }
+            testID="reader-fullscreen-audio-toggle"
           >
             <Ionicons
               name={
-                activeBookSpreadMode === "double"
-                  ? "tablet-portrait-outline"
-                  : "book-outline"
+                externalVerseAudioState.isPlaying
+                  ? "pause-outline"
+                  : "play-outline"
               }
               size={20}
               color="#fff"
@@ -6004,6 +6147,32 @@ export default function PdfDocumentViewer({
               styles.nativeFullScreenRoot,
               { backgroundColor: resolvedReaderTheme.background },
             ]}
+            onTouchStart={(event: NativeSwipeTouchEvent) => {
+              showOverlay();
+              const touch = event.nativeEvent.touches?.[0];
+              fullScreenSwipeStartRef.current = touch
+                ? { x: touch.pageX, y: touch.pageY }
+                : null;
+            }}
+            onTouchEnd={(event: NativeSwipeTouchEvent) => {
+              const start = fullScreenSwipeStartRef.current;
+              fullScreenSwipeStartRef.current = null;
+              if (!start || viewMode !== "book" || hidePageNavigationControls) {
+                return;
+              }
+              const touch = event.nativeEvent.changedTouches?.[0];
+              if (!touch) return;
+              const dx = touch.pageX - start.x;
+              const dy = touch.pageY - start.y;
+              if (Math.abs(dx) < 44 || Math.abs(dx) <= Math.abs(dy) * 2.5) {
+                return;
+              }
+              if (dx < 0) {
+                goToNextPage();
+              } else {
+                goToPreviousPage();
+              }
+            }}
           >
             {useFullScreenBookWebView ? (
               <View
@@ -6128,6 +6297,7 @@ export default function PdfDocumentViewer({
                           )}
                         </Text>
                       </NativeAnimatedView>
+                      {renderNativeBookPageNumber(verse)}
                     </View>
                   ))}
                   {renderNativeBookTurn(true)}
@@ -6176,7 +6346,7 @@ export default function PdfDocumentViewer({
                   );
                 }}
               >
-                {completeVerses.map((verse) => {
+                {completeVerses.map((verse, index) => {
                   const isActive =
                     highlightCurrentVerse &&
                     (readerVerseId === verse.id || activeVerseId === verse.id);
@@ -6241,6 +6411,7 @@ export default function PdfDocumentViewer({
                           `fullscreen-complete-${verse.id}`,
                         )}
                       </Text>
+                      {renderCompleteVersePageNumber(index)}
                     </View>
                   );
                 })}
@@ -6662,6 +6833,7 @@ export default function PdfDocumentViewer({
                           )}
                         </Text>
                       </NativeAnimatedView>
+                      {renderNativeBookPageNumber(verse)}
                     </View>
                   ))}
                   {renderNativeBookTurn(false)}
@@ -6723,7 +6895,7 @@ export default function PdfDocumentViewer({
                 );
               }}
             >
-              {completeVerses.map((verse) => {
+              {completeVerses.map((verse, index) => {
                 const isActive =
                   highlightCurrentVerse &&
                   (readerVerseId === verse.id || activeVerseId === verse.id);
@@ -6783,6 +6955,7 @@ export default function PdfDocumentViewer({
                         `complete-${verse.id}`,
                       )}
                     </Text>
+                    {renderCompleteVersePageNumber(index)}
                   </View>
                 );
               })}
@@ -7787,6 +7960,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
+  nativeBookPageNumber: {
+    position: "absolute",
+    bottom: 2,
+    alignSelf: "center",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 12,
+    paddingHorizontal: 6,
+    opacity: 0.92,
+    zIndex: 5,
+  },
   nativeBookTurnOverlay: {
     position: "absolute",
     top: 0,
@@ -8016,6 +8200,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
+  },
+  overlayBookViewControls: {
+    alignItems: "center",
+    gap: 8,
   },
   overlayZoomButton: {
     borderRadius: 20,

@@ -81,7 +81,9 @@ type PdfDocumentViewerProps = {
     hideReaderActionControls?: boolean;
     hideVerseAudioControls?: boolean;
     externalVerseAudioState?: ExternalVerseAudioState | null;
+    onExternalAudioToggle?: () => void;
     externalActiveVerseId?: string | null;
+    initialReaderVerseId?: string | null;
     readerTheme?: ReaderTheme;
     overlayViewport?: {
         top: number;
@@ -130,6 +132,6 @@ type VerseLayoutConfig = {
     viewportHeightPx?: number;
     readerHeightPx?: number;
 };
-declare function PdfDocumentViewer({ pdfUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, externalActiveVerseId, readerTheme, overlayViewport, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
+declare function PdfDocumentViewer({ pdfUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, onExternalAudioToggle, externalActiveVerseId, initialReaderVerseId, readerTheme, overlayViewport, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
 
 export { PdfDocumentViewer, type PdfDocumentViewerProps, type ReaderActionsContext, type ReaderState, type ReaderVerse, type ReaderViewMode, VerseAudioMapping, type VerseLayoutConfig };

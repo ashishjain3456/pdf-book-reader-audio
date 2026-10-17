@@ -2613,7 +2613,9 @@ function PdfDocumentViewer({
   hideReaderActionControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
+  onExternalAudioToggle,
   externalActiveVerseId = null,
+  initialReaderVerseId = null,
   readerTheme,
   overlayViewport
 }) {
@@ -2704,7 +2706,9 @@ function PdfDocumentViewer({
   });
   const [activeVerseAudioIndex, setActiveVerseAudioIndex] = useState(null);
   const [activeVerseId, setActiveVerseId] = useState(null);
-  const [readerVerseId, setReaderVerseId] = useState(null);
+  const [readerVerseId, setReaderVerseId] = useState(initialReaderVerseId);
+  const initialReaderVerseIdRef = useRef(initialReaderVerseId);
+  const initialReaderVerseAppliedRef = useRef(false);
   const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = useState(null);
   const [pendingVerseAudioSeekMs, setPendingVerseAudioSeekMs] = useState(null);
   const pendingVerseAudioAutoplayRef = useRef(true);
@@ -2753,6 +2757,7 @@ function PdfDocumentViewer({
   const completeViewerHeight = isVerseFullScreen ? visibleViewportHeight : verseViewerHeight;
   const webViewRef = useRef(null);
   const fullScreenWebViewRef = useRef(null);
+  const fullScreenSwipeStartRef = useRef(null);
   const completeScrollRef = useRef(null);
   const completeVerseYByIdRef = useRef({});
   const pendingCompleteScrollVerseIdRef = useRef(null);
@@ -3096,6 +3101,21 @@ function PdfDocumentViewer({
     },
     [completeVerses, useNativeVersePaging, versePageById]
   );
+  useEffect(() => {
+    const verseId = initialReaderVerseIdRef.current;
+    if (initialReaderVerseAppliedRef.current || !verseId || !completeVerses.length) {
+      return;
+    }
+    const restoredPage = getNativeVersePage(verseId);
+    if (!restoredPage) return;
+    initialReaderVerseAppliedRef.current = true;
+    pageNumberRef.current = restoredPage;
+    pendingModeSwitchPageRef.current = restoredPage;
+    pendingCompleteScrollVerseIdRef.current = verseId;
+    setNativeBookPageNumberState(restoredPage);
+    void setPageNumber(restoredPage);
+    setReaderVerseId(verseId);
+  }, [completeVerses.length, getNativeVersePage, setPageNumber]);
   const updateCompleteAnchorFromOffset = useCallback(
     (offsetY) => {
       let bestVerseId = null;
@@ -3147,9 +3167,11 @@ function PdfDocumentViewer({
     const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
-    setReaderVerseId(
-      (current) => current === firstVerseId ? current : firstVerseId
-    );
+    setReaderVerseId((current) => {
+      if (current && current === initialReaderVerseIdRef.current) return current;
+      if (current && pageVerses?.includes(current)) return current;
+      return current === firstVerseId ? current : firstVerseId;
+    });
   }, [
     completeVerses,
     contentMode,
@@ -3465,12 +3487,13 @@ function PdfDocumentViewer({
     );
     if (viewMode === "continuous" && externalAudioIsDrivingVerse) {
       const lastExternalVerse2 = lastExternalVerseRef.current;
-      if (lastExternalVerse2?.documentId === readerDocumentId && lastExternalVerse2.verseId === externalActiveVerseId) {
+      if (lastExternalVerse2?.documentId === readerDocumentId && lastExternalVerse2.verseId === externalActiveVerseId && lastExternalVerse2.isFullScreen === isVerseFullScreen) {
         return;
       }
       lastExternalVerseRef.current = {
         documentId: readerDocumentId,
-        verseId: externalActiveVerseId
+        verseId: externalActiveVerseId,
+        isFullScreen: isVerseFullScreen
       };
       setActiveVerseId(externalActiveVerseId);
       setReaderVerseId(externalActiveVerseId);
@@ -3480,11 +3503,12 @@ function PdfDocumentViewer({
     const pageForVerse = getNativeVersePage(externalActiveVerseId);
     if (!pageForVerse) return;
     const lastExternalVerse = lastExternalVerseRef.current;
-    if (lastExternalVerse?.documentId === readerDocumentId && lastExternalVerse.verseId === externalActiveVerseId)
+    if (lastExternalVerse?.documentId === readerDocumentId && lastExternalVerse.verseId === externalActiveVerseId && lastExternalVerse.isFullScreen === isVerseFullScreen)
       return;
     lastExternalVerseRef.current = {
       documentId: readerDocumentId,
-      verseId: externalActiveVerseId
+      verseId: externalActiveVerseId,
+      isFullScreen: isVerseFullScreen
     };
     showMappedVerse(externalActiveVerseId);
   }, [
@@ -3493,6 +3517,7 @@ function PdfDocumentViewer({
     externalVerseAudioState?.audioAssetUrl,
     externalVerseAudioState?.isPlaying,
     getNativeVersePage,
+    isVerseFullScreen,
     readerDocumentId,
     scrollCompleteToVerse,
     showMappedVerse,
@@ -4270,7 +4295,7 @@ function PdfDocumentViewer({
     useFullScreenBookWebView,
     viewMode
   ]);
-  useCallback(() => {
+  const goToFirstPage = useCallback(() => {
     const firstVerseId = completeVerses[0]?.id || null;
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
@@ -4307,6 +4332,7 @@ function PdfDocumentViewer({
         showOverlay();
         return false;
       },
+      onMoveShouldSetPanResponderCapture: (_event, gestureState) => viewMode === "book" && !hidePageNavigationControls && Math.abs(gestureState.dx) > 40 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
       onMoveShouldSetPanResponder: (_event, gestureState) => viewMode === "book" && !hidePageNavigationControls && Math.abs(gestureState.dx) > 40 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.5,
       onPanResponderRelease: (_event, gestureState) => {
         if (gestureState.dx < -44) {
@@ -4626,6 +4652,48 @@ ${shareUrl}`;
       ]
     };
   }, [nativeBookTurn, nativeBookTurnProgress]);
+  const getNativeBookVersePageNumber = (verse) => {
+    const verseIndex = completeVerses.findIndex(
+      (item) => String(item.id) === String(verse.id)
+    );
+    return verseIndex >= 0 ? verseIndex + 1 : nativeBookPageNumber;
+  };
+  const renderNativeBookPageNumber = (verse) => /* @__PURE__ */ jsxs(
+    Text,
+    {
+      pointerEvents: "none",
+      style: [
+        styles.nativeBookPageNumber,
+        {
+          color: resolvedReaderTheme.text,
+          backgroundColor: resolvedReaderTheme.accentSurface
+        }
+      ],
+      children: [
+        getNativeBookVersePageNumber(verse),
+        "/",
+        completeVerses.length
+      ]
+    }
+  );
+  const renderCompleteVersePageNumber = (index) => /* @__PURE__ */ jsxs(
+    Text,
+    {
+      pointerEvents: "none",
+      style: [
+        styles.nativeBookPageNumber,
+        {
+          color: resolvedReaderTheme.text,
+          backgroundColor: resolvedReaderTheme.accentSurface
+        }
+      ],
+      children: [
+        index + 1,
+        "/",
+        completeVerses.length
+      ]
+    }
+  );
   const renderNativeBookPage = (verse, key, fullScreen, pageStyle) => /* @__PURE__ */ jsxs(
     View,
     {
@@ -4658,7 +4726,8 @@ ${shareUrl}`;
             ],
             children: renderNativeRichText(verse.contentHtml, key)
           }
-        ) })
+        ) }),
+        renderNativeBookPageNumber(verse)
       ]
     },
     key
@@ -4939,6 +5008,17 @@ ${shareUrl}`;
     });
     showOverlay();
   }, [allowBookDoubleSpread, pageNumber, setPageNumber, showOverlay]);
+  const confirmGoToFirstPage = useCallback(() => {
+    const alertWithButtons = Alert.alert;
+    alertWithButtons(
+      "Restart reading?",
+      "Do you want to go back to the first page?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Reset", style: "destructive", onPress: goToFirstPage }
+      ]
+    );
+  }, [goToFirstPage]);
   const nativeFullScreenControls = /* @__PURE__ */ jsxs(
     View,
     {
@@ -5105,16 +5185,47 @@ ${shareUrl}`;
               )
             }
           ),
-          viewMode === "book" && allowBookDoubleSpread ? /* @__PURE__ */ jsx(
+          viewMode === "book" && allowBookDoubleSpread ? /* @__PURE__ */ jsxs(View, { style: styles.overlayBookViewControls, children: [
+            /* @__PURE__ */ jsx(
+              Pressable,
+              {
+                onPress: toggleBookSpreadMode,
+                style: styles.overlayZoomButton,
+                accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
+                children: /* @__PURE__ */ jsx(
+                  Ionicons,
+                  {
+                    name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
+                    size: 20,
+                    color: "#fff"
+                  }
+                )
+              }
+            ),
+            /* @__PURE__ */ jsx(
+              Pressable,
+              {
+                onPress: confirmGoToFirstPage,
+                style: styles.overlayZoomButton,
+                accessibilityRole: "button",
+                accessibilityLabel: "Reset to first page",
+                testID: "reader-reset-to-first-page",
+                children: /* @__PURE__ */ jsx(Ionicons, { name: "refresh-outline", size: 20, color: "#fff" })
+              }
+            )
+          ] }) : null,
+          externalVerseAudioState?.audioAssetUrl && onExternalAudioToggle ? /* @__PURE__ */ jsx(
             Pressable,
             {
-              onPress: toggleBookSpreadMode,
+              onPress: onExternalAudioToggle,
               style: styles.overlayZoomButton,
-              accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
+              accessibilityRole: "button",
+              accessibilityLabel: externalVerseAudioState.isPlaying ? "Pause audio" : "Play audio",
+              testID: "reader-fullscreen-audio-toggle",
               children: /* @__PURE__ */ jsx(
                 Ionicons,
                 {
-                  name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
+                  name: externalVerseAudioState.isPlaying ? "pause-outline" : "play-outline",
                   size: 20,
                   color: "#fff"
                 }
@@ -5166,6 +5277,30 @@ ${shareUrl}`;
             styles.nativeFullScreenRoot,
             { backgroundColor: resolvedReaderTheme.background }
           ],
+          onTouchStart: (event) => {
+            showOverlay();
+            const touch = event.nativeEvent.touches?.[0];
+            fullScreenSwipeStartRef.current = touch ? { x: touch.pageX, y: touch.pageY } : null;
+          },
+          onTouchEnd: (event) => {
+            const start = fullScreenSwipeStartRef.current;
+            fullScreenSwipeStartRef.current = null;
+            if (!start || viewMode !== "book" || hidePageNavigationControls) {
+              return;
+            }
+            const touch = event.nativeEvent.changedTouches?.[0];
+            if (!touch) return;
+            const dx = touch.pageX - start.x;
+            const dy = touch.pageY - start.y;
+            if (Math.abs(dx) < 44 || Math.abs(dx) <= Math.abs(dy) * 2.5) {
+              return;
+            }
+            if (dx < 0) {
+              goToNextPage();
+            } else {
+              goToPreviousPage();
+            }
+          },
           children: [
             useNativeFullScreenBookView ? /* @__PURE__ */ jsx(
               NativeScrollView,
@@ -5252,7 +5387,8 @@ ${shareUrl}`;
                                   }
                                 )
                               }
-                            )
+                            ),
+                            renderNativeBookPageNumber(verse)
                           ]
                         },
                         `fullscreen-book-${nativeBookPageNumber}-${index}`
@@ -5301,7 +5437,7 @@ ${shareUrl}`;
                     false
                   );
                 },
-                children: completeVerses.map((verse) => {
+                children: completeVerses.map((verse, index) => {
                   const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
                   const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
                   return /* @__PURE__ */ jsxs(
@@ -5358,7 +5494,8 @@ ${shareUrl}`;
                               `fullscreen-complete-${verse.id}`
                             )
                           }
-                        )
+                        ),
+                        renderCompleteVersePageNumber(index)
                       ]
                     },
                     verse.id
@@ -5763,7 +5900,8 @@ ${shareUrl}`;
                                         }
                                       )
                                     }
-                                  )
+                                  ),
+                                  renderNativeBookPageNumber(verse)
                                 ]
                               },
                               `book-${nativeBookPageNumber}-${index}`
@@ -5822,7 +5960,7 @@ ${shareUrl}`;
                       false
                     );
                   },
-                  children: completeVerses.map((verse) => {
+                  children: completeVerses.map((verse, index) => {
                     const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
                     const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
                     return /* @__PURE__ */ jsxs(
@@ -5878,7 +6016,8 @@ ${shareUrl}`;
                                 `complete-${verse.id}`
                               )
                             }
-                          )
+                          ),
+                          renderCompleteVersePageNumber(index)
                         ]
                       },
                       verse.id
@@ -6789,6 +6928,17 @@ var styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1
   },
+  nativeBookPageNumber: {
+    position: "absolute",
+    bottom: 2,
+    alignSelf: "center",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 12,
+    paddingHorizontal: 6,
+    opacity: 0.92,
+    zIndex: 5
+  },
   nativeBookTurnOverlay: {
     position: "absolute",
     top: 0,
@@ -7018,6 +7168,10 @@ var styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 12
+  },
+  overlayBookViewControls: {
+    alignItems: "center",
+    gap: 8
   },
   overlayZoomButton: {
     borderRadius: 20,
