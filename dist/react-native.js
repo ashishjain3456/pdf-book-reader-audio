@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as ReactNative from 'react-native';
-import { StyleSheet, Platform, PanResponder, Alert, View, Pressable, Text, ActivityIndicator } from 'react-native';
+import { StyleSheet, Platform, PanResponder, View, Pressable, Text, ActivityIndicator } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as ExpoLinking from 'expo-linking';
 import * as ExpoAudio from 'expo-audio';
@@ -2617,6 +2617,7 @@ function PdfDocumentViewer({
   externalActiveVerseId = null,
   initialReaderVerseId = null,
   readerTheme,
+  resetConfirmation,
   overlayViewport
 }) {
   const [windowSize, setWindowSize] = useState(
@@ -2680,6 +2681,10 @@ function PdfDocumentViewer({
   const [zoomLevel, setZoomLevel] = useState(requestedZoomLevel);
   const [showShareOverlay, setShowShareOverlay] = useState(false);
   const [showOverlayControls, setShowOverlayControls] = useState(false);
+  const [readerDialog, setReaderDialog] = useState(
+    null
+  );
+  const readerDialogOkLabel = resetConfirmation?.okLabel || "OK";
   const [viewerReloadKey, setViewerReloadKey] = useState(0);
   const [localPdfUrl, setLocalPdfUrl] = useState(null);
   const [triedLocalFileFallback, setTriedLocalFileFallback] = useState(false);
@@ -2706,7 +2711,9 @@ function PdfDocumentViewer({
   });
   const [activeVerseAudioIndex, setActiveVerseAudioIndex] = useState(null);
   const [activeVerseId, setActiveVerseId] = useState(null);
-  const [readerVerseId, setReaderVerseId] = useState(initialReaderVerseId);
+  const [readerVerseId, setReaderVerseId] = useState(
+    initialReaderVerseId
+  );
   const initialReaderVerseIdRef = useRef(initialReaderVerseId);
   const initialReaderVerseAppliedRef = useRef(false);
   const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = useState(null);
@@ -2760,6 +2767,7 @@ function PdfDocumentViewer({
   const fullScreenSwipeStartRef = useRef(null);
   const completeScrollRef = useRef(null);
   const completeVerseYByIdRef = useRef({});
+  const completeScrollOffsetRef = useRef(0);
   const pendingCompleteScrollVerseIdRef = useRef(null);
   const userDraggingCompleteScrollRef = useRef(false);
   const completeRestoreTimerRef = useRef(
@@ -3056,7 +3064,7 @@ function PdfDocumentViewer({
             pendingCompleteScrollVerseIdRef.current = verseId;
             return false;
           }
-          const targetOffset = viewerContentTop + y - overlayViewport.top - 12;
+          const targetOffset = viewerContentTop + y - overlayViewport.top;
           overlayViewport.scrollToOffset(
             Math.max(0, targetOffset),
             withAnimation
@@ -3155,6 +3163,33 @@ function PdfDocumentViewer({
     },
     [updateCompleteAnchorFromOffset]
   );
+  useEffect(() => {
+    if (!overlayViewport || !useNativeCompleteVerseView || viewerContentTop === null || viewerWrapHeight <= 0) {
+      return;
+    }
+    const updateFromOuterScroll = (outerScrollOffset) => {
+      const viewportTop = outerScrollOffset + overlayViewport.top;
+      const viewportBottom = outerScrollOffset + overlayViewport.bottom;
+      const readerBottom = viewerContentTop + viewerWrapHeight;
+      if (readerBottom <= viewportTop || viewerContentTop >= viewportBottom) {
+        return;
+      }
+      const innerOffset = completeScrollOffsetRef.current;
+      const localOffset = outerScrollOffset + overlayViewport.top - viewerContentTop + innerOffset;
+      updateCompleteAnchorFromOffset(localOffset);
+    };
+    updateFromOuterScroll(overlayViewport.getScrollOffset());
+    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
+      updateFromOuterScroll(value);
+    });
+    return () => overlayViewport.scrollY.removeListener(listenerId);
+  }, [
+    overlayViewport,
+    updateCompleteAnchorFromOffset,
+    useNativeCompleteVerseView,
+    viewerContentTop,
+    viewerWrapHeight
+  ]);
   const handleCompleteMomentumScrollEnd = useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
@@ -3168,7 +3203,8 @@ function PdfDocumentViewer({
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
     setReaderVerseId((current) => {
-      if (current && current === initialReaderVerseIdRef.current) return current;
+      if (current && current === initialReaderVerseIdRef.current)
+        return current;
       if (current && pageVerses?.includes(current)) return current;
       return current === firstVerseId ? current : firstVerseId;
     });
@@ -4307,7 +4343,9 @@ function PdfDocumentViewer({
     if (viewMode === "continuous") {
       pendingCompleteScrollVerseIdRef.current = firstVerseId;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
-      completeScrollRef.current?.scrollTo({ y: 0, animated: true });
+      if (!scrollCompleteToVerse(firstVerseId, true)) {
+        completeScrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
       const script = `
         (function() {
           if (!window.__PDF_READER_BRIDGE__) return;
@@ -4325,7 +4363,13 @@ function PdfDocumentViewer({
       fullScreenWebViewRef.current?.injectJavaScript(script);
     }
     showOverlay();
-  }, [completeVerses, setPageNumber, showOverlay, viewMode]);
+  }, [
+    completeVerses,
+    scrollCompleteToVerse,
+    setPageNumber,
+    showOverlay,
+    viewMode
+  ]);
   const panResponder = useMemo(
     () => PanResponder.create({
       onStartShouldSetPanResponderCapture: () => {
@@ -4517,15 +4561,22 @@ ${shareUrl}`;
       telegramUrl
     };
   }, [label, shareMessage, shareUrl]);
-  const openShareUrl = useCallback(async (target) => {
-    try {
-      await ExpoLinking.openURL(target);
-      setShowShareOverlay(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to open share link";
-      Alert.alert("Error", message);
-    }
-  }, []);
+  const openShareUrl = useCallback(
+    async (target) => {
+      try {
+        await ExpoLinking.openURL(target);
+        setShowShareOverlay(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to open share link";
+        setReaderDialog({
+          title: "Error",
+          message,
+          buttons: [{ text: readerDialogOkLabel }]
+        });
+      }
+    },
+    [readerDialogOkLabel]
+  );
   const openWhatsAppShare = useCallback(async () => {
     try {
       await ExpoLinking.openURL(shareLinks.whatsappUrl);
@@ -5008,17 +5059,36 @@ ${shareUrl}`;
     });
     showOverlay();
   }, [allowBookDoubleSpread, pageNumber, setPageNumber, showOverlay]);
-  const confirmGoToFirstPage = useCallback(() => {
-    const alertWithButtons = Alert.alert;
-    alertWithButtons(
-      "Restart reading?",
-      "Do you want to go back to the first page?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Reset", style: "destructive", onPress: goToFirstPage }
-      ]
-    );
-  }, [goToFirstPage]);
+  const resetConfirmationTitle = resetConfirmation?.title || "Restart reading?";
+  const resetConfirmationMessage = resetConfirmation?.message || "Do you want to go back to the first page?";
+  const resetConfirmationCancelLabel = resetConfirmation?.cancelLabel || "Cancel";
+  const resetConfirmationConfirmLabel = resetConfirmation?.confirmLabel || "Reset";
+  const confirmGoToFirstPage = useCallback(
+    (onReset) => {
+      setReaderDialog({
+        title: resetConfirmationTitle,
+        message: resetConfirmationMessage,
+        buttons: [
+          { text: resetConfirmationCancelLabel, style: "cancel" },
+          {
+            text: resetConfirmationConfirmLabel,
+            style: "destructive",
+            onPress: () => {
+              goToFirstPage();
+              onReset?.();
+            }
+          }
+        ]
+      });
+    },
+    [
+      goToFirstPage,
+      resetConfirmationCancelLabel,
+      resetConfirmationConfirmLabel,
+      resetConfirmationMessage,
+      resetConfirmationTitle
+    ]
+  );
   const nativeFullScreenControls = /* @__PURE__ */ jsxs(
     View,
     {
@@ -5185,35 +5255,22 @@ ${shareUrl}`;
               )
             }
           ),
-          viewMode === "book" && allowBookDoubleSpread ? /* @__PURE__ */ jsxs(View, { style: styles.overlayBookViewControls, children: [
-            /* @__PURE__ */ jsx(
-              Pressable,
-              {
-                onPress: toggleBookSpreadMode,
-                style: styles.overlayZoomButton,
-                accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
-                children: /* @__PURE__ */ jsx(
-                  Ionicons,
-                  {
-                    name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
-                    size: 20,
-                    color: "#fff"
-                  }
-                )
-              }
-            ),
-            /* @__PURE__ */ jsx(
-              Pressable,
-              {
-                onPress: confirmGoToFirstPage,
-                style: styles.overlayZoomButton,
-                accessibilityRole: "button",
-                accessibilityLabel: "Reset to first page",
-                testID: "reader-reset-to-first-page",
-                children: /* @__PURE__ */ jsx(Ionicons, { name: "refresh-outline", size: 20, color: "#fff" })
-              }
-            )
-          ] }) : null,
+          viewMode === "book" && allowBookDoubleSpread ? /* @__PURE__ */ jsx(View, { style: styles.overlayBookViewControls, children: /* @__PURE__ */ jsx(
+            Pressable,
+            {
+              onPress: toggleBookSpreadMode,
+              style: styles.overlayZoomButton,
+              accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
+              children: /* @__PURE__ */ jsx(
+                Ionicons,
+                {
+                  name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
+                  size: 20,
+                  color: "#fff"
+                }
+              )
+            }
+          ) }) : null,
           externalVerseAudioState?.audioAssetUrl && onExternalAudioToggle ? /* @__PURE__ */ jsx(
             Pressable,
             {
@@ -5414,6 +5471,7 @@ ${shareUrl}`;
                 onScrollEndDrag: handleCompleteScrollEndDrag,
                 onMomentumScrollEnd: handleCompleteMomentumScrollEnd,
                 onScroll: (event) => {
+                  completeScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
                   if (!userDraggingCompleteScrollRef.current) {
                     if (pendingCompleteScrollVerseIdRef.current) return;
                     if (Date.now() < completeRestoreGuardUntilRef.current)
@@ -5424,18 +5482,14 @@ ${shareUrl}`;
                   );
                 },
                 onContentSizeChange: () => {
-                  if (!autoAlignCurrentVerse) return;
-                  scrollCompleteToVerse(
-                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                    false
-                  );
+                  const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                  if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                  scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                 },
                 onLayout: () => {
-                  if (!autoAlignCurrentVerse) return;
-                  scrollCompleteToVerse(
-                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                    false
-                  );
+                  const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                  if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                  scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                 },
                 children: completeVerses.map((verse, index) => {
                   const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
@@ -5445,7 +5499,9 @@ ${shareUrl}`;
                     {
                       onLayout: (event) => {
                         completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
-                        if (!autoAlignCurrentVerse) return;
+                        if (!autoAlignCurrentVerse && pendingCompleteScrollVerseIdRef.current !== verse.id) {
+                          return;
+                        }
                         if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                           setTimeout(() => {
                             scrollCompleteToVerse(verse.id, false);
@@ -5509,6 +5565,86 @@ ${shareUrl}`;
       )
     }
   ) }) : null;
+  const readerDialogModal = /* @__PURE__ */ jsx(
+    NativeModal,
+    {
+      visible: Boolean(readerDialog),
+      transparent: true,
+      animationType: "fade",
+      onRequestClose: () => setReaderDialog(null),
+      statusBarTranslucent: true,
+      children: /* @__PURE__ */ jsx(View, { style: styles.readerDialogBackdrop, children: /* @__PURE__ */ jsxs(
+        View,
+        {
+          accessibilityViewIsModal: true,
+          testID: "reader-dialog",
+          style: [
+            styles.readerDialogCard,
+            {
+              borderColor: resolvedReaderTheme.border,
+              backgroundColor: resolvedReaderTheme.surface,
+              shadowColor: resolvedReaderTheme.shadow
+            }
+          ],
+          children: [
+            /* @__PURE__ */ jsx(
+              Text,
+              {
+                style: [
+                  styles.readerDialogTitle,
+                  { color: resolvedReaderTheme.accentRed }
+                ],
+                children: readerDialog?.title
+              }
+            ),
+            readerDialog?.message ? /* @__PURE__ */ jsx(
+              Text,
+              {
+                style: [
+                  styles.readerDialogMessage,
+                  { color: resolvedReaderTheme.text }
+                ],
+                children: readerDialog.message
+              }
+            ) : null,
+            /* @__PURE__ */ jsx(View, { style: styles.readerDialogActions, children: readerDialog?.buttons.map((button, index) => {
+              const isCancel = button.style === "cancel";
+              return /* @__PURE__ */ jsx(
+                Pressable,
+                {
+                  accessibilityRole: "button",
+                  onPress: () => {
+                    setReaderDialog(null);
+                    button.onPress?.();
+                  },
+                  style: [
+                    styles.readerDialogButton,
+                    {
+                      borderColor: isCancel ? resolvedReaderTheme.accent : resolvedReaderTheme.accent,
+                      backgroundColor: isCancel ? resolvedReaderTheme.page : resolvedReaderTheme.accentRed
+                    }
+                  ],
+                  children: /* @__PURE__ */ jsx(
+                    Text,
+                    {
+                      style: [
+                        styles.readerDialogButtonText,
+                        {
+                          color: isCancel ? resolvedReaderTheme.accentRed : "#fff"
+                        }
+                      ],
+                      children: button.text
+                    }
+                  )
+                },
+                `${button.text}-${index}`
+              );
+            }) })
+          ]
+        }
+      ) })
+    }
+  );
   const readerContent = /* @__PURE__ */ jsxs(
     View,
     {
@@ -5552,6 +5688,7 @@ ${shareUrl}`;
                 zoomOut: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
                 previousPage: goToPreviousPage,
                 nextPage: goToNextPage,
+                resetToFirstPage: confirmGoToFirstPage,
                 toggleFullScreen: toggleVerseFullScreenFromActions,
                 canZoomIn: !zoomInDisabled,
                 canZoomOut: !zoomOutDisabled,
@@ -5934,6 +6071,7 @@ ${shareUrl}`;
                   onScrollEndDrag: handleCompleteScrollEndDrag,
                   onMomentumScrollEnd: handleCompleteMomentumScrollEnd,
                   onScroll: (event) => {
+                    completeScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
                     if (!userDraggingCompleteScrollRef.current) {
                       if (pendingCompleteScrollVerseIdRef.current) return;
                       if (Date.now() < completeRestoreGuardUntilRef.current) return;
@@ -5947,18 +6085,14 @@ ${shareUrl}`;
                     setEmbeddedContinuousContentHeight(
                       (current) => current === nextHeight ? current : nextHeight
                     );
-                    if (!autoAlignCurrentVerse) return;
-                    scrollCompleteToVerse(
-                      pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                      false
-                    );
+                    const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                    if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                    scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                   },
                   onLayout: () => {
-                    if (!autoAlignCurrentVerse) return;
-                    scrollCompleteToVerse(
-                      pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                      false
-                    );
+                    const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                    if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                    scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                   },
                   children: completeVerses.map((verse, index) => {
                     const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
@@ -5968,7 +6102,9 @@ ${shareUrl}`;
                       {
                         onLayout: (event) => {
                           completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
-                          if (!autoAlignCurrentVerse) return;
+                          if (!autoAlignCurrentVerse && pendingCompleteScrollVerseIdRef.current !== verse.id) {
+                            return;
+                          }
                           if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                             setTimeout(() => {
                               scrollCompleteToVerse(verse.id, false);
@@ -6555,7 +6691,8 @@ ${shareUrl}`;
   );
   return /* @__PURE__ */ jsxs(Fragment, { children: [
     suppressInlineReaderSurface ? null : readerContent,
-    nativeFullScreenOverlay
+    nativeFullScreenOverlay,
+    readerDialogModal
   ] });
 }
 var styles = StyleSheet.create({
@@ -7200,6 +7337,54 @@ var styles = StyleSheet.create({
     color: "#27272a",
     fontSize: 12,
     fontWeight: "800"
+  },
+  readerDialogBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "rgba(17, 24, 39, 0.42)"
+  },
+  readerDialogCard: {
+    width: "100%",
+    maxWidth: 420,
+    padding: 20,
+    borderWidth: 1,
+    borderRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12
+  },
+  readerDialogTitle: {
+    marginBottom: 12,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "800"
+  },
+  readerDialogMessage: {
+    marginBottom: 20,
+    textAlign: "center",
+    fontSize: 15,
+    lineHeight: 22
+  },
+  readerDialogActions: {
+    flexDirection: "row",
+    gap: 10
+  },
+  readerDialogButton: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 12
+  },
+  readerDialogButtonText: {
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: "700"
   }
 });
 

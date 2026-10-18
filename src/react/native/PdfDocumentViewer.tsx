@@ -11,7 +11,6 @@ import * as ReactNative from "react-native";
 import { PanResponder, Platform } from "react-native";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -67,6 +66,7 @@ export type ReaderActionsContext = {
   zoomOut: () => void;
   previousPage: () => void;
   nextPage: () => void;
+  resetToFirstPage: (onReset?: () => void) => void;
   toggleFullScreen: () => void;
   canZoomIn: boolean;
   canZoomOut: boolean;
@@ -74,6 +74,27 @@ export type ReaderActionsContext = {
   canGoNextPage: boolean;
   supportsPageNavigation: boolean;
   supportsFullScreen: boolean;
+};
+
+export type ReaderResetConfirmation = {
+  title?: string;
+  message?: string;
+  cancelLabel?: string;
+  confirmLabel?: string;
+  okLabel?: string;
+  accessibilityLabel?: string;
+};
+
+type ReaderDialogButton = {
+  text: string;
+  style?: "cancel" | "destructive";
+  onPress?: () => void;
+};
+
+type ReaderDialogRequest = {
+  title: string;
+  message?: string;
+  buttons: ReaderDialogButton[];
 };
 
 export type ExternalVerseAudioState = {
@@ -131,6 +152,7 @@ export type PdfDocumentViewerProps = {
   externalActiveVerseId?: string | null;
   initialReaderVerseId?: string | null;
   readerTheme?: ReaderTheme;
+  resetConfirmation?: ReaderResetConfirmation;
   overlayViewport?: {
     top: number;
     bottom: number;
@@ -2923,6 +2945,7 @@ export default function PdfDocumentViewer({
   externalActiveVerseId = null,
   initialReaderVerseId = null,
   readerTheme,
+  resetConfirmation,
   overlayViewport,
 }: PdfDocumentViewerProps) {
   const [windowSize, setWindowSize] = useState(
@@ -2988,6 +3011,10 @@ export default function PdfDocumentViewer({
   const [zoomLevel, setZoomLevel] = useState(requestedZoomLevel);
   const [showShareOverlay, setShowShareOverlay] = useState(false);
   const [showOverlayControls, setShowOverlayControls] = useState(false);
+  const [readerDialog, setReaderDialog] = useState<ReaderDialogRequest | null>(
+    null,
+  );
+  const readerDialogOkLabel = resetConfirmation?.okLabel || "OK";
   const [viewerReloadKey, setViewerReloadKey] = useState(0);
   const [localPdfUrl, setLocalPdfUrl] = useState<string | null>(null);
   const [triedLocalFileFallback, setTriedLocalFileFallback] = useState(false);
@@ -3016,8 +3043,9 @@ export default function PdfDocumentViewer({
     number | null
   >(null);
   const [activeVerseId, setActiveVerseId] = useState<string | null>(null);
-  const [readerVerseId, setReaderVerseId] =
-    useState<string | null>(initialReaderVerseId);
+  const [readerVerseId, setReaderVerseId] = useState<string | null>(
+    initialReaderVerseId,
+  );
   const initialReaderVerseIdRef = useRef(initialReaderVerseId);
   const initialReaderVerseAppliedRef = useRef(false);
   const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = useState<
@@ -3106,6 +3134,7 @@ export default function PdfDocumentViewer({
   const fullScreenSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const completeScrollRef = useRef<any>(null);
   const completeVerseYByIdRef = useRef<Record<string, number>>({});
+  const completeScrollOffsetRef = useRef(0);
   const pendingCompleteScrollVerseIdRef = useRef<string | null>(null);
   const userDraggingCompleteScrollRef = useRef(false);
   const completeRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -3516,7 +3545,7 @@ export default function PdfDocumentViewer({
             pendingCompleteScrollVerseIdRef.current = verseId;
             return false;
           }
-          const targetOffset = viewerContentTop + y - overlayViewport.top - 12;
+          const targetOffset = viewerContentTop + y - overlayViewport.top;
           overlayViewport.scrollToOffset(
             Math.max(0, targetOffset),
             withAnimation,
@@ -3631,6 +3660,48 @@ export default function PdfDocumentViewer({
     [updateCompleteAnchorFromOffset],
   );
 
+  useEffect(() => {
+    if (
+      !overlayViewport ||
+      !useNativeCompleteVerseView ||
+      viewerContentTop === null ||
+      viewerWrapHeight <= 0
+    ) {
+      return;
+    }
+
+    const updateFromOuterScroll = (outerScrollOffset: number) => {
+      const viewportTop = outerScrollOffset + overlayViewport.top;
+      const viewportBottom = outerScrollOffset + overlayViewport.bottom;
+      const readerBottom = viewerContentTop + viewerWrapHeight;
+      if (readerBottom <= viewportTop || viewerContentTop >= viewportBottom) {
+        return;
+      }
+
+      // Convert the outer viewport's top edge into the verse ScrollView's
+      // content coordinates. Verse layout Y values are local to that content.
+      const innerOffset = completeScrollOffsetRef.current;
+      const localOffset =
+        outerScrollOffset +
+        overlayViewport.top -
+        viewerContentTop +
+        innerOffset;
+      updateCompleteAnchorFromOffset(localOffset);
+    };
+
+    updateFromOuterScroll(overlayViewport.getScrollOffset());
+    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
+      updateFromOuterScroll(value);
+    });
+    return () => overlayViewport.scrollY.removeListener(listenerId);
+  }, [
+    overlayViewport,
+    updateCompleteAnchorFromOffset,
+    useNativeCompleteVerseView,
+    viewerContentTop,
+    viewerWrapHeight,
+  ]);
+
   const handleCompleteMomentumScrollEnd = useCallback(
     (event: { nativeEvent: { contentOffset: { y: number } } }) => {
       userDraggingCompleteScrollRef.current = false;
@@ -3650,7 +3721,8 @@ export default function PdfDocumentViewer({
     if (!firstVerseId) return;
 
     setReaderVerseId((current) => {
-      if (current && current === initialReaderVerseIdRef.current) return current;
+      if (current && current === initialReaderVerseIdRef.current)
+        return current;
       if (current && pageVerses?.includes(current)) return current;
       return current === firstVerseId ? current : firstVerseId;
     });
@@ -5013,7 +5085,9 @@ export default function PdfDocumentViewer({
     if (viewMode === "continuous") {
       pendingCompleteScrollVerseIdRef.current = firstVerseId;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
-      completeScrollRef.current?.scrollTo({ y: 0, animated: true });
+      if (!scrollCompleteToVerse(firstVerseId, true)) {
+        completeScrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
       const script = `
         (function() {
           if (!window.__PDF_READER_BRIDGE__) return;
@@ -5031,7 +5105,13 @@ export default function PdfDocumentViewer({
       fullScreenWebViewRef.current?.injectJavaScript(script);
     }
     showOverlay();
-  }, [completeVerses, setPageNumber, showOverlay, viewMode]);
+  }, [
+    completeVerses,
+    scrollCompleteToVerse,
+    setPageNumber,
+    showOverlay,
+    viewMode,
+  ]);
 
   const panResponder = useMemo(
     () =>
@@ -5292,16 +5372,23 @@ export default function PdfDocumentViewer({
     };
   }, [label, shareMessage, shareUrl]);
 
-  const openShareUrl = useCallback(async (target: string) => {
-    try {
-      await ExpoLinking.openURL(target);
-      setShowShareOverlay(false);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to open share link";
-      Alert.alert("Error", message);
-    }
-  }, []);
+  const openShareUrl = useCallback(
+    async (target: string) => {
+      try {
+        await ExpoLinking.openURL(target);
+        setShowShareOverlay(false);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to open share link";
+        setReaderDialog({
+          title: "Error",
+          message,
+          buttons: [{ text: readerDialogOkLabel }],
+        });
+      }
+    },
+    [readerDialogOkLabel],
+  );
 
   const openWhatsAppShare = useCallback(async () => {
     try {
@@ -5877,25 +5964,39 @@ export default function PdfDocumentViewer({
     });
     showOverlay();
   }, [allowBookDoubleSpread, pageNumber, setPageNumber, showOverlay]);
-  const confirmGoToFirstPage = useCallback(() => {
-    const alertWithButtons = Alert.alert as unknown as (
-      title: string,
-      message: string,
-      buttons: Array<{
-        text: string;
-        style?: "cancel" | "destructive";
-        onPress?: () => void;
-      }>,
-    ) => void;
-    alertWithButtons(
-      "Restart reading?",
-      "Do you want to go back to the first page?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Reset", style: "destructive", onPress: goToFirstPage },
-      ],
-    );
-  }, [goToFirstPage]);
+  const resetConfirmationTitle = resetConfirmation?.title || "Restart reading?";
+  const resetConfirmationMessage =
+    resetConfirmation?.message || "Do you want to go back to the first page?";
+  const resetConfirmationCancelLabel =
+    resetConfirmation?.cancelLabel || "Cancel";
+  const resetConfirmationConfirmLabel =
+    resetConfirmation?.confirmLabel || "Reset";
+  const confirmGoToFirstPage = useCallback(
+    (onReset?: () => void) => {
+      setReaderDialog({
+        title: resetConfirmationTitle,
+        message: resetConfirmationMessage,
+        buttons: [
+          { text: resetConfirmationCancelLabel, style: "cancel" },
+          {
+            text: resetConfirmationConfirmLabel,
+            style: "destructive",
+            onPress: () => {
+              goToFirstPage();
+              onReset?.();
+            },
+          },
+        ],
+      });
+    },
+    [
+      goToFirstPage,
+      resetConfirmationCancelLabel,
+      resetConfirmationConfirmLabel,
+      resetConfirmationMessage,
+      resetConfirmationTitle,
+    ],
+  );
   const nativeFullScreenControls = (
     <View
       pointerEvents="box-none"
@@ -6068,15 +6169,6 @@ export default function PdfDocumentViewer({
                 size={20}
                 color="#fff"
               />
-            </Pressable>
-            <Pressable
-              onPress={confirmGoToFirstPage}
-              style={styles.overlayZoomButton}
-              accessibilityRole="button"
-              accessibilityLabel="Reset to first page"
-              testID="reader-reset-to-first-page"
-            >
-              <Ionicons name="refresh-outline" size={20} color="#fff" />
             </Pressable>
           </View>
         ) : null}
@@ -6322,6 +6414,8 @@ export default function PdfDocumentViewer({
                 onScroll={(event: {
                   nativeEvent: { contentOffset: { y: number } };
                 }) => {
+                  completeScrollOffsetRef.current =
+                    event.nativeEvent.contentOffset.y;
                   if (!userDraggingCompleteScrollRef.current) {
                     if (pendingCompleteScrollVerseIdRef.current) return;
                     if (Date.now() < completeRestoreGuardUntilRef.current)
@@ -6332,18 +6426,16 @@ export default function PdfDocumentViewer({
                   );
                 }}
                 onContentSizeChange={() => {
-                  if (!autoAlignCurrentVerse) return;
-                  scrollCompleteToVerse(
-                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                    false,
-                  );
+                  const pendingVerseId =
+                    pendingCompleteScrollVerseIdRef.current;
+                  if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                  scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                 }}
                 onLayout={() => {
-                  if (!autoAlignCurrentVerse) return;
-                  scrollCompleteToVerse(
-                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                    false,
-                  );
+                  const pendingVerseId =
+                    pendingCompleteScrollVerseIdRef.current;
+                  if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                  scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                 }}
               >
                 {completeVerses.map((verse, index) => {
@@ -6361,7 +6453,12 @@ export default function PdfDocumentViewer({
                       }) => {
                         completeVerseYByIdRef.current[verse.id] =
                           event.nativeEvent.layout.y;
-                        if (!autoAlignCurrentVerse) return;
+                        if (
+                          !autoAlignCurrentVerse &&
+                          pendingCompleteScrollVerseIdRef.current !== verse.id
+                        ) {
+                          return;
+                        }
                         if (
                           pendingCompleteScrollVerseIdRef.current === verse.id
                         ) {
@@ -6424,6 +6521,88 @@ export default function PdfDocumentViewer({
         </NativeModal>
       </>
     ) : null;
+  const readerDialogModal = (
+    <NativeModal
+      visible={Boolean(readerDialog)}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setReaderDialog(null)}
+      statusBarTranslucent
+    >
+      <View style={styles.readerDialogBackdrop}>
+        <View
+          accessibilityViewIsModal
+          testID="reader-dialog"
+          style={[
+            styles.readerDialogCard,
+            {
+              borderColor: resolvedReaderTheme.border,
+              backgroundColor: resolvedReaderTheme.surface,
+              shadowColor: resolvedReaderTheme.shadow,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.readerDialogTitle,
+              { color: resolvedReaderTheme.accentRed },
+            ]}
+          >
+            {readerDialog?.title}
+          </Text>
+          {readerDialog?.message ? (
+            <Text
+              style={[
+                styles.readerDialogMessage,
+                { color: resolvedReaderTheme.text },
+              ]}
+            >
+              {readerDialog.message}
+            </Text>
+          ) : null}
+          <View style={styles.readerDialogActions}>
+            {readerDialog?.buttons.map((button, index) => {
+              const isCancel = button.style === "cancel";
+              return (
+                <Pressable
+                  key={`${button.text}-${index}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setReaderDialog(null);
+                    button.onPress?.();
+                  }}
+                  style={[
+                    styles.readerDialogButton,
+                    {
+                      borderColor: isCancel
+                        ? resolvedReaderTheme.accent
+                        : resolvedReaderTheme.accent,
+                      backgroundColor: isCancel
+                        ? resolvedReaderTheme.page
+                        : resolvedReaderTheme.accentRed,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.readerDialogButtonText,
+                      {
+                        color: isCancel
+                          ? resolvedReaderTheme.accentRed
+                          : "#fff",
+                      },
+                    ]}
+                  >
+                    {button.text}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    </NativeModal>
+  );
   const readerContent = (
     <View
       style={[
@@ -6474,6 +6653,7 @@ export default function PdfDocumentViewer({
                     : adjustPdfZoom(-PDF_ZOOM_STEP),
                 previousPage: goToPreviousPage,
                 nextPage: goToNextPage,
+                resetToFirstPage: confirmGoToFirstPage,
                 toggleFullScreen: toggleVerseFullScreenFromActions,
                 canZoomIn: !zoomInDisabled,
                 canZoomOut: !zoomOutDisabled,
@@ -6868,6 +7048,8 @@ export default function PdfDocumentViewer({
               onScroll={(event: {
                 nativeEvent: { contentOffset: { y: number } };
               }) => {
+                completeScrollOffsetRef.current =
+                  event.nativeEvent.contentOffset.y;
                 if (!userDraggingCompleteScrollRef.current) {
                   if (pendingCompleteScrollVerseIdRef.current) return;
                   if (Date.now() < completeRestoreGuardUntilRef.current) return;
@@ -6881,18 +7063,14 @@ export default function PdfDocumentViewer({
                 setEmbeddedContinuousContentHeight((current) =>
                   current === nextHeight ? current : nextHeight,
                 );
-                if (!autoAlignCurrentVerse) return;
-                scrollCompleteToVerse(
-                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                  false,
-                );
+                const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
               }}
               onLayout={() => {
-                if (!autoAlignCurrentVerse) return;
-                scrollCompleteToVerse(
-                  pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                  false,
-                );
+                const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
               }}
             >
               {completeVerses.map((verse, index) => {
@@ -6910,7 +7088,12 @@ export default function PdfDocumentViewer({
                     }) => {
                       completeVerseYByIdRef.current[verse.id] =
                         event.nativeEvent.layout.y;
-                      if (!autoAlignCurrentVerse) return;
+                      if (
+                        !autoAlignCurrentVerse &&
+                        pendingCompleteScrollVerseIdRef.current !== verse.id
+                      ) {
+                        return;
+                      }
                       if (
                         pendingCompleteScrollVerseIdRef.current === verse.id
                       ) {
@@ -7586,6 +7769,7 @@ export default function PdfDocumentViewer({
     <>
       {suppressInlineReaderSurface ? null : readerContent}
       {nativeFullScreenOverlay}
+      {readerDialogModal}
     </>
   );
 }
@@ -8232,5 +8416,53 @@ const styles = StyleSheet.create({
     color: "#27272a",
     fontSize: 12,
     fontWeight: "800",
+  },
+  readerDialogBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "rgba(17, 24, 39, 0.42)",
+  },
+  readerDialogCard: {
+    width: "100%",
+    maxWidth: 420,
+    padding: 20,
+    borderWidth: 1,
+    borderRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  readerDialogTitle: {
+    marginBottom: 12,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  readerDialogMessage: {
+    marginBottom: 20,
+    textAlign: "center",
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  readerDialogActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  readerDialogButton: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  readerDialogButtonText: {
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

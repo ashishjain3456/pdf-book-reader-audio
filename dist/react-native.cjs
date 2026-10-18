@@ -2644,6 +2644,7 @@ function PdfDocumentViewer({
   externalActiveVerseId = null,
   initialReaderVerseId = null,
   readerTheme,
+  resetConfirmation,
   overlayViewport
 }) {
   const [windowSize, setWindowSize] = react.useState(
@@ -2707,6 +2708,10 @@ function PdfDocumentViewer({
   const [zoomLevel, setZoomLevel] = react.useState(requestedZoomLevel);
   const [showShareOverlay, setShowShareOverlay] = react.useState(false);
   const [showOverlayControls, setShowOverlayControls] = react.useState(false);
+  const [readerDialog, setReaderDialog] = react.useState(
+    null
+  );
+  const readerDialogOkLabel = resetConfirmation?.okLabel || "OK";
   const [viewerReloadKey, setViewerReloadKey] = react.useState(0);
   const [localPdfUrl, setLocalPdfUrl] = react.useState(null);
   const [triedLocalFileFallback, setTriedLocalFileFallback] = react.useState(false);
@@ -2733,7 +2738,9 @@ function PdfDocumentViewer({
   });
   const [activeVerseAudioIndex, setActiveVerseAudioIndex] = react.useState(null);
   const [activeVerseId, setActiveVerseId] = react.useState(null);
-  const [readerVerseId, setReaderVerseId] = react.useState(initialReaderVerseId);
+  const [readerVerseId, setReaderVerseId] = react.useState(
+    initialReaderVerseId
+  );
   const initialReaderVerseIdRef = react.useRef(initialReaderVerseId);
   const initialReaderVerseAppliedRef = react.useRef(false);
   const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = react.useState(null);
@@ -2787,6 +2794,7 @@ function PdfDocumentViewer({
   const fullScreenSwipeStartRef = react.useRef(null);
   const completeScrollRef = react.useRef(null);
   const completeVerseYByIdRef = react.useRef({});
+  const completeScrollOffsetRef = react.useRef(0);
   const pendingCompleteScrollVerseIdRef = react.useRef(null);
   const userDraggingCompleteScrollRef = react.useRef(false);
   const completeRestoreTimerRef = react.useRef(
@@ -3083,7 +3091,7 @@ function PdfDocumentViewer({
             pendingCompleteScrollVerseIdRef.current = verseId;
             return false;
           }
-          const targetOffset = viewerContentTop + y - overlayViewport.top - 12;
+          const targetOffset = viewerContentTop + y - overlayViewport.top;
           overlayViewport.scrollToOffset(
             Math.max(0, targetOffset),
             withAnimation
@@ -3182,6 +3190,33 @@ function PdfDocumentViewer({
     },
     [updateCompleteAnchorFromOffset]
   );
+  react.useEffect(() => {
+    if (!overlayViewport || !useNativeCompleteVerseView || viewerContentTop === null || viewerWrapHeight <= 0) {
+      return;
+    }
+    const updateFromOuterScroll = (outerScrollOffset) => {
+      const viewportTop = outerScrollOffset + overlayViewport.top;
+      const viewportBottom = outerScrollOffset + overlayViewport.bottom;
+      const readerBottom = viewerContentTop + viewerWrapHeight;
+      if (readerBottom <= viewportTop || viewerContentTop >= viewportBottom) {
+        return;
+      }
+      const innerOffset = completeScrollOffsetRef.current;
+      const localOffset = outerScrollOffset + overlayViewport.top - viewerContentTop + innerOffset;
+      updateCompleteAnchorFromOffset(localOffset);
+    };
+    updateFromOuterScroll(overlayViewport.getScrollOffset());
+    const listenerId = overlayViewport.scrollY.addListener(({ value }) => {
+      updateFromOuterScroll(value);
+    });
+    return () => overlayViewport.scrollY.removeListener(listenerId);
+  }, [
+    overlayViewport,
+    updateCompleteAnchorFromOffset,
+    useNativeCompleteVerseView,
+    viewerContentTop,
+    viewerWrapHeight
+  ]);
   const handleCompleteMomentumScrollEnd = react.useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
@@ -3195,7 +3230,8 @@ function PdfDocumentViewer({
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
     setReaderVerseId((current) => {
-      if (current && current === initialReaderVerseIdRef.current) return current;
+      if (current && current === initialReaderVerseIdRef.current)
+        return current;
       if (current && pageVerses?.includes(current)) return current;
       return current === firstVerseId ? current : firstVerseId;
     });
@@ -4334,7 +4370,9 @@ function PdfDocumentViewer({
     if (viewMode === "continuous") {
       pendingCompleteScrollVerseIdRef.current = firstVerseId;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
-      completeScrollRef.current?.scrollTo({ y: 0, animated: true });
+      if (!scrollCompleteToVerse(firstVerseId, true)) {
+        completeScrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
       const script = `
         (function() {
           if (!window.__PDF_READER_BRIDGE__) return;
@@ -4352,7 +4390,13 @@ function PdfDocumentViewer({
       fullScreenWebViewRef.current?.injectJavaScript(script);
     }
     showOverlay();
-  }, [completeVerses, setPageNumber, showOverlay, viewMode]);
+  }, [
+    completeVerses,
+    scrollCompleteToVerse,
+    setPageNumber,
+    showOverlay,
+    viewMode
+  ]);
   const panResponder = react.useMemo(
     () => ReactNative.PanResponder.create({
       onStartShouldSetPanResponderCapture: () => {
@@ -4544,15 +4588,22 @@ ${shareUrl}`;
       telegramUrl
     };
   }, [label, shareMessage, shareUrl]);
-  const openShareUrl = react.useCallback(async (target) => {
-    try {
-      await ExpoLinking__namespace.openURL(target);
-      setShowShareOverlay(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to open share link";
-      ReactNative.Alert.alert("Error", message);
-    }
-  }, []);
+  const openShareUrl = react.useCallback(
+    async (target) => {
+      try {
+        await ExpoLinking__namespace.openURL(target);
+        setShowShareOverlay(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to open share link";
+        setReaderDialog({
+          title: "Error",
+          message,
+          buttons: [{ text: readerDialogOkLabel }]
+        });
+      }
+    },
+    [readerDialogOkLabel]
+  );
   const openWhatsAppShare = react.useCallback(async () => {
     try {
       await ExpoLinking__namespace.openURL(shareLinks.whatsappUrl);
@@ -5035,17 +5086,36 @@ ${shareUrl}`;
     });
     showOverlay();
   }, [allowBookDoubleSpread, pageNumber, setPageNumber, showOverlay]);
-  const confirmGoToFirstPage = react.useCallback(() => {
-    const alertWithButtons = ReactNative.Alert.alert;
-    alertWithButtons(
-      "Restart reading?",
-      "Do you want to go back to the first page?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Reset", style: "destructive", onPress: goToFirstPage }
-      ]
-    );
-  }, [goToFirstPage]);
+  const resetConfirmationTitle = resetConfirmation?.title || "Restart reading?";
+  const resetConfirmationMessage = resetConfirmation?.message || "Do you want to go back to the first page?";
+  const resetConfirmationCancelLabel = resetConfirmation?.cancelLabel || "Cancel";
+  const resetConfirmationConfirmLabel = resetConfirmation?.confirmLabel || "Reset";
+  const confirmGoToFirstPage = react.useCallback(
+    (onReset) => {
+      setReaderDialog({
+        title: resetConfirmationTitle,
+        message: resetConfirmationMessage,
+        buttons: [
+          { text: resetConfirmationCancelLabel, style: "cancel" },
+          {
+            text: resetConfirmationConfirmLabel,
+            style: "destructive",
+            onPress: () => {
+              goToFirstPage();
+              onReset?.();
+            }
+          }
+        ]
+      });
+    },
+    [
+      goToFirstPage,
+      resetConfirmationCancelLabel,
+      resetConfirmationConfirmLabel,
+      resetConfirmationMessage,
+      resetConfirmationTitle
+    ]
+  );
   const nativeFullScreenControls = /* @__PURE__ */ jsxRuntime.jsxs(
     ReactNative.View,
     {
@@ -5212,35 +5282,22 @@ ${shareUrl}`;
               )
             }
           ),
-          viewMode === "book" && allowBookDoubleSpread ? /* @__PURE__ */ jsxRuntime.jsxs(ReactNative.View, { style: styles.overlayBookViewControls, children: [
-            /* @__PURE__ */ jsxRuntime.jsx(
-              ReactNative.Pressable,
-              {
-                onPress: toggleBookSpreadMode,
-                style: styles.overlayZoomButton,
-                accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
-                children: /* @__PURE__ */ jsxRuntime.jsx(
-                  Ionicons__default.default,
-                  {
-                    name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
-                    size: 20,
-                    color: "#fff"
-                  }
-                )
-              }
-            ),
-            /* @__PURE__ */ jsxRuntime.jsx(
-              ReactNative.Pressable,
-              {
-                onPress: confirmGoToFirstPage,
-                style: styles.overlayZoomButton,
-                accessibilityRole: "button",
-                accessibilityLabel: "Reset to first page",
-                testID: "reader-reset-to-first-page",
-                children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons__default.default, { name: "refresh-outline", size: 20, color: "#fff" })
-              }
-            )
-          ] }) : null,
+          viewMode === "book" && allowBookDoubleSpread ? /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.overlayBookViewControls, children: /* @__PURE__ */ jsxRuntime.jsx(
+            ReactNative.Pressable,
+            {
+              onPress: toggleBookSpreadMode,
+              style: styles.overlayZoomButton,
+              accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
+              children: /* @__PURE__ */ jsxRuntime.jsx(
+                Ionicons__default.default,
+                {
+                  name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
+                  size: 20,
+                  color: "#fff"
+                }
+              )
+            }
+          ) }) : null,
           externalVerseAudioState?.audioAssetUrl && onExternalAudioToggle ? /* @__PURE__ */ jsxRuntime.jsx(
             ReactNative.Pressable,
             {
@@ -5441,6 +5498,7 @@ ${shareUrl}`;
                 onScrollEndDrag: handleCompleteScrollEndDrag,
                 onMomentumScrollEnd: handleCompleteMomentumScrollEnd,
                 onScroll: (event) => {
+                  completeScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
                   if (!userDraggingCompleteScrollRef.current) {
                     if (pendingCompleteScrollVerseIdRef.current) return;
                     if (Date.now() < completeRestoreGuardUntilRef.current)
@@ -5451,18 +5509,14 @@ ${shareUrl}`;
                   );
                 },
                 onContentSizeChange: () => {
-                  if (!autoAlignCurrentVerse) return;
-                  scrollCompleteToVerse(
-                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                    false
-                  );
+                  const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                  if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                  scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                 },
                 onLayout: () => {
-                  if (!autoAlignCurrentVerse) return;
-                  scrollCompleteToVerse(
-                    pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                    false
-                  );
+                  const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                  if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                  scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                 },
                 children: completeVerses.map((verse, index) => {
                   const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
@@ -5472,7 +5526,9 @@ ${shareUrl}`;
                     {
                       onLayout: (event) => {
                         completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
-                        if (!autoAlignCurrentVerse) return;
+                        if (!autoAlignCurrentVerse && pendingCompleteScrollVerseIdRef.current !== verse.id) {
+                          return;
+                        }
                         if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                           setTimeout(() => {
                             scrollCompleteToVerse(verse.id, false);
@@ -5536,6 +5592,86 @@ ${shareUrl}`;
       )
     }
   ) }) : null;
+  const readerDialogModal = /* @__PURE__ */ jsxRuntime.jsx(
+    NativeModal,
+    {
+      visible: Boolean(readerDialog),
+      transparent: true,
+      animationType: "fade",
+      onRequestClose: () => setReaderDialog(null),
+      statusBarTranslucent: true,
+      children: /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.readerDialogBackdrop, children: /* @__PURE__ */ jsxRuntime.jsxs(
+        ReactNative.View,
+        {
+          accessibilityViewIsModal: true,
+          testID: "reader-dialog",
+          style: [
+            styles.readerDialogCard,
+            {
+              borderColor: resolvedReaderTheme.border,
+              backgroundColor: resolvedReaderTheme.surface,
+              shadowColor: resolvedReaderTheme.shadow
+            }
+          ],
+          children: [
+            /* @__PURE__ */ jsxRuntime.jsx(
+              ReactNative.Text,
+              {
+                style: [
+                  styles.readerDialogTitle,
+                  { color: resolvedReaderTheme.accentRed }
+                ],
+                children: readerDialog?.title
+              }
+            ),
+            readerDialog?.message ? /* @__PURE__ */ jsxRuntime.jsx(
+              ReactNative.Text,
+              {
+                style: [
+                  styles.readerDialogMessage,
+                  { color: resolvedReaderTheme.text }
+                ],
+                children: readerDialog.message
+              }
+            ) : null,
+            /* @__PURE__ */ jsxRuntime.jsx(ReactNative.View, { style: styles.readerDialogActions, children: readerDialog?.buttons.map((button, index) => {
+              const isCancel = button.style === "cancel";
+              return /* @__PURE__ */ jsxRuntime.jsx(
+                ReactNative.Pressable,
+                {
+                  accessibilityRole: "button",
+                  onPress: () => {
+                    setReaderDialog(null);
+                    button.onPress?.();
+                  },
+                  style: [
+                    styles.readerDialogButton,
+                    {
+                      borderColor: isCancel ? resolvedReaderTheme.accent : resolvedReaderTheme.accent,
+                      backgroundColor: isCancel ? resolvedReaderTheme.page : resolvedReaderTheme.accentRed
+                    }
+                  ],
+                  children: /* @__PURE__ */ jsxRuntime.jsx(
+                    ReactNative.Text,
+                    {
+                      style: [
+                        styles.readerDialogButtonText,
+                        {
+                          color: isCancel ? resolvedReaderTheme.accentRed : "#fff"
+                        }
+                      ],
+                      children: button.text
+                    }
+                  )
+                },
+                `${button.text}-${index}`
+              );
+            }) })
+          ]
+        }
+      ) })
+    }
+  );
   const readerContent = /* @__PURE__ */ jsxRuntime.jsxs(
     ReactNative.View,
     {
@@ -5579,6 +5715,7 @@ ${shareUrl}`;
                 zoomOut: () => contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
                 previousPage: goToPreviousPage,
                 nextPage: goToNextPage,
+                resetToFirstPage: confirmGoToFirstPage,
                 toggleFullScreen: toggleVerseFullScreenFromActions,
                 canZoomIn: !zoomInDisabled,
                 canZoomOut: !zoomOutDisabled,
@@ -5961,6 +6098,7 @@ ${shareUrl}`;
                   onScrollEndDrag: handleCompleteScrollEndDrag,
                   onMomentumScrollEnd: handleCompleteMomentumScrollEnd,
                   onScroll: (event) => {
+                    completeScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
                     if (!userDraggingCompleteScrollRef.current) {
                       if (pendingCompleteScrollVerseIdRef.current) return;
                       if (Date.now() < completeRestoreGuardUntilRef.current) return;
@@ -5974,18 +6112,14 @@ ${shareUrl}`;
                     setEmbeddedContinuousContentHeight(
                       (current) => current === nextHeight ? current : nextHeight
                     );
-                    if (!autoAlignCurrentVerse) return;
-                    scrollCompleteToVerse(
-                      pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                      false
-                    );
+                    const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                    if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                    scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                   },
                   onLayout: () => {
-                    if (!autoAlignCurrentVerse) return;
-                    scrollCompleteToVerse(
-                      pendingCompleteScrollVerseIdRef.current || readerVerseId,
-                      false
-                    );
+                    const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
+                    if (!autoAlignCurrentVerse && !pendingVerseId) return;
+                    scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
                   },
                   children: completeVerses.map((verse, index) => {
                     const isActive = highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
@@ -5995,7 +6129,9 @@ ${shareUrl}`;
                       {
                         onLayout: (event) => {
                           completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
-                          if (!autoAlignCurrentVerse) return;
+                          if (!autoAlignCurrentVerse && pendingCompleteScrollVerseIdRef.current !== verse.id) {
+                            return;
+                          }
                           if (pendingCompleteScrollVerseIdRef.current === verse.id) {
                             setTimeout(() => {
                               scrollCompleteToVerse(verse.id, false);
@@ -6582,7 +6718,8 @@ ${shareUrl}`;
   );
   return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
     suppressInlineReaderSurface ? null : readerContent,
-    nativeFullScreenOverlay
+    nativeFullScreenOverlay,
+    readerDialogModal
   ] });
 }
 var styles = ReactNative.StyleSheet.create({
@@ -7227,6 +7364,54 @@ var styles = ReactNative.StyleSheet.create({
     color: "#27272a",
     fontSize: 12,
     fontWeight: "800"
+  },
+  readerDialogBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "rgba(17, 24, 39, 0.42)"
+  },
+  readerDialogCard: {
+    width: "100%",
+    maxWidth: 420,
+    padding: 20,
+    borderWidth: 1,
+    borderRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12
+  },
+  readerDialogTitle: {
+    marginBottom: 12,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "800"
+  },
+  readerDialogMessage: {
+    marginBottom: 20,
+    textAlign: "center",
+    fontSize: 15,
+    lineHeight: 22
+  },
+  readerDialogActions: {
+    flexDirection: "row",
+    gap: 10
+  },
+  readerDialogButton: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 12
+  },
+  readerDialogButtonText: {
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: "700"
   }
 });
 
