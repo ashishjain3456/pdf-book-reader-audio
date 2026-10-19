@@ -1,5 +1,24 @@
 import type { PageAudioMapping } from '../types/contracts';
 
+export type TimedAudioMapping = {
+  audioAssetUrl: string;
+  segmentStartMs: number;
+  segmentEndMs: number;
+};
+
+export function findTimedAudioMappingIndex<T extends TimedAudioMapping>(
+  mappings: T[],
+  audioAssetUrl: string,
+  currentTimeMs: number
+): number {
+  return mappings.findIndex(
+    (mapping) =>
+      mapping.audioAssetUrl === audioAssetUrl &&
+      currentTimeMs >= mapping.segmentStartMs &&
+      currentTimeMs < mapping.segmentEndMs
+  );
+}
+
 export function mergePageAudioMappings(
   taggedMappings: PageAudioMapping[],
   directMappings: PageAudioMapping[]

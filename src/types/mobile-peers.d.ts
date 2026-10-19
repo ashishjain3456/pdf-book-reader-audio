@@ -62,14 +62,98 @@ declare module "react-native-webview" {
 }
 
 declare module "react-native" {
-  import type { ComponentType } from "react";
+  import type { Component, ComponentType } from "react";
 
-  export const View: ComponentType<Record<string, unknown>>;
+  export type PanResponderGestureState = {
+    dx: number;
+    dy: number;
+    vy: number;
+  };
+
+  export type PanResponderEvent = {
+    nativeEvent: { locationX?: number; [key: string]: unknown };
+  };
+
+  export type PanResponderHandlers = {
+    onStartShouldSetPanResponder?: () => boolean;
+    onStartShouldSetPanResponderCapture?: () => boolean;
+    onMoveShouldSetPanResponderCapture?: (
+      event: PanResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => boolean;
+    onMoveShouldSetPanResponder?: (
+      event: PanResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => boolean;
+    onPanResponderGrant?: (
+      event: PanResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => void;
+    onPanResponderMove?: (
+      event: PanResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => void;
+    onPanResponderRelease?: (
+      event: PanResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => void;
+    onPanResponderTerminationRequest?: () => boolean;
+  };
+
+  export class View extends Component<Record<string, unknown>> {
+    measureInWindow(callback: (x: number, y: number) => void): void;
+  }
   export const Text: ComponentType<Record<string, unknown>>;
   export const Pressable: ComponentType<Record<string, unknown>>;
   export const ActivityIndicator: ComponentType<Record<string, unknown>>;
+  export const Modal: ComponentType<Record<string, unknown>>;
+  export class ScrollView extends Component<Record<string, unknown>> {
+    scrollTo(options: { x?: number; y?: number; animated?: boolean }): void;
+  }
+  export const Animated: {
+    View: ComponentType<Record<string, unknown>>;
+    Value: new (value: number) => {
+      setValue: (value: number) => void;
+      stopAnimation: () => void;
+      interpolate: (config: {
+        inputRange: number[];
+        outputRange: (number | string)[];
+      }) => object;
+    };
+    timing: (
+      value: InstanceType<typeof Animated.Value>,
+      config: {
+        toValue: number;
+        duration: number;
+        easing: (value: number) => number;
+        useNativeDriver: boolean;
+      },
+    ) => {
+      start: (callback: (result: { finished: boolean }) => void) => void;
+      stop: () => void;
+    };
+  };
+  export const Easing: {
+    cubic: (value: number) => number;
+    inOut: (easing: (value: number) => number) => (value: number) => number;
+  };
+  export const Dimensions: {
+    get: (dimension: "window" | "screen") => {
+      width: number;
+      height: number;
+      scale: number;
+      fontScale: number;
+    };
+    addEventListener: (
+      event: "change",
+      listener: (metrics: {
+        window: { width: number; height: number; scale: number; fontScale: number };
+        screen: { width: number; height: number; scale: number; fontScale: number };
+      }) => void,
+    ) => { remove: () => void };
+  };
   export const PanResponder: {
-    create: (handlers: any) => {
+    create: (handlers: PanResponderHandlers) => {
       panHandlers: Record<string, unknown>;
     };
   };

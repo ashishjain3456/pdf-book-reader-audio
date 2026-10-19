@@ -1,7 +1,27 @@
-import * as react_jsx_runtime from 'react/jsx-runtime';
+import * as react from 'react';
+import { ReactNode } from 'react';
+import * as react_native from 'react-native';
 import { V as VerseAudioMapping } from './contracts-UxLvblLy.cjs';
 
-type ReaderViewMode = "book" | "continuous";
+type ReaderViewMode = 'book' | 'continuous';
+type ReaderAnimatedValue = ReturnType<InstanceType<typeof react_native.Animated.Value>['interpolate']>;
+type ReaderOverlayViewport = {
+    top: number;
+    bottom: number;
+    scrollY: {
+        addListener: (callback: (state: {
+            value: number;
+        }) => void) => string;
+        removeListener: (id: string) => void;
+        interpolate: (config: {
+            inputRange: number[];
+            outputRange: number[];
+            extrapolate: 'clamp';
+        }) => ReaderAnimatedValue;
+    };
+    getScrollOffset: () => number;
+    scrollToOffset: (offset: number, animated?: boolean) => void;
+};
 type ReaderState = {
     currentPage: number;
     pageCount: number;
@@ -59,8 +79,41 @@ type ReaderTheme = {
     accentIndigo?: string;
     preserveInlineColors?: boolean;
 };
+type ReaderVerse = {
+    id: string | number;
+    label?: string | null;
+    content: string;
+    styleKey?: string | null;
+    groupId?: string | number | null;
+    groupLabel?: string | null;
+};
+type VerseLayoutConfig = {
+    maxVersesPerPage?: number;
+    pagePaddingPx?: number;
+    maxViewportUsage?: number;
+    fullScreen?: boolean;
+    minFontSizePx?: number;
+    defaultFontSizePx?: number;
+    maxFontSizePx?: number;
+    bookSpreadMode?: 'single' | 'double';
+    enablePageTurnEffect?: boolean;
+    showSecondPage?: boolean;
+    allowDoubleSpread?: boolean;
+    autoAlignCurrentVerse?: boolean;
+    highlightCurrentVerse?: boolean;
+    reserveControlsSpace?: boolean;
+    centerSinglePage?: boolean;
+    showPageBadge?: boolean;
+    viewportWidthPx?: number;
+    viewportHeightPx?: number;
+    readerHeightPx?: number;
+};
 type PdfDocumentViewerProps = {
     pdfUrl?: string;
+    /** Override the default WebView PDF.js script URL; configure it with its matching worker. */
+    pdfJsScriptUrl?: string;
+    /** Override the PDF.js worker URL; configure both URLs for self-hosted/offline use. */
+    pdfJsWorkerUrl?: string;
     downloadUrl?: string;
     enableLocalFallback?: boolean;
     title?: string;
@@ -79,11 +132,11 @@ type PdfDocumentViewerProps = {
         message: string;
         code?: string;
     }) => void;
-    mode?: "auto" | "pdf" | "verse";
+    mode?: 'auto' | 'pdf' | 'verse';
     verses?: ReaderVerse[];
     verseAudioMappings?: VerseAudioMapping[];
     verseLayout?: VerseLayoutConfig;
-    renderRightActions?: (context: ReaderActionsContext) => React.ReactNode;
+    renderRightActions?: (context: ReaderActionsContext) => ReactNode;
     onFullScreenChange?: (isFullScreen: boolean) => void;
     hideControls?: boolean;
     hidePageNavigationControls?: boolean;
@@ -95,53 +148,9 @@ type PdfDocumentViewerProps = {
     initialReaderVerseId?: string | null;
     readerTheme?: ReaderTheme;
     resetConfirmation?: ReaderResetConfirmation;
-    overlayViewport?: {
-        top: number;
-        bottom: number;
-        scrollY: {
-            addListener: (callback: (state: {
-                value: number;
-            }) => void) => string;
-            removeListener: (id: string) => void;
-            interpolate: (config: {
-                inputRange: number[];
-                outputRange: number[];
-                extrapolate: "clamp";
-            }) => unknown;
-        };
-        getScrollOffset: () => number;
-        scrollToOffset: (offset: number, animated?: boolean) => void;
-    };
+    overlayViewport?: ReaderOverlayViewport;
 };
-type ReaderVerse = {
-    id: string | number;
-    label?: string | null;
-    content: string;
-    styleKey?: string | null;
-    groupId?: string | number | null;
-    groupLabel?: string | null;
-};
-type VerseLayoutConfig = {
-    maxVersesPerPage?: number;
-    pagePaddingPx?: number;
-    maxViewportUsage?: number;
-    fullScreen?: boolean;
-    minFontSizePx?: number;
-    defaultFontSizePx?: number;
-    maxFontSizePx?: number;
-    bookSpreadMode?: "single" | "double";
-    enablePageTurnEffect?: boolean;
-    showSecondPage?: boolean;
-    allowDoubleSpread?: boolean;
-    autoAlignCurrentVerse?: boolean;
-    highlightCurrentVerse?: boolean;
-    reserveControlsSpace?: boolean;
-    centerSinglePage?: boolean;
-    showPageBadge?: boolean;
-    viewportWidthPx?: number;
-    viewportHeightPx?: number;
-    readerHeightPx?: number;
-};
-declare function PdfDocumentViewer({ pdfUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, onExternalAudioToggle, externalActiveVerseId, initialReaderVerseId, readerTheme, resetConfirmation, overlayViewport, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
 
-export { PdfDocumentViewer, type PdfDocumentViewerProps, type ReaderActionsContext, type ReaderResetConfirmation, type ReaderState, type ReaderVerse, type ReaderViewMode, VerseAudioMapping, type VerseLayoutConfig };
+declare function PdfDocumentViewer({ pdfUrl, pdfJsScriptUrl, pdfJsWorkerUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, onExternalAudioToggle, externalActiveVerseId, initialReaderVerseId, readerTheme, resetConfirmation, overlayViewport, }: PdfDocumentViewerProps): react.JSX.Element;
+
+export { type ExternalVerseAudioState, PdfDocumentViewer, type PdfDocumentViewerProps, type ReaderActionsContext, type ReaderResetConfirmation, type ReaderState, type ReaderTheme, type ReaderVerse, type ReaderViewMode, VerseAudioMapping, type VerseLayoutConfig };

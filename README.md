@@ -1,76 +1,101 @@
-# pdf-book-reader
+# react-audio-book-reader
 
-Publishable PDF reader plugin scaffold with:
-- Deep-link page support (`?page=12`)
-- Last-read page persistence
-- Per-page audio mapping model (segment support)
-- React bindings for web/mobile wrappers
+Cross-platform PDF and verse reader bindings with page navigation, deep links, persistence, and mapped audio support.
 
-## Install (local while developing)
+## Demo
+
+The standalone browser demo lives in [`demo/`](demo/). Load a PDF and audio file by URL, edit text blocks, set each block's start and end from the audio playhead, and preview the mapped segment. Text highlights follow the audio time ranges.
 
 ```bash
-cd plugins/pdf-book-reader-audio
 npm install
 npm run build
+npm --prefix demo install
+npm --prefix demo run dev
 ```
 
-In consuming app (`web` for example):
+The demo bundles a short original PDF as its initial example. You can replace it and load any directly accessible PDF or audio URL. Remote PDFs need to allow CORS access from the demo's origin.
+
+Build the static demo with:
 
 ```bash
-npm install ../plugins/pdf-book-reader-audio
+npm --prefix demo run build
 ```
 
-## API Surface (current scaffold)
+The output is written to `demo/dist`. `vite.config.ts` sets the repository path when `GITHUB_ACTIONS` is present. GitHub Pages can serve this output. GitHub only discovers deployment workflows from the repository-root `.github/workflows/` directory, so automatic deployment must be enabled there; this plugin-scoped change does not add a root workflow.
 
-- Core exports:
-  - `parsePageFromUrl`
-  - `buildPageUrl`
-  - `createStorageKey`
-  - `mergePageAudioMappings`
-  - `getMappingsForPage`
-- React exports:
-  - `useReaderPageState`
+## Install
 
-## Native Viewer: Verse Mode
+```bash
+npm install react-audio-book-reader
+```
 
-`PdfDocumentViewer` now supports grouped verse content rendering in addition to PDF URLs.
+The package has separate platform entry points:
+
+```tsx
+// Web
+import { PdfDocumentViewer } from "react-audio-book-reader/react/web";
+
+// Expo / React Native
+import { PdfDocumentViewer } from "react-audio-book-reader/react/native";
+```
+
+The native entry requires `react-native`, `react-native-webview`, `expo-audio`, `expo-file-system`, `expo-linking`, and `@expo/vector-icons`; these are required peer dependencies so a missing native runtime is reported during installation. `@dr.pogodin/react-native-static-server` is optional and only needed for local fallback serving. The web entry uses React and `pdfjs-dist`.
+
+The native WebView loads PDF.js 4.10.38 from cdnjs by default. For restricted networks or offline deployments, pass `pdfJsScriptUrl` and `pdfJsWorkerUrl` to the native viewer with matching self-hosted PDF.js 4.x assets. Keep the script and worker versions identical.
+
+## Core API
+
+The root entry exports page URL and storage-key helpers, page/audio mapping helpers, and shared contracts. The React entry exports `useReaderPageState`. Platform-specific viewer props and types are exported from their matching platform subpaths.
+
+## Verse mode (native)
 
 ```tsx
 <PdfDocumentViewer
   mode="verse"
-  documentId="post-42-verses"
-  title="Shastra Verses"
+  documentId="book-42-verses"
+  title="Sample Verses"
+  currentPage={1}
+  viewMode="book"
+  zoomLevel={1}
   verses={[
-    { id: '1-1', label: 'Verse 1', content: '...', styleKey: 'classic', groupLabel: 'Group 1' },
-    { id: '1-2', label: 'Verse 2', content: '...', styleKey: 'aarti', groupLabel: 'Group 1' },
+    {
+      id: "1-1",
+      label: "Verse 1",
+      content: "An example passage.",
+      styleKey: "classic",
+    },
+    {
+      id: "1-2",
+      label: "Verse 2",
+      content: "Another example passage.",
+      styleKey: "aarti",
+    },
   ]}
-  verseLayout={{
-    maxVersesPerPage: 4,
-    pagePaddingPx: 18,
-    maxViewportUsage: 0.8,
-  }}
+  onStateChange={(state) => console.log(state)}
 />
 ```
 
-Notes:
-- `mode="auto"` (default) selects verse mode when `verses` are passed, otherwise PDF mode.
-- Pagination is calculated from viewport height and layout config, so each page may contain one or many verses.
-- Existing PDF behavior (`url`, `downloadUrl`) remains unchanged.
-- In verse mode, in-view controls allow adjusting font size (`A-` / `A+`) and line height (`L-` / `L+`), with `Reset` to restore defaults.
+Pagination uses the viewport and `verseLayout` configuration. Verse audio mappings can associate timed audio segments with verses. `readerTheme` customizes the native reader palette.
 
-## What to implement next
-
-1. Web renderer adapter (PDF.js pages + optional page-flip animation)
-2. Mobile renderer adapter (paged FlatList / pager-view)
-3. Shared audio controller bound to page mappings
-4. Admin mapping schema + API for page/audio relations
-
-## Versioning + publish
-
-- Use semantic versioning.
-- Ensure `dist` is built before publish.
+## Development
 
 ```bash
+npm install
+npm test
+npm run typecheck
 npm run build
-npm publish --access public
+npm --prefix demo install
+npm --prefix demo run typecheck
+npm --prefix demo run build
 ```
+
+The source is organized by platform and responsibility. `src/core` contains
+framework-independent mapping helpers. `src/react/web` owns the browser PDF
+viewer. `src/react/native` contains the native UI, with playback, external
+audio synchronization, continuous scrolling, and local PDF fallback behavior
+isolated in hooks. The native PDF and verse WebView documents are generated
+from separate modules.
+
+## Publishing
+
+Before publishing, verify the npm name is available to your account and check trademark clearance for the markets where you plan to distribute. Inspect the packed files with `npm pack --dry-run`; publish only an intentional release using semantic versioning.

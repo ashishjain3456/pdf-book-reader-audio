@@ -1,0 +1,22 @@
+{
+  "name": "react-audio-book-reader-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "pdfjs-dist": "^4.10.38",
+    "react-audio-book-reader": "file:.."
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "typescript": "^5.6.3"
+  }
+}

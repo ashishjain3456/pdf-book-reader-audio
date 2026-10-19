@@ -9,15 +9,28 @@ function parsePageFromUrl(input, fallback = 1) {
   try {
     const url = new URL(input);
     const pageFromQuery = Number(url.searchParams.get("page"));
-    if (Number.isInteger(pageFromQuery) && pageFromQuery > 0) return pageFromQuery;
+    if (Number.isInteger(pageFromQuery) && pageFromQuery > 0)
+      return pageFromQuery;
     const hash = url.hash.replace(/^#/, "");
     const hashMatch = hash.match(/(?:^|&)p=(\d+)(?:&|$)/);
     if (hashMatch?.[1]) {
       const pageFromHash = Number(hashMatch[1]);
-      if (Number.isInteger(pageFromHash) && pageFromHash > 0) return pageFromHash;
+      if (Number.isInteger(pageFromHash) && pageFromHash > 0)
+        return pageFromHash;
     }
   } catch {
     return fallback;
+  }
+  return fallback;
+}
+function resolveInitialPage(initialUrl, persistedPage, fallback = 1) {
+  if (initialUrl) {
+    const pageFromUrl = parsePageFromUrl(initialUrl, 0);
+    if (pageFromUrl > 0) return pageFromUrl;
+  }
+  const pageFromStorage = Number(persistedPage);
+  if (Number.isInteger(pageFromStorage) && pageFromStorage > 0) {
+    return pageFromStorage;
   }
   return fallback;
 }
@@ -39,12 +52,9 @@ function useReaderPageState({
     let active = true;
     setHydrated(false);
     const hydrate = async () => {
-      const fromUrl = initialUrl ? parsePageFromUrl(initialUrl, initialPage) : initialPage;
       const persisted = await persistAdapter.get(storageKey);
-      const persistedPage = Number(persisted);
-      const fromStorage = Number.isInteger(persistedPage) && persistedPage > 0 ? persistedPage : null;
       if (!active) return;
-      setPageNumber(fromStorage ?? fromUrl);
+      setPageNumber(resolveInitialPage(initialUrl, persisted, initialPage));
       setHydrated(true);
     };
     void hydrate();

@@ -5,15 +5,28 @@ function parsePageFromUrl(input, fallback = 1) {
   try {
     const url = new URL(input);
     const pageFromQuery = Number(url.searchParams.get("page"));
-    if (Number.isInteger(pageFromQuery) && pageFromQuery > 0) return pageFromQuery;
+    if (Number.isInteger(pageFromQuery) && pageFromQuery > 0)
+      return pageFromQuery;
     const hash = url.hash.replace(/^#/, "");
     const hashMatch = hash.match(/(?:^|&)p=(\d+)(?:&|$)/);
     if (hashMatch?.[1]) {
       const pageFromHash = Number(hashMatch[1]);
-      if (Number.isInteger(pageFromHash) && pageFromHash > 0) return pageFromHash;
+      if (Number.isInteger(pageFromHash) && pageFromHash > 0)
+        return pageFromHash;
     }
   } catch {
     return fallback;
+  }
+  return fallback;
+}
+function resolveInitialPage(initialUrl, persistedPage, fallback = 1) {
+  if (initialUrl) {
+    const pageFromUrl = parsePageFromUrl(initialUrl, 0);
+    if (pageFromUrl > 0) return pageFromUrl;
+  }
+  const pageFromStorage = Number(persistedPage);
+  if (Number.isInteger(pageFromStorage) && pageFromStorage > 0) {
+    return pageFromStorage;
   }
   return fallback;
 }
@@ -28,6 +41,11 @@ function createStorageKey(documentId) {
 }
 
 // src/core/pageAudioMapping.ts
+function findTimedAudioMappingIndex(mappings, audioAssetUrl, currentTimeMs) {
+  return mappings.findIndex(
+    (mapping) => mapping.audioAssetUrl === audioAssetUrl && currentTimeMs >= mapping.segmentStartMs && currentTimeMs < mapping.segmentEndMs
+  );
+}
 function mergePageAudioMappings(taggedMappings, directMappings) {
   const merged = /* @__PURE__ */ new Map();
   [...taggedMappings, ...directMappings].forEach((mapping) => {
@@ -45,8 +63,10 @@ function getMappingsForPage(mappings, pageNumber) {
 
 exports.buildPageUrl = buildPageUrl;
 exports.createStorageKey = createStorageKey;
+exports.findTimedAudioMappingIndex = findTimedAudioMappingIndex;
 exports.getMappingsForPage = getMappingsForPage;
 exports.mergePageAudioMappings = mergePageAudioMappings;
 exports.parsePageFromUrl = parsePageFromUrl;
+exports.resolveInitialPage = resolveInitialPage;
 //# sourceMappingURL=index.cjs.map
 //# sourceMappingURL=index.cjs.map

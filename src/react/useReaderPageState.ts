@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createStorageKey, parsePageFromUrl } from '../core/pageLinking';
-import type { ReaderPersistAdapter } from '../types/contracts';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createStorageKey, resolveInitialPage } from "../core/pageLinking";
+import type { ReaderPersistAdapter } from "../types/contracts";
 
 type Options = {
   documentId: string;
@@ -24,13 +24,10 @@ export function useReaderPageState({
     setHydrated(false);
 
     const hydrate = async () => {
-      const fromUrl = initialUrl ? parsePageFromUrl(initialUrl, initialPage) : initialPage;
       const persisted = await persistAdapter.get(storageKey);
-      const persistedPage = Number(persisted);
-      const fromStorage = Number.isInteger(persistedPage) && persistedPage > 0 ? persistedPage : null;
 
       if (!active) return;
-      setPageNumber(fromStorage ?? fromUrl);
+      setPageNumber(resolveInitialPage(initialUrl, persisted, initialPage));
       setHydrated(true);
     };
 
@@ -49,7 +46,7 @@ export function useReaderPageState({
         await persistAdapter.set(storageKey, String(safePage));
       }
     },
-    [hydrated, persistAdapter, storageKey]
+    [hydrated, persistAdapter, storageKey],
   );
 
   return {

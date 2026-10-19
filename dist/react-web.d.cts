@@ -1,4 +1,4 @@
-import * as react_jsx_runtime from 'react/jsx-runtime';
+import * as react from 'react';
 
 interface PdfDocumentViewerProps {
     url: string;
@@ -6,7 +6,10 @@ interface PdfDocumentViewerProps {
     filename?: string;
     downloadUrl?: string;
     loadingLabel?: string;
+    zoomInLabel?: string;
+    zoomOutLabel?: string;
+    fullScreenLabel?: string;
 }
-declare function PdfDocumentViewer({ url, title, filename, downloadUrl, loadingLabel, }: PdfDocumentViewerProps): react_jsx_runtime.JSX.Element;
+declare function PdfDocumentViewer({ url, title, filename, downloadUrl, loadingLabel, zoomInLabel, zoomOutLabel, fullScreenLabel, }: PdfDocumentViewerProps): react.JSX.Element;
 
 export { PdfDocumentViewer, type PdfDocumentViewerProps };
