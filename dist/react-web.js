@@ -1,25 +1,40 @@
-import { useReaderPageState } from './chunk-C6WXSGWN.js';
-import { buildPageUrl } from './chunk-D5JAEPVI.js';
+import { useReaderPageState } from './chunk-C4RLC2YI.js';
+import { buildPageUrl } from './chunk-MJ2J2J3T.js';
+import { clampPageNumber } from './chunk-JTAVLX62.js';
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
-import { jsxs, jsx } from 'react/jsx-runtime';
+import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 
-// src/react/web/pdfResources.js
-function disposePdfResources(loadingTask, documentProxy) {
-  const resource = loadingTask?.destroy ? loadingTask : documentProxy;
-  if (!resource?.destroy) return Promise.resolve();
-  try {
-    return Promise.resolve(resource.destroy()).then(
-      () => void 0,
-      () => void 0
-    );
-  } catch {
-    return Promise.resolve();
-  }
-}
-function retainNearbyPages(pages, nextPageNumber, neighborRadius = 1) {
-  const byPage = /* @__PURE__ */ new Map();
-  for (const page of pages) byPage.set(page.pageNumber, page);
-  return [...byPage.values()].filter((page) => Math.abs(page.pageNumber - nextPageNumber) <= neighborRadius).sort((left, right) => left.pageNumber - right.pageNumber);
+// src/react/web/constants.ts
+var MIN_WEB_ZOOM_LEVEL = 0.5;
+var MAX_WEB_ZOOM_LEVEL = 2.5;
+var WEB_ZOOM_STEP = 0.1;
+function PdfPageViewport({
+  activePage,
+  currentPage,
+  error,
+  loading,
+  loadingLabel,
+  rendering,
+  title,
+  zoom
+}) {
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    loading ? /* @__PURE__ */ jsx("p", { className: "text-sm text-slate-500", children: loadingLabel ? `Loading ${loadingLabel}...` : "Loading PDF..." }) : null,
+    error ? /* @__PURE__ */ jsx("p", { className: "text-sm text-red-600", children: error }) : null,
+    !loading && !error ? /* @__PURE__ */ jsxs("div", { id: `pdf-page-${activePage}`, className: "min-h-[360px] overflow-auto", children: [
+      currentPage ? /* @__PURE__ */ jsx(
+        "img",
+        {
+          src: currentPage.dataUrl,
+          alt: title ? `${title} page ${activePage}` : `PDF page ${activePage}`,
+          className: "w-full origin-top rounded border bg-white",
+          style: { transform: `scale(${zoom})`, width: `${100 / zoom}%` },
+          loading: "eager"
+        }
+      ) : /* @__PURE__ */ jsx("div", { className: "h-[360px] w-full animate-pulse rounded border bg-slate-50" }),
+      rendering ? /* @__PURE__ */ jsx("p", { className: "mt-2 text-xs text-slate-500", children: "Rendering page..." }) : null
+    ] }) : null
+  ] });
 }
 function PdfReaderToolbar({
   activePage,
@@ -102,8 +117,8 @@ function PdfReaderToolbar({
         "button",
         {
           type: "button",
-          onClick: () => onChangeZoom(-0.1),
-          disabled: zoom <= 0.5,
+          onClick: () => onChangeZoom(-WEB_ZOOM_STEP),
+          disabled: zoom <= MIN_WEB_ZOOM_LEVEL,
           className: "rounded border px-2 py-1 text-xs font-medium disabled:opacity-50",
           "aria-label": zoomOutLabel,
           children: "\u2212"
@@ -117,8 +132,8 @@ function PdfReaderToolbar({
         "button",
         {
           type: "button",
-          onClick: () => onChangeZoom(0.1),
-          disabled: zoom >= 2.5,
+          onClick: () => onChangeZoom(WEB_ZOOM_STEP),
+          disabled: zoom >= MAX_WEB_ZOOM_LEVEL,
           className: "rounded border px-2 py-1 text-xs font-medium disabled:opacity-50",
           "aria-label": zoomInLabel,
           children: "+"
@@ -155,6 +170,265 @@ function PdfReaderToolbar({
     /* @__PURE__ */ jsx("p", { className: "text-xs text-slate-500", children: "Shortcuts: Left/Right, PageUp/PageDown, Home/End" })
   ] });
 }
+function usePdfContainerWidth(containerRef) {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const updateWidth = () => setWidth(container.clientWidth || 0);
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [containerRef]);
+  return width;
+}
+
+// src/react/web/pdfResources.js
+function disposePdfResources(loadingTask, documentProxy) {
+  const resource = loadingTask?.destroy ? loadingTask : documentProxy;
+  if (!resource?.destroy) return Promise.resolve();
+  try {
+    return Promise.resolve(resource.destroy()).then(
+      () => void 0,
+      () => void 0
+    );
+  } catch {
+    return Promise.resolve();
+  }
+}
+function retainNearbyPages(pages, nextPageNumber, neighborRadius = 1) {
+  const byPage = /* @__PURE__ */ new Map();
+  for (const page of pages) byPage.set(page.pageNumber, page);
+  return [...byPage.values()].filter((page) => Math.abs(page.pageNumber - nextPageNumber) <= neighborRadius).sort((left, right) => left.pageNumber - right.pageNumber);
+}
+
+// src/react/web/usePdfDocument.ts
+function usePdfDocument(pdfJs, url) {
+  const [document2, setDocument] = useState(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const documentRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    let loadingTask = null;
+    const previousDocument = documentRef.current;
+    documentRef.current = null;
+    setDocument(null);
+    setPageCount(0);
+    setError("");
+    if (!pdfJs || !url) {
+      setLoading(false);
+      void disposePdfResources(null, previousDocument);
+      return;
+    }
+    setLoading(true);
+    void disposePdfResources(null, previousDocument);
+    const loadDocument = async () => {
+      try {
+        loadingTask = pdfJs.getDocument({
+          url,
+          disableAutoFetch: true,
+          disableRange: false,
+          disableStream: false
+        });
+        const loadedDocument = await loadingTask.promise;
+        if (cancelled) {
+          if (!loadingTask.destroy) {
+            await disposePdfResources(null, loadedDocument);
+          }
+          return;
+        }
+        documentRef.current = loadedDocument;
+        setDocument(loadedDocument);
+        setPageCount(loadedDocument.numPages);
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error ? loadError.message : "Failed to load PDF."
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void loadDocument();
+    return () => {
+      cancelled = true;
+      const currentDocument = documentRef.current;
+      void disposePdfResources(loadingTask, currentDocument);
+      if (documentRef.current === currentDocument) documentRef.current = null;
+    };
+  }, [pdfJs, url]);
+  return { document: document2, error, loading, pageCount };
+}
+function usePdfJs() {
+  const [state, setState] = useState({
+    api: null,
+    error: "",
+    loading: true
+  });
+  useEffect(() => {
+    let active = true;
+    const loadPdfJs = async () => {
+      try {
+        const api = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        api.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${api.version}/legacy/build/pdf.worker.min.mjs`;
+        if (active) setState({ api, error: "", loading: false });
+      } catch (error) {
+        if (!active) return;
+        setState({
+          api: null,
+          error: error instanceof Error ? error.message : "Failed to load PDF renderer.",
+          loading: false
+        });
+      }
+    };
+    void loadPdfJs();
+    return () => {
+      active = false;
+    };
+  }, []);
+  return state;
+}
+function usePdfPageRenderer(pdfDocument, pageNumber, containerWidth) {
+  const [pages, setPages] = useState([]);
+  const [rendering, setRendering] = useState(false);
+  const [error, setError] = useState("");
+  const generationRef = useRef(0);
+  const inFlightPagesRef = useRef(/* @__PURE__ */ new Set());
+  useEffect(() => {
+    generationRef.current += 1;
+    inFlightPagesRef.current.clear();
+    setPages([]);
+    setRendering(false);
+    setError("");
+  }, [pdfDocument]);
+  const renderPage = useCallback(
+    async (nextPageNumber) => {
+      if (!pdfDocument || containerWidth <= 0 || nextPageNumber < 1 || nextPageNumber > pdfDocument.numPages) {
+        return;
+      }
+      const generation = generationRef.current;
+      const requestKey = `${generation}:${nextPageNumber}`;
+      if (inFlightPagesRef.current.has(requestKey)) return;
+      inFlightPagesRef.current.add(requestKey);
+      setRendering(true);
+      try {
+        const page = await pdfDocument.getPage(nextPageNumber);
+        const viewport = page.getViewport({ scale: 1 });
+        const cssScale = containerWidth / viewport.width;
+        const outputScale = Math.max(
+          1,
+          Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, 2)
+        );
+        const scaledViewport = page.getViewport({ scale: cssScale });
+        const renderViewport = page.getViewport({ scale: cssScale * outputScale });
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        canvas.width = Math.floor(renderViewport.width);
+        canvas.height = Math.floor(renderViewport.height);
+        canvas.style.width = `${Math.floor(scaledViewport.width)}px`;
+        canvas.style.height = `${Math.floor(scaledViewport.height)}px`;
+        await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+        if (generation !== generationRef.current) return;
+        const dataUrl = canvas.toDataURL("image/png");
+        setPages(
+          (previousPages) => retainNearbyPages(
+            [...previousPages, { pageNumber: nextPageNumber, dataUrl }],
+            nextPageNumber
+          )
+        );
+        setError("");
+      } catch (renderError) {
+        if (generation === generationRef.current) {
+          setError(
+            renderError instanceof Error ? renderError.message : "Failed to render PDF page."
+          );
+        }
+      } finally {
+        inFlightPagesRef.current.delete(requestKey);
+        if (generation === generationRef.current) {
+          const activePrefix = `${generation}:`;
+          setRendering(
+            [...inFlightPagesRef.current].some((key) => key.startsWith(activePrefix))
+          );
+        }
+      }
+    },
+    [containerWidth, pdfDocument]
+  );
+  useEffect(() => {
+    if (!pdfDocument || containerWidth <= 0) return;
+    void renderPage(pageNumber);
+  }, [containerWidth, pageNumber, pdfDocument, renderPage]);
+  const renderedByPage = new Map(pages.map((page) => [page.pageNumber, page]));
+  return {
+    currentPage: renderedByPage.get(pageNumber),
+    error,
+    rendering
+  };
+}
+function usePdfViewerNavigation({
+  pageCount,
+  pageNumber,
+  setPageNumber
+}) {
+  const [jumpToPageInput, setJumpToPageInput] = useState(String(pageNumber));
+  useEffect(() => {
+    setJumpToPageInput(String(pageNumber));
+  }, [pageNumber]);
+  const navigateToPage = useCallback(
+    (requestedPage) => {
+      if (pageCount <= 0) return;
+      const safePage = clampPageNumber(requestedPage, pageCount);
+      void setPageNumber(safePage);
+      setJumpToPageInput(String(safePage));
+    },
+    [pageCount, setPageNumber]
+  );
+  const handleJumpToPage = useCallback(() => {
+    const parsedPage = Number(jumpToPageInput);
+    if (!Number.isInteger(parsedPage) || parsedPage <= 0) return;
+    navigateToPage(parsedPage);
+  }, [jumpToPageInput, navigateToPage]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleKeyDown = (event) => {
+      const target = event.target;
+      const tagName = target?.tagName || "";
+      const isFormField = tagName === "INPUT" || tagName === "TEXTAREA" || target?.isContentEditable;
+      if (isFormField || pageCount <= 0) return;
+      if (event.key === "ArrowRight" || event.key === "PageDown") {
+        event.preventDefault();
+        navigateToPage(pageNumber + 1);
+      } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        navigateToPage(pageNumber - 1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        navigateToPage(1);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        navigateToPage(pageCount);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [navigateToPage, pageCount, pageNumber]);
+  return {
+    handleJumpToPage,
+    jumpToPageInput,
+    navigateToPage,
+    setJumpToPageInput
+  };
+}
 function PdfDocumentViewer({
   url,
   title,
@@ -166,18 +440,12 @@ function PdfDocumentViewer({
   fullScreenLabel = "Full screen"
 }) {
   const containerRef = useRef(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [pages, setPages] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [renderingPage, setRenderingPage] = useState(false);
-  const [error, setError] = useState("");
-  const [pageCount, setPageCount] = useState(0);
-  const [jumpToPageInput, setJumpToPageInput] = useState("");
+  const copiedLinkTimeoutRef = useRef(null);
   const [copiedPageLink, setCopiedPageLink] = useState(false);
-  const [pdfjs, setPdfjs] = useState(null);
   const [zoom, setZoom] = useState(1);
-  const docRef = useRef(null);
-  const renderQueue = useRef(/* @__PURE__ */ new Set());
+  const containerWidth = usePdfContainerWidth(containerRef);
+  const pdfJs = usePdfJs();
+  const pdfDocument = usePdfDocument(pdfJs.api, url);
   const pagePersistAdapter = useMemo(
     () => ({
       get: (key) => {
@@ -204,184 +472,47 @@ function PdfDocumentViewer({
     initialPage: 1,
     persistAdapter: pagePersistAdapter
   });
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
-      mod.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${mod.version}/legacy/build/pdf.worker.min.mjs`;
-      if (active) setPdfjs(mod);
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const updateWidth = () => {
-      setContainerWidth(container.clientWidth || 0);
-    };
-    updateWidth();
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
+  const activePage = clampPageNumber(pageNumber, pdfDocument.pageCount);
+  const navigation = usePdfViewerNavigation({
+    pageCount: pdfDocument.pageCount,
+    pageNumber: activePage,
+    setPageNumber
+  });
+  const renderedPage = usePdfPageRenderer(
+    pdfDocument.document,
+    activePage,
+    containerWidth
+  );
   const downloadName = filename?.trim() || `${title || "document"}.pdf`;
+  const loading = pdfJs.loading || pdfDocument.loading;
+  const error = pdfJs.error || pdfDocument.error || renderedPage.error;
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!pageNumber || pageNumber < 1) return;
-    const nextUrl = buildPageUrl(window.location.href, pageNumber);
+    if (typeof window === "undefined" || pageNumber < 1) return;
+    const nextUrl = buildPageUrl(window.location.href, activePage);
     window.history.replaceState(window.history.state, "", nextUrl);
-  }, [pageNumber]);
+  }, [activePage, pageNumber]);
   useEffect(() => {
-    setJumpToPageInput(String(pageNumber));
-  }, [pageNumber]);
-  useEffect(() => {
-    let cancelled = false;
-    if (!pdfjs || !url) return;
-    let loadingTask = null;
-    const previousDoc = docRef.current;
-    docRef.current = null;
-    setPageCount(0);
-    setPages([]);
-    void disposePdfResources(null, previousDoc);
-    const loadPdf = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        loadingTask = pdfjs.getDocument({
-          url,
-          disableAutoFetch: true,
-          disableRange: false,
-          disableStream: false
-        });
-        const doc = await loadingTask.promise;
-        if (cancelled) {
-          if (doc.destroy) await doc.destroy();
-          return;
-        }
-        docRef.current = doc;
-        setPageCount(doc.numPages);
-        setPages([]);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load PDF");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-    void loadPdf();
-    return () => {
-      cancelled = true;
-      const doc = docRef.current;
-      void disposePdfResources(loadingTask, doc);
-      if (docRef.current === doc) docRef.current = null;
-    };
-  }, [pdfjs, url]);
-  const renderPage = useCallback(
-    async (nextPageNumber) => {
-      if (renderQueue.current.has(nextPageNumber)) return;
-      const doc = docRef.current;
-      if (!doc || containerWidth <= 0) return;
-      renderQueue.current.add(nextPageNumber);
-      setRenderingPage(true);
-      try {
-        const page = await doc.getPage(nextPageNumber);
-        const viewport = page.getViewport({ scale: 1 });
-        const cssScale = containerWidth / viewport.width;
-        const outputScale = Math.max(
-          1,
-          Math.min(window.devicePixelRatio || 1, 2)
-        );
-        const scaledViewport = page.getViewport({ scale: cssScale });
-        const renderViewport = page.getViewport({
-          scale: cssScale * outputScale
-        });
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        if (!context) return;
-        canvas.width = Math.floor(renderViewport.width);
-        canvas.height = Math.floor(renderViewport.height);
-        canvas.style.width = `${Math.floor(scaledViewport.width)}px`;
-        canvas.style.height = `${Math.floor(scaledViewport.height)}px`;
-        await page.render({ canvasContext: context, viewport: renderViewport }).promise;
-        const dataUrl = canvas.toDataURL("image/png");
-        setPages(
-          (prev) => retainNearbyPages(
-            [...prev, { pageNumber: nextPageNumber, dataUrl }],
-            nextPageNumber
-          )
-        );
-      } catch (renderError) {
-        setError(
-          renderError instanceof Error ? renderError.message : "Failed to render PDF page"
-        );
-      } finally {
-        renderQueue.current.delete(nextPageNumber);
-        setRenderingPage(false);
+    if (pdfDocument.pageCount <= 0 || pageNumber === activePage) return;
+    void setPageNumber(activePage);
+  }, [activePage, pageNumber, pdfDocument.pageCount, setPageNumber]);
+  useEffect(
+    () => () => {
+      if (copiedLinkTimeoutRef.current !== null) {
+        window.clearTimeout(copiedLinkTimeoutRef.current);
       }
     },
-    [containerWidth]
+    []
   );
-  useEffect(() => {
-    if (loading || pageCount <= 0 || !pageNumber) return;
-    const safePage = Math.min(Math.max(1, pageNumber), pageCount);
-    void renderPage(safePage);
-  }, [loading, pageCount, pageNumber, renderPage]);
-  const navigateToPage = useCallback(
-    (requestedPage) => {
-      if (!pageCount) return;
-      const safePage = Math.min(Math.max(1, requestedPage), pageCount);
-      void setPageNumber(safePage);
-      setJumpToPageInput(String(safePage));
-    },
-    [pageCount, setPageNumber]
-  );
-  const handleJumpToPage = useCallback(() => {
-    const parsed = Number(jumpToPageInput);
-    if (!Number.isInteger(parsed) || parsed <= 0) return;
-    navigateToPage(parsed);
-  }, [jumpToPageInput, navigateToPage]);
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      const target = event.target;
-      const tagName = target?.tagName || "";
-      const isFormField = tagName === "INPUT" || tagName === "TEXTAREA" || target?.isContentEditable;
-      if (isFormField || pageCount <= 0) return;
-      if (event.key === "ArrowRight" || event.key === "PageDown") {
-        event.preventDefault();
-        navigateToPage(pageNumber + 1);
-        return;
-      }
-      if (event.key === "ArrowLeft" || event.key === "PageUp") {
-        event.preventDefault();
-        navigateToPage(pageNumber - 1);
-        return;
-      }
-      if (event.key === "Home") {
-        event.preventDefault();
-        navigateToPage(1);
-        return;
-      }
-      if (event.key === "End") {
-        event.preventDefault();
-        navigateToPage(pageCount);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigateToPage, pageCount, pageNumber]);
   const changeZoom = useCallback((delta) => {
     setZoom((current) => {
       const next = Math.min(
-        2.5,
-        Math.max(0.5, Math.round((current + delta) * 10) / 10)
+        MAX_WEB_ZOOM_LEVEL,
+        Math.max(
+          MIN_WEB_ZOOM_LEVEL,
+          Math.round((current + delta) * 10) / 10
+        )
       );
-      if (next === current) return current;
-      return next;
+      return next === current ? current : next;
     });
   }, []);
   const toggleFullscreen = useCallback(async () => {
@@ -394,20 +525,24 @@ function PdfDocumentViewer({
     } catch {
     }
   }, []);
-  const handleCopyPageLink = useCallback(async () => {
-    if (typeof window === "undefined" || !window.navigator?.clipboard) return;
-    const shareUrl = buildPageUrl(window.location.href, pageNumber);
-    await window.navigator.clipboard.writeText(shareUrl);
-    setCopiedPageLink(true);
-    window.setTimeout(() => setCopiedPageLink(false), 1500);
-  }, [pageNumber]);
-  const renderedByPage = useMemo(() => {
-    const map = /* @__PURE__ */ new Map();
-    pages.forEach((page) => map.set(page.pageNumber, page));
-    return map;
-  }, [pages]);
-  const activePage = Math.min(Math.max(1, pageNumber || 1), pageCount || 1);
-  const currentRendered = renderedByPage.get(activePage);
+  const copyPageLink = useCallback(async () => {
+    if (typeof window === "undefined" || !window.navigator.clipboard) return;
+    try {
+      await window.navigator.clipboard.writeText(
+        buildPageUrl(window.location.href, activePage)
+      );
+      setCopiedPageLink(true);
+      if (copiedLinkTimeoutRef.current !== null) {
+        window.clearTimeout(copiedLinkTimeoutRef.current);
+      }
+      copiedLinkTimeoutRef.current = window.setTimeout(
+        () => setCopiedPageLink(false),
+        1500
+      );
+    } catch {
+      setCopiedPageLink(false);
+    }
+  }, [activePage]);
   return /* @__PURE__ */ jsxs("div", { ref: containerRef, className: "space-y-3", children: [
     /* @__PURE__ */ jsx(
       PdfReaderToolbar,
@@ -418,48 +553,33 @@ function PdfDocumentViewer({
         downloadName,
         enableDownloadAttribute: !downloadUrl,
         fullScreenLabel,
-        jumpToPageInput,
+        jumpToPageInput: navigation.jumpToPageInput,
         onChangeZoom: changeZoom,
-        onCopyPageLink: () => void handleCopyPageLink(),
-        onJumpToPage: handleJumpToPage,
-        onNext: () => {
-          if (activePage >= pageCount) return;
-          navigateToPage(activePage + 1);
-        },
-        onPrevious: () => {
-          if (activePage <= 1) return;
-          navigateToPage(activePage - 1);
-        },
+        onCopyPageLink: () => void copyPageLink(),
+        onJumpToPage: navigation.handleJumpToPage,
+        onNext: () => navigation.navigateToPage(activePage + 1),
+        onPrevious: () => navigation.navigateToPage(activePage - 1),
         onToggleFullscreen: () => void toggleFullscreen(),
-        pageCount,
-        setJumpToPageInput,
+        pageCount: pdfDocument.pageCount,
+        setJumpToPageInput: navigation.setJumpToPageInput,
         zoom,
         zoomInLabel,
         zoomOutLabel
       }
     ),
-    loading ? /* @__PURE__ */ jsx("p", { className: "text-sm text-slate-500", children: loadingLabel ? `Loading ${loadingLabel}...` : "Loading PDF..." }) : null,
-    error ? /* @__PURE__ */ jsx("p", { className: "text-sm text-red-600", children: error }) : null,
-    !loading && !error ? /* @__PURE__ */ jsxs(
-      "div",
+    /* @__PURE__ */ jsx(
+      PdfPageViewport,
       {
-        id: `pdf-page-${activePage}`,
-        className: "min-h-[360px] overflow-auto",
-        children: [
-          currentRendered ? /* @__PURE__ */ jsx(
-            "img",
-            {
-              src: currentRendered.dataUrl,
-              alt: title ? `${title} page ${activePage}` : `PDF page ${activePage}`,
-              className: "w-full origin-top rounded border bg-white",
-              style: { transform: `scale(${zoom})`, width: `${100 / zoom}%` },
-              loading: "eager"
-            }
-          ) : /* @__PURE__ */ jsx("div", { className: "h-[360px] w-full rounded border bg-slate-50 animate-pulse" }),
-          renderingPage ? /* @__PURE__ */ jsx("p", { className: "mt-2 text-xs text-slate-500", children: "Rendering page..." }) : null
-        ]
+        activePage,
+        currentPage: renderedPage.currentPage,
+        error,
+        loading,
+        loadingLabel,
+        rendering: renderedPage.rendering,
+        title,
+        zoom
       }
-    ) : null
+    )
   ] });
 }
 

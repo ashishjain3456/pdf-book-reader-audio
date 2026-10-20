@@ -1,3 +1,9 @@
+import {
+  MAX_WEB_ZOOM_LEVEL,
+  MIN_WEB_ZOOM_LEVEL,
+  WEB_ZOOM_STEP,
+} from './constants';
+
 type Props = {
   activePage: number;
   copiedPageLink: boolean;
@@ -89,8 +95,8 @@ export function PdfReaderToolbar({
         </div>
         <button
           type="button"
-          onClick={() => onChangeZoom(-0.1)}
-          disabled={zoom <= 0.5}
+          onClick={() => onChangeZoom(-WEB_ZOOM_STEP)}
+          disabled={zoom <= MIN_WEB_ZOOM_LEVEL}
           className="rounded border px-2 py-1 text-xs font-medium disabled:opacity-50"
           aria-label={zoomOutLabel}
         >
@@ -101,8 +107,8 @@ export function PdfReaderToolbar({
         </span>
         <button
           type="button"
-          onClick={() => onChangeZoom(0.1)}
-          disabled={zoom >= 2.5}
+          onClick={() => onChangeZoom(WEB_ZOOM_STEP)}
+          disabled={zoom >= MAX_WEB_ZOOM_LEVEL}
           className="rounded border px-2 py-1 text-xs font-medium disabled:opacity-50"
           aria-label={zoomInLabel}
         >

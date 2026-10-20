@@ -1,4 +1,5 @@
 import { useCallback, type MutableRefObject } from 'react';
+import { clampPageNumber } from '../../core/readerNavigation.ts';
 import { DEFAULT_ZOOM_LEVEL, MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL } from './constants';
 import { injectReaderBridgeScript } from './readerWebViewBridge';
 import type {
@@ -85,7 +86,7 @@ export function useReaderNavigation(options: Options) {
   const navigateNativeVerseBookPage = useCallback(
     (targetPage: number) => {
       const safePageCount = completeVerses.length || pageCountRef.current || pageCount || 1;
-      const safePage = Math.max(1, Math.min(Math.trunc(targetPage), safePageCount));
+      const safePage = clampPageNumber(targetPage, safePageCount);
       const targetVerse = completeVerses[safePage - 1] || null;
       const targetVerseId = targetVerse?.id == null ? null : String(targetVerse.id);
       pageNumberRef.current = safePage;
@@ -122,11 +123,10 @@ export function useReaderNavigation(options: Options) {
       const currentAnchor =
         activeBookSpreadMode === 'double' && currentPage % 2 === 0 ? currentPage - 1 : currentPage;
       const pageStep = viewMode === 'book' && activeBookSpreadMode === 'double' ? 2 : 1;
-      const targetPage = direction === 'prev'
-        ? Math.max(1, currentAnchor - pageStep)
-        : pageCount
-          ? Math.min(currentAnchor + pageStep, pageCount)
-          : currentAnchor + pageStep;
+      const targetPage = clampPageNumber(
+        direction === 'prev' ? currentAnchor - pageStep : currentAnchor + pageStep,
+        pageCount,
+      );
 
       if (viewMode === 'book') {
         if (useFullScreenBookWebView) requestBookPageChange(direction);
@@ -196,7 +196,7 @@ export function useReaderNavigation(options: Options) {
 
   const syncViewerStateToWebView = useCallback(
     (mode: ReaderViewMode, requestedPage: number, anchorVerseId?: string | null, requestedZoom = zoomLevel) => {
-      const safePage = Math.max(1, requestedPage);
+      const safePage = clampPageNumber(requestedPage, pageCount);
       const safeMode = mode === 'continuous' ? 'continuous' : 'book';
       const safeVerseId = anchorVerseId || '';
       const safeZoom = Math.max(
@@ -212,7 +212,7 @@ export function useReaderNavigation(options: Options) {
         { method: 'setViewMode', args: [safeMode, safePage, safeVerseId, safeZoom] },
       ]);
     },
-    [fullScreenWebViewRef, programmaticViewerSyncRef, suppressCompleteModeSyncRef, webViewRef, zoomLevel]
+    [fullScreenWebViewRef, pageCount, programmaticViewerSyncRef, suppressCompleteModeSyncRef, webViewRef, zoomLevel]
   );
 
   return { goToFirstPage, goToNextPage, goToPreviousPage, syncViewerStateToWebView };

@@ -39,6 +39,30 @@ import { PdfDocumentViewer } from "react-audio-book-reader/react/web";
 import { PdfDocumentViewer } from "react-audio-book-reader/react/native";
 ```
 
+### Web reader
+
+```tsx
+import { PdfDocumentViewer } from "react-audio-book-reader/react/web";
+
+export function BookReader() {
+  return (
+    <PdfDocumentViewer
+      url="https://example.com/book.pdf"
+      title="Sample Book"
+      filename="sample-book.pdf"
+      loadingLabel="book"
+      zoomInLabel="Zoom in"
+      zoomOutLabel="Zoom out"
+      fullScreenLabel="Full screen"
+    />
+  );
+}
+```
+
+The web reader remembers the current page, updates the page query parameter,
+and supports page controls, keyboard navigation, zoom, fullscreen, and page-link
+copying. Remote PDFs need to allow CORS access from the application origin.
+
 The native entry requires `react-native`, `react-native-webview`, `expo-audio`, `expo-file-system`, `expo-linking`, and `@expo/vector-icons`; these are required peer dependencies so a missing native runtime is reported during installation. `@dr.pogodin/react-native-static-server` is optional and only needed for local fallback serving. The web entry uses React and `pdfjs-dist`.
 
 The native WebView loads PDF.js 4.10.38 from cdnjs by default. For restricted networks or offline deployments, pass `pdfJsScriptUrl` and `pdfJsWorkerUrl` to the native viewer with matching self-hosted PDF.js 4.x assets. Keep the script and worker versions identical.
@@ -82,6 +106,7 @@ Pagination uses the viewport and `verseLayout` configuration. Verse audio mappin
 ```bash
 npm install
 npm test
+npm run test:coverage
 npm run typecheck
 npm run build
 npm --prefix demo install
@@ -94,7 +119,8 @@ framework-independent mapping helpers. `src/react/web` owns the browser PDF
 viewer. `src/react/native` contains the native UI, with playback, external
 audio synchronization, continuous scrolling, and local PDF fallback behavior
 isolated in hooks. The native PDF and verse WebView documents are generated
-from separate modules.
+from separate modules. The plugin tests cover core helpers and web reader
+loading, rendering, navigation, and cleanup using a DOM test environment.
 
 ## Publishing
 

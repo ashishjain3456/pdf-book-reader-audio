@@ -1,3 +1,5 @@
+import { clampPageNumber } from './readerNavigation.ts';
+
 export function parsePageFromUrl(input: string, fallback = 1): number {
   try {
     const url = new URL(input);
@@ -42,7 +44,7 @@ export function resolveInitialPage(
 }
 
 export function buildPageUrl(baseUrl: string, pageNumber: number): string {
-  const safePage = Math.max(1, Math.trunc(pageNumber));
+  const safePage = clampPageNumber(pageNumber);
   const url = new URL(baseUrl);
   url.searchParams.set("page", String(safePage));
   return url.toString();

@@ -29,10 +29,12 @@ test("the CommonJS root entry exposes the core reader helpers", () => {
   assert.equal(typeof commonJsApi.parsePageFromUrl, "function");
   assert.equal(typeof commonJsApi.resolveInitialPage, "function");
   assert.equal(typeof commonJsApi.mergePageAudioMappings, "function");
+  assert.equal(typeof commonJsApi.clampPageNumber, "function");
 });
 
 test("the ESM root entry exposes the same core reader helpers", () => {
   assert.equal(typeof esmApi.parsePageFromUrl, "function");
   assert.equal(typeof esmApi.resolveInitialPage, "function");
   assert.equal(typeof esmApi.mergePageAudioMappings, "function");
+  assert.equal(typeof esmApi.clampPageNumber, "function");
 });

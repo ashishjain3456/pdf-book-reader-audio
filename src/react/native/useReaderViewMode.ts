@@ -1,4 +1,5 @@
 import { useCallback, useEffect, type MutableRefObject } from 'react';
+import { clampPageNumber } from '../../core/readerNavigation.ts';
 import { injectReaderBridgeScript } from './readerWebViewBridge';
 import type { ReaderViewMode, ReaderWebViewRef, VerseLayoutConfig } from './types';
 
@@ -83,9 +84,7 @@ export function useReaderViewMode(options: Options) {
       const targetPage =
         pageForAnchor && anchorBelongsToCurrentPage
           ? pageForAnchor
-          : pageCount
-            ? Math.min(Math.max(1, currentPage), pageCount)
-            : Math.max(1, currentPage);
+          : clampPageNumber(currentPage, pageCount);
       const targetVerseId = anchorBelongsToCurrentPage
         ? readerVerseId
         : verseIdsByPage[targetPage]?.[0] ||
@@ -144,7 +143,7 @@ export function useReaderViewMode(options: Options) {
 
   useEffect(() => {
     if (!viewerReady || loadingError) return;
-    const safePage = pageCount ? Math.min(Math.max(1, pageNumber), pageCount) : Math.max(1, pageNumber);
+    const safePage = clampPageNumber(pageNumber, pageCount);
     const modeChanged = lastSyncedViewModeRef.current !== viewMode;
     const targetPage = pendingModeSwitchPageRef.current ?? safePage;
     const syncPage = modeChanged ? targetPage : safePage;

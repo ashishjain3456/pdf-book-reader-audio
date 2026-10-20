@@ -10,6 +10,9 @@ declare function resolveInitialPage(initialUrl: string | undefined, persistedPag
 declare function buildPageUrl(baseUrl: string, pageNumber: number): string;
 declare function createStorageKey(documentId: string): string;
 
+/** Clamp a requested page to the document bounds; unknown page counts stay open-ended. */
+declare function clampPageNumber(requestedPage: number, pageCount?: number): number;
+
 type TimedAudioMapping = {
     audioAssetUrl: string;
     segmentStartMs: number;
@@ -19,4 +22,4 @@ declare function findTimedAudioMappingIndex<T extends TimedAudioMapping>(mapping
 declare function mergePageAudioMappings(taggedMappings: PageAudioMapping[], directMappings: PageAudioMapping[]): PageAudioMapping[];
 declare function getMappingsForPage(mappings: PageAudioMapping[], pageNumber: number): PageAudioMapping[];
 
-export { PageAudioMapping, type TimedAudioMapping, buildPageUrl, createStorageKey, findTimedAudioMappingIndex, getMappingsForPage, mergePageAudioMappings, parsePageFromUrl, resolveInitialPage };
+export { PageAudioMapping, type TimedAudioMapping, buildPageUrl, clampPageNumber, createStorageKey, findTimedAudioMappingIndex, getMappingsForPage, mergePageAudioMappings, parsePageFromUrl, resolveInitialPage };

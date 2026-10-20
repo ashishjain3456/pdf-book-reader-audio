@@ -10,6 +10,7 @@ interface PdfDocumentViewerProps {
     zoomOutLabel?: string;
     fullScreenLabel?: string;
 }
+
 declare function PdfDocumentViewer({ url, title, filename, downloadUrl, loadingLabel, zoomInLabel, zoomOutLabel, fullScreenLabel, }: PdfDocumentViewerProps): react.JSX.Element;
 
 export { PdfDocumentViewer, type PdfDocumentViewerProps };

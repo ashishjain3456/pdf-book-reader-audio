@@ -1,5 +1,12 @@
 'use strict';
 
+// src/core/readerNavigation.ts
+function clampPageNumber(requestedPage, pageCount) {
+  const page = Number.isFinite(requestedPage) ? Math.trunc(requestedPage) : 1;
+  const maximumPage = Number.isFinite(pageCount) && Number(pageCount) > 0 ? Math.trunc(Number(pageCount)) : Number.MAX_SAFE_INTEGER;
+  return Math.max(1, Math.min(page, maximumPage));
+}
+
 // src/core/pageLinking.ts
 function parsePageFromUrl(input, fallback = 1) {
   try {
@@ -31,7 +38,7 @@ function resolveInitialPage(initialUrl, persistedPage, fallback = 1) {
   return fallback;
 }
 function buildPageUrl(baseUrl, pageNumber) {
-  const safePage = Math.max(1, Math.trunc(pageNumber));
+  const safePage = clampPageNumber(pageNumber);
   const url = new URL(baseUrl);
   url.searchParams.set("page", String(safePage));
   return url.toString();
@@ -62,6 +69,7 @@ function getMappingsForPage(mappings, pageNumber) {
 }
 
 exports.buildPageUrl = buildPageUrl;
+exports.clampPageNumber = clampPageNumber;
 exports.createStorageKey = createStorageKey;
 exports.findTimedAudioMappingIndex = findTimedAudioMappingIndex;
 exports.getMappingsForPage = getMappingsForPage;

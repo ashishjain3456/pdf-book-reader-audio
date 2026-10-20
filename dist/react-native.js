@@ -1,4 +1,5 @@
 import { findTimedAudioMappingIndex } from './chunk-7VJREGRK.js';
+import { clampPageNumber } from './chunk-JTAVLX62.js';
 import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { StyleSheet, Platform, Animated, Dimensions, View, ActivityIndicator, Text, Pressable, Easing, PanResponder, ScrollView, Modal } from 'react-native';
 import { jsxs, Fragment, jsx } from 'react/jsx-runtime';
@@ -2075,7 +2076,7 @@ function useReaderNavigation(options) {
   const navigateNativeVerseBookPage = useCallback(
     (targetPage) => {
       const safePageCount = completeVerses.length || pageCountRef.current || pageCount || 1;
-      const safePage = Math.max(1, Math.min(Math.trunc(targetPage), safePageCount));
+      const safePage = clampPageNumber(targetPage, safePageCount);
       const targetVerse = completeVerses[safePage - 1] || null;
       const targetVerseId = targetVerse?.id == null ? null : String(targetVerse.id);
       pageNumberRef.current = safePage;
@@ -2107,7 +2108,10 @@ function useReaderNavigation(options) {
       const currentPage = contentMode === "verse" && viewMode === "book" ? nativeBookPageNumber || pageNumber : pageNumberRef.current || pageNumber;
       const currentAnchor = activeBookSpreadMode === "double" && currentPage % 2 === 0 ? currentPage - 1 : currentPage;
       const pageStep = viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1;
-      const targetPage = direction === "prev" ? Math.max(1, currentAnchor - pageStep) : pageCount ? Math.min(currentAnchor + pageStep, pageCount) : currentAnchor + pageStep;
+      const targetPage = clampPageNumber(
+        direction === "prev" ? currentAnchor - pageStep : currentAnchor + pageStep,
+        pageCount
+      );
       if (viewMode === "book") {
         if (useFullScreenBookWebView) requestBookPageChange(direction);
         else navigateNativeVerseBookPage(targetPage);
@@ -2173,7 +2177,7 @@ function useReaderNavigation(options) {
   ]);
   const syncViewerStateToWebView = useCallback(
     (mode, requestedPage, anchorVerseId, requestedZoom = zoomLevel) => {
-      const safePage = Math.max(1, requestedPage);
+      const safePage = clampPageNumber(requestedPage, pageCount);
       const safeMode = mode === "continuous" ? "continuous" : "book";
       const safeVerseId = anchorVerseId || "";
       const safeZoom = Math.max(
@@ -2189,7 +2193,7 @@ function useReaderNavigation(options) {
         { method: "setViewMode", args: [safeMode, safePage, safeVerseId, safeZoom] }
       ]);
     },
-    [fullScreenWebViewRef, programmaticViewerSyncRef, suppressCompleteModeSyncRef, webViewRef, zoomLevel]
+    [fullScreenWebViewRef, pageCount, programmaticViewerSyncRef, suppressCompleteModeSyncRef, webViewRef, zoomLevel]
   );
   return { goToFirstPage, goToNextPage, goToPreviousPage, syncViewerStateToWebView };
 }
@@ -2367,7 +2371,7 @@ function useReaderViewMode(options) {
       const currentZoom = zoomLevelRef.current || zoomLevel;
       const pageForAnchor = readerVerseId ? versePageById[readerVerseId] : void 0;
       const anchorBelongsToCurrentPage = pageForAnchor === currentPage;
-      const targetPage = pageForAnchor && anchorBelongsToCurrentPage ? pageForAnchor : pageCount ? Math.min(Math.max(1, currentPage), pageCount) : Math.max(1, currentPage);
+      const targetPage = pageForAnchor && anchorBelongsToCurrentPage ? pageForAnchor : clampPageNumber(currentPage, pageCount);
       const targetVerseId = anchorBelongsToCurrentPage ? readerVerseId : verseIdsByPage[targetPage]?.[0] || (useNativeVersePaging ? completeVerses[targetPage - 1]?.id : null) || null;
       const normalizedTargetVerseId = targetVerseId == null ? null : String(targetVerseId);
       if (mode === "continuous" && normalizedTargetVerseId) {
@@ -2421,7 +2425,7 @@ function useReaderViewMode(options) {
   );
   useEffect(() => {
     if (!viewerReady || loadingError) return;
-    const safePage = pageCount ? Math.min(Math.max(1, pageNumber), pageCount) : Math.max(1, pageNumber);
+    const safePage = clampPageNumber(pageNumber, pageCount);
     const modeChanged = lastSyncedViewModeRef.current !== viewMode;
     const targetPage = pendingModeSwitchPageRef.current ?? safePage;
     const syncPage = modeChanged ? targetPage : safePage;

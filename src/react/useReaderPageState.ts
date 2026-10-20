@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createStorageKey, resolveInitialPage } from "../core/pageLinking";
+import { clampPageNumber } from "../core/readerNavigation.ts";
 import type { ReaderPersistAdapter } from "../types/contracts";
 
 type Options = {
@@ -40,7 +41,7 @@ export function useReaderPageState({
 
   const updatePage = useCallback(
     async (nextPage: number) => {
-      const safePage = Math.max(1, Math.trunc(nextPage));
+      const safePage = clampPageNumber(nextPage);
       setPageNumber(safePage);
       if (hydrated) {
         await persistAdapter.set(storageKey, String(safePage));

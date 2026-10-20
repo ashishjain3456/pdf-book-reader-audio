@@ -4,6 +4,13 @@ var react = require('react');
 
 // src/react/useReaderPageState.ts
 
+// src/core/readerNavigation.ts
+function clampPageNumber(requestedPage, pageCount) {
+  const page = Number.isFinite(requestedPage) ? Math.trunc(requestedPage) : 1;
+  const maximumPage = Number.isFinite(pageCount) && Number(pageCount) > 0 ? Math.trunc(Number(pageCount)) : Number.MAX_SAFE_INTEGER;
+  return Math.max(1, Math.min(page, maximumPage));
+}
+
 // src/core/pageLinking.ts
 function parsePageFromUrl(input, fallback = 1) {
   try {
@@ -64,7 +71,7 @@ function useReaderPageState({
   }, [initialPage, initialUrl, persistAdapter, storageKey]);
   const updatePage = react.useCallback(
     async (nextPage) => {
-      const safePage = Math.max(1, Math.trunc(nextPage));
+      const safePage = clampPageNumber(nextPage);
       setPageNumber(safePage);
       if (hydrated) {
         await persistAdapter.set(storageKey, String(safePage));
