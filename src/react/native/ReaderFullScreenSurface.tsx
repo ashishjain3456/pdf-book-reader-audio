@@ -1,14 +1,18 @@
-import { FullScreenReaderControls } from './FullScreenReaderControls';
-import { NativeBookPage } from './NativeBookPage';
-import { NativeFullScreenReaderOverlay } from './NativeFullScreenReaderOverlay';
-import { ReaderDialogModal } from './ReaderDialogModal';
-import type { useCompleteVerseScroll } from './useCompleteVerseScroll';
-import type { useReaderAudioController } from './useReaderAudioController';
-import type { useReaderContentModel } from './useReaderContentModel';
-import type { useReaderCoreState } from './useReaderCoreState';
-import type { useReaderDocumentSource } from './useReaderDocumentSource';
-import type { useReaderInteractionBindings } from './useReaderInteractionBindings';
-import type { ExternalVerseAudioState, ReaderTheme, VerseLayoutConfig } from './types';
+import { FullScreenReaderControls } from "./FullScreenReaderControls";
+import { NativeBookPage } from "./NativeBookPage";
+import { NativeFullScreenReaderOverlay } from "./NativeFullScreenReaderOverlay";
+import { ReaderDialogModal } from "./ReaderDialogModal";
+import type { useCompleteVerseScroll } from "./useCompleteVerseScroll";
+import type { useReaderAudioController } from "./useReaderAudioController";
+import type { useReaderContentModel } from "./useReaderContentModel";
+import type { useReaderCoreState } from "./useReaderCoreState";
+import type { useReaderDocumentSource } from "./useReaderDocumentSource";
+import type { useReaderInteractionBindings } from "./useReaderInteractionBindings";
+import type {
+  ExternalVerseAudioState,
+  ReaderTheme,
+  VerseLayoutConfig,
+} from "./types";
 
 type Props = {
   audio: ReturnType<typeof useReaderAudioController>;
@@ -16,6 +20,7 @@ type Props = {
   core: ReturnType<typeof useReaderCoreState>;
   documentSource: ReturnType<typeof useReaderDocumentSource>;
   externalVerseAudioState: ExternalVerseAudioState | null;
+  autoReadPlaying: boolean;
   hideControls: boolean;
   hidePageNavigationControls: boolean;
   hideVerseAudioControls: boolean;
@@ -34,6 +39,7 @@ export function ReaderFullScreenSurface({
   core,
   documentSource,
   externalVerseAudioState,
+  autoReadPlaying,
   hideControls,
   hidePageNavigationControls,
   hideVerseAudioControls,
@@ -65,12 +71,20 @@ export function ReaderFullScreenSurface({
     nativeBookVerses,
     pageBadgeText,
   } = interactions.presentation;
-  const { canPlayNext, canPlayPrevious, canRestart, playNext, playPrevious, restart } =
-    interactions.mappedVerseNavigation;
+  const {
+    canPlayNext,
+    canPlayPrevious,
+    canRestart,
+    playNext,
+    playPrevious,
+    restart,
+  } = interactions.mappedVerseNavigation;
   const { progress: activeVerseAudioProgress, timeText: verseAudioTimeText } =
     interactions.audioProgress;
-  const { panHandlers: audioSliderPanHandlers, seekByLocationX: seekAudioByLocationX } =
-    interactions.audioSlider;
+  const {
+    panHandlers: audioSliderPanHandlers,
+    seekByLocationX: seekAudioByLocationX,
+  } = interactions.audioSlider;
   const {
     exitVerseFullScreen,
     renderNativeBookTurn,
@@ -90,7 +104,7 @@ export function ReaderFullScreenSurface({
         activeBookSpreadMode={activeBookSpreadMode}
         activeVerseId={activeVerseId}
         autoAlignCurrentVerse={autoAlignCurrentVerse}
-        completeScrollRef={core.completeScrollRef}
+        completeScrollRef={core.fullScreenCompleteScrollRef}
         completeVerses={completeVerses}
         controls={
           !hideControls && core.showOverlayControls ? (
@@ -98,6 +112,12 @@ export function ReaderFullScreenSurface({
               activeBookSpreadMode={activeBookSpreadMode}
               activeVerseAudio={Boolean(interactions.activeVerseAudio)}
               activeVerseAudioProgress={activeVerseAudioProgress}
+              playbackProgress={interactions.playbackProgress}
+              autoReadAllowed={interactions.canAutoRead}
+              autoReadPlaying={autoReadPlaying}
+              autoReadCompleted={interactions.autoRead.completed}
+              onAutoReadToggle={interactions.toggleAutoRead}
+              theme={theme}
               allowBookDoubleSpread={content.allowBookDoubleSpread}
               audioSliderPanHandlers={audioSliderPanHandlers}
               canNavigateNextPage={canNavigateNextPage}
@@ -137,10 +157,14 @@ export function ReaderFullScreenSurface({
         fullScreenWebViewRef={core.fullScreenWebViewRef}
         fullScreenWebViewSource={documentSource.fullScreenWebViewSource}
         viewerReloadKey={core.viewerReloadKey}
-        handleCompleteMomentumScrollEnd={scroll.handleCompleteMomentumScrollEnd}
-        handleCompleteScrollBeginDrag={scroll.handleCompleteScrollBeginDrag}
-        handleCompleteScrollEndDrag={scroll.handleCompleteScrollEndDrag}
-        handleFullScreenMessage={interactions.documentHandlers.handleFullScreenMessage}
+        handleCompleteMomentumScrollEnd={
+          scroll.handleFullScreenMomentumScrollEnd
+        }
+        handleCompleteScrollBeginDrag={scroll.handleFullScreenScrollBeginDrag}
+        handleCompleteScrollEndDrag={scroll.handleFullScreenScrollEndDrag}
+        handleFullScreenMessage={
+          interactions.documentHandlers.handleFullScreenMessage
+        }
         highlightCurrentVerse={highlightCurrentVerse}
         isFullScreenLandscape={isFullScreenLandscape}
         isVisible={useNativeFullScreenOverlay}
@@ -164,29 +188,41 @@ export function ReaderFullScreenSurface({
           core.setViewerReady(true);
         }}
         onScrollOffset={(offsetY: number) => {
-          core.completeScrollOffsetRef.current = offsetY;
           if (!core.userDraggingCompleteScrollRef.current) {
             if (core.pendingCompleteScrollVerseIdRef.current) return;
             if (Date.now() < core.completeRestoreGuardUntilRef.current) return;
           }
-          scroll.updateCompleteAnchorFromOffset(offsetY);
+          scroll.updateFullScreenAnchorFromOffset(offsetY);
         }}
         onVerseLayout={(verseId: string, y: number) => {
-          core.completeVerseYByIdRef.current[verseId] = y;
-          if (!autoAlignCurrentVerse && core.pendingCompleteScrollVerseIdRef.current !== verseId) return;
+          core.fullScreenCompleteVerseYByIdRef.current[verseId] = y;
+          if (
+            !autoAlignCurrentVerse &&
+            core.pendingCompleteScrollVerseIdRef.current !== verseId
+          )
+            return;
           if (core.pendingCompleteScrollVerseIdRef.current === verseId) {
-            setTimeout(() => scroll.scrollCompleteToVerse(verseId, false), 0);
+            setTimeout(
+              () => scroll.scrollFullScreenCompleteToVerse(verseId, false),
+              0,
+            );
           }
         }}
         onScrollContentChange={() => {
           const pendingVerseId = core.pendingCompleteScrollVerseIdRef.current;
           if (!autoAlignCurrentVerse && !pendingVerseId) return;
-          scroll.scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
+          scroll.scrollFullScreenCompleteToVerse(
+            pendingVerseId || readerVerseId,
+            false,
+          );
         }}
         onScrollLayout={() => {
           const pendingVerseId = core.pendingCompleteScrollVerseIdRef.current;
           if (!autoAlignCurrentVerse && !pendingVerseId) return;
-          scroll.scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
+          scroll.scrollFullScreenCompleteToVerse(
+            pendingVerseId || readerVerseId,
+            false,
+          );
         }}
         onRequestClose={exitVerseFullScreen}
         pageCount={completeVerses.length}
@@ -200,12 +236,19 @@ export function ReaderFullScreenSurface({
             fontSize={nativeBookVerseFontSizePx}
             theme={theme}
             fullScreen
-            doubleSpread={activeBookSpreadMode === 'double'}
+            doubleSpread={activeBookSpreadMode === "double"}
             pageBackground={theme.accentSurface}
             contentKeyPrefix={key}
             contentOpacity={nativeBookTurnVisuals?.incomingOpacity}
+            playbackProgress={
+              interactions.playbackProgress?.pageNumber ===
+              interactions.getNativeBookVersePageNumber(verse)
+                ? interactions.playbackProgress
+                : null
+            }
           />
         )}
+        playbackProgress={interactions.playbackProgress}
         renderBookTurn={renderNativeBookTurn}
         showOverlay={showOverlay}
         theme={theme}

@@ -1,4 +1,4 @@
-import { clampPageNumber } from './chunk-JTAVLX62.js';
+import { clampPageNumber } from './chunk-XMWMQCNE.js';
 
 // src/core/pageLinking.ts
 function parsePageFromUrl(input, fallback = 1) {
@@ -41,5 +41,5 @@ function createStorageKey(documentId) {
 }
 
 export { buildPageUrl, createStorageKey, parsePageFromUrl, resolveInitialPage };
-//# sourceMappingURL=chunk-MJ2J2J3T.js.map
-//# sourceMappingURL=chunk-MJ2J2J3T.js.map
+//# sourceMappingURL=chunk-U5A26QTQ.js.map
+//# sourceMappingURL=chunk-U5A26QTQ.js.map

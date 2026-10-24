@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
-import { WebView } from 'react-native-webview';
-import { CompleteVerseBlock } from './CompleteVerseBlock';
-import type { NativeBookTurn, NativeBookTurnVisuals } from './nativeBookTurn';
-import { ReaderModal } from './ReaderModal';
-import { styles } from './styles';
+import type { ReactNode } from "react";
+import { ScrollView, View } from "react-native";
+import { WebView } from "react-native-webview";
+import { CompleteVerseBlock } from "./CompleteVerseBlock";
+import type { NativeBookTurn, NativeBookTurnVisuals } from "./nativeBookTurn";
+import { ReaderModal } from "./ReaderModal";
+import { styles } from "./styles";
+import type { PagePlaybackProgress } from "./PerimeterProgress";
 import type {
   CompleteReaderVerse,
   ReaderLayoutEvent,
@@ -15,10 +16,10 @@ import type {
   ReaderViewMode,
   ReaderWebViewMessageEvent,
   ReaderWebViewRef,
-} from './types';
+} from "./types";
 
 type Props = {
-  activeBookSpreadMode: 'single' | 'double';
+  activeBookSpreadMode: "single" | "double";
   activeVerseId: string | null;
   autoAlignCurrentVerse: boolean;
   completeScrollRef: ReaderScrollViewRef;
@@ -49,8 +50,14 @@ type Props = {
   onVerseLayout: (verseId: string, y: number) => void;
   onRequestClose: () => void;
   pageCount: number;
+  playbackProgress?:
+    (PagePlaybackProgress & { pageNumber: number | null }) | null;
   readerVerseId: string | null;
-  renderBookPage: (verse: CompleteReaderVerse, index: number, key: string) => ReactNode;
+  renderBookPage: (
+    verse: CompleteReaderVerse,
+    index: number,
+    key: string,
+  ) => ReactNode;
   renderBookTurn: (fullScreen: boolean) => ReactNode;
   onScrollContentChange: () => void;
   onScrollLayout: () => void;
@@ -91,6 +98,7 @@ export function NativeFullScreenReaderOverlay({
   onVerseLayout,
   onRequestClose,
   pageCount,
+  playbackProgress,
   readerVerseId,
   renderBookPage,
   renderBookTurn,
@@ -106,16 +114,22 @@ export function NativeFullScreenReaderOverlay({
     <ReaderModal variant="fullscreen" visible onRequestClose={onRequestClose}>
       <View
         testID="reader-fullscreen-root"
-        style={[styles.nativeFullScreenRoot, { backgroundColor: theme.background }]}
+        style={[
+          styles.nativeFullScreenRoot,
+          { backgroundColor: theme.background },
+        ]}
         onTouchStart={onFullScreenTouchStart}
         onTouchEnd={onFullScreenTouchEnd}
       >
         {fullScreenBookWebView ? (
-          <View style={styles.nativeFullScreenBookSurface} onTouchStart={showOverlay}>
+          <View
+            style={styles.nativeFullScreenBookSurface}
+            onTouchStart={showOverlay}
+          >
             <WebView
               ref={fullScreenWebViewRef}
               key={`fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`}
-              originWhitelist={['about:blank']}
+              originWhitelist={["about:blank"]}
               source={fullScreenWebViewSource}
               style={styles.nativeFullScreenWebView}
               javaScriptEnabled
@@ -136,9 +150,12 @@ export function NativeFullScreenReaderOverlay({
               onMessage={handleFullScreenMessage}
             />
           </View>
-        ) : viewMode === 'book' ? (
+        ) : viewMode === "book" ? (
           <ScrollView
-            style={[styles.nativeFullScreenScroll, { backgroundColor: theme.background }]}
+            style={[
+              styles.nativeFullScreenScroll,
+              { backgroundColor: theme.background },
+            ]}
             contentContainerStyle={[
               styles.nativeFullScreenBookScrollContent,
               styles.nativeFullScreenBookScrollContentCentered,
@@ -154,13 +171,17 @@ export function NativeFullScreenReaderOverlay({
               style={[
                 styles.nativeFullScreenBookContent,
                 styles.nativeFullScreenBookContentCentered,
-                activeBookSpreadMode === 'double' ? styles.nativeFullScreenBookContentDouble : null,
+                activeBookSpreadMode === "double"
+                  ? styles.nativeFullScreenBookContentDouble
+                  : null,
                 styles.nativeFullScreenBookContentEdgeToEdge,
-                nativeBookTurn ? { minHeight: nativeBookTurn.pageHeight } : null,
+                nativeBookTurn
+                  ? { minHeight: nativeBookTurn.pageHeight }
+                  : null,
               ]}
             >
               {nativeBookVerses.map((verse, index) =>
-                renderBookPage(verse, index, `fullscreen-book-${verse.id}`)
+                renderBookPage(verse, index, `fullscreen-book-${verse.id}`),
               )}
               {renderBookTurn(true)}
             </View>
@@ -171,7 +192,9 @@ export function NativeFullScreenReaderOverlay({
             style={styles.nativeFullScreenScroll}
             contentContainerStyle={[
               styles.nativeFullScreenScrollContent,
-              isFullScreenLandscape ? styles.nativeFullScreenScrollContentLandscape : null,
+              isFullScreenLandscape
+                ? styles.nativeFullScreenScrollContentLandscape
+                : null,
             ]}
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={64}
@@ -179,7 +202,9 @@ export function NativeFullScreenReaderOverlay({
             onScrollBeginDrag={handleCompleteScrollBeginDrag}
             onScrollEndDrag={handleCompleteScrollEndDrag}
             onMomentumScrollEnd={handleCompleteMomentumScrollEnd}
-            onScroll={(event: ReaderScrollEvent) => onScrollOffset(event.nativeEvent.contentOffset.y)}
+            onScroll={(event: ReaderScrollEvent) =>
+              onScrollOffset(event.nativeEvent.contentOffset.y)
+            }
             onContentSizeChange={onScrollContentChange}
             onLayout={onScrollLayout}
           >
@@ -201,6 +226,11 @@ export function NativeFullScreenReaderOverlay({
                   fullScreen
                   fontSize={nativeBookVerseFontSizePx}
                   theme={theme}
+                  playbackProgress={
+                    playbackProgress?.pageNumber === index + 1
+                      ? playbackProgress
+                      : null
+                  }
                 />
               </View>
             ))}

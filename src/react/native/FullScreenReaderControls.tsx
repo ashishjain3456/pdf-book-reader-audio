@@ -1,14 +1,20 @@
-import { Pressable, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { ReaderPageBadge } from './ReaderPageBadge';
-import { ReaderPageNavigationButton } from './ReaderPageNavigationButton';
-import { ReaderZoomControls } from './ReaderZoomControls';
-import { styles } from './styles';
-import { VerseAudioControls } from './VerseAudioControls';
-import type { ExternalVerseAudioState, ReaderViewMode } from './types';
+import { Pressable, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { ReaderPageBadge } from "./ReaderPageBadge";
+import { ReaderPageNavigationButton } from "./ReaderPageNavigationButton";
+import { ReaderZoomControls } from "./ReaderZoomControls";
+import { styles } from "./styles";
+import { VerseAudioControls } from "./VerseAudioControls";
+import { ReaderAutoReadButton } from "./ReaderAutoReadButton";
+import type {
+  ExternalVerseAudioState,
+  PlaybackMode,
+  ReaderTheme,
+  ReaderViewMode,
+} from "./types";
 
 type Props = {
-  activeBookSpreadMode: 'single' | 'double';
+  activeBookSpreadMode: "single" | "double";
   activeVerseAudio: boolean;
   activeVerseAudioProgress: number;
   allowBookDoubleSpread: boolean;
@@ -39,6 +45,16 @@ type Props = {
   viewMode: ReaderViewMode;
   verseAudioPlaying: boolean;
   verseAudioTimeText: string | null;
+  playbackProgress: {
+    mode: PlaybackMode;
+    progress: number;
+    complete: boolean;
+  } | null;
+  autoReadAllowed: boolean;
+  autoReadPlaying: boolean;
+  autoReadCompleted: boolean;
+  onAutoReadToggle: () => void;
+  theme: Required<ReaderTheme>;
   zoomInDisabled: boolean;
   zoomInVerse: () => void;
   zoomOutDisabled: boolean;
@@ -77,6 +93,12 @@ export function FullScreenReaderControls({
   viewMode,
   verseAudioPlaying,
   verseAudioTimeText,
+  playbackProgress,
+  autoReadAllowed,
+  autoReadPlaying,
+  autoReadCompleted,
+  onAutoReadToggle,
+  theme,
   zoomInDisabled,
   zoomInVerse,
   zoomOutDisabled,
@@ -108,8 +130,16 @@ export function FullScreenReaderControls({
           timeText={verseAudioTimeText}
         />
       ) : null}
+      {autoReadAllowed ? (
+        <ReaderAutoReadButton
+          playing={autoReadPlaying}
+          completed={autoReadCompleted}
+          onPress={onAutoReadToggle}
+          theme={theme}
+        />
+      ) : null}
       <View style={styles.overlayZoomGroup}>
-        {viewMode === 'book' && !hidePageNavigationControls ? (
+        {viewMode === "book" && !hidePageNavigationControls ? (
           <ReaderPageNavigationButton
             direction="previous"
             enabled={canNavigatePreviousPage}
@@ -122,18 +152,22 @@ export function FullScreenReaderControls({
           onZoomOut={zoomOutVerse}
           outDisabled={zoomOutDisabled}
         />
-        {viewMode === 'book' && allowBookDoubleSpread ? (
+        {viewMode === "book" && allowBookDoubleSpread ? (
           <View style={styles.overlayBookViewControls}>
             <Pressable
               onPress={toggleBookSpreadMode}
               style={styles.overlayControlButton}
               accessibilityLabel={
-                activeBookSpreadMode === 'double' ? 'Show one page' : 'Show two pages'
+                activeBookSpreadMode === "double"
+                  ? "Show one page"
+                  : "Show two pages"
               }
             >
               <Ionicons
                 name={
-                  activeBookSpreadMode === 'double' ? 'tablet-portrait-outline' : 'book-outline'
+                  activeBookSpreadMode === "double"
+                    ? "tablet-portrait-outline"
+                    : "book-outline"
                 }
                 size={20}
                 color="#fff"
@@ -144,13 +178,22 @@ export function FullScreenReaderControls({
         {externalVerseAudioState?.audioAssetUrl && onExternalAudioToggle ? (
           <Pressable
             onPress={onExternalAudioToggle}
-            style={styles.overlayControlButton}
+            style={[
+              styles.overlayControlButton,
+              { backgroundColor: theme.accent },
+            ]}
             accessibilityRole="button"
-            accessibilityLabel={externalVerseAudioState.isPlaying ? 'Pause audio' : 'Play audio'}
+            accessibilityLabel={
+              externalVerseAudioState.isPlaying ? "Pause audio" : "Play audio"
+            }
             testID="reader-fullscreen-audio-toggle"
           >
             <Ionicons
-              name={externalVerseAudioState.isPlaying ? 'pause-outline' : 'play-outline'}
+              name={
+                externalVerseAudioState.isPlaying
+                  ? "pause-outline"
+                  : "play-outline"
+              }
               size={20}
               color="#fff"
             />
@@ -164,7 +207,7 @@ export function FullScreenReaderControls({
         >
           <Ionicons name="contract-outline" size={20} color="#fff" />
         </Pressable>
-        {viewMode === 'book' && !hidePageNavigationControls ? (
+        {viewMode === "book" && !hidePageNavigationControls ? (
           <ReaderPageNavigationButton
             direction="next"
             enabled={canNavigateNextPage}
@@ -172,7 +215,7 @@ export function FullScreenReaderControls({
           />
         ) : null}
       </View>
-      {viewMode === 'book' && showPageBadge ? (
+      {viewMode === "book" && showPageBadge ? (
         <ReaderPageBadge text={pageBadgeText} />
       ) : null}
     </View>

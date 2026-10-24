@@ -135,20 +135,34 @@ export function useReaderNavigation(options: Options) {
         pageNumberRef.current = targetPage;
         setNativeBookPageNumberState(targetPage);
         void setPageNumber(targetPage);
+        if (contentMode === 'verse' && completeVerses.length) {
+          const targetVerse = completeVerses[targetPage - 1];
+          const targetVerseId = targetVerse?.id == null ? null : String(targetVerse.id);
+          if (targetVerseId) {
+            pendingCompleteScrollVerseIdRef.current = targetVerseId;
+            setReaderVerseId((current) => current === targetVerseId ? current : targetVerseId);
+            scrollCompleteToVerse(targetVerseId, true);
+          }
+        }
       }
       showOverlay();
     },
     [
       activeBookSpreadMode,
       contentMode,
+      completeScrollRef,
+      completeVerses,
       navigateNativeVerseBookPage,
       nativeBookPageNumber,
       pageCount,
       pageNumber,
       pageNumberRef,
+      pendingCompleteScrollVerseIdRef,
       requestBookPageChange,
       setNativeBookPageNumberState,
       setPageNumber,
+      setReaderVerseId,
+      scrollCompleteToVerse,
       showOverlay,
       useFullScreenBookWebView,
       viewMode,

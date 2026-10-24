@@ -55,18 +55,6 @@ export const contentStyles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
   },
-  completeVerseOrnamentOuter: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    bottom: 8,
-    left: 8,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: "#f97316",
-    borderRadius: 8,
-    opacity: 0.9,
-  },
   completeVerseOrnamentInner: {
     position: "absolute",
     top: 17,

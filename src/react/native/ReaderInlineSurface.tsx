@@ -1,24 +1,24 @@
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { styles } from './styles';
-import { NativeBookVerseView } from './NativeBookVerseView';
-import { NativeContinuousVerseView } from './NativeContinuousVerseView';
-import { ReaderHeader } from './ReaderHeader';
-import { ReaderInlineOverlay } from './ReaderInlineOverlay';
-import { ReaderPdfWebView } from './ReaderPdfWebView';
-import { PDF_ZOOM_STEP } from './constants';
-import type { useCompleteVerseScroll } from './useCompleteVerseScroll';
-import type { useReaderAudioController } from './useReaderAudioController';
-import type { useReaderContentModel } from './useReaderContentModel';
-import type { useReaderCoreState } from './useReaderCoreState';
-import type { useReaderDocumentSource } from './useReaderDocumentSource';
-import type { useReaderInteractionBindings } from './useReaderInteractionBindings';
-import type { useReaderViewportTracking } from './useReaderViewportTracking';
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { styles } from "./styles";
+import { NativeBookVerseView } from "./NativeBookVerseView";
+import { NativeContinuousVerseView } from "./NativeContinuousVerseView";
+import { ReaderHeader } from "./ReaderHeader";
+import { ReaderInlineOverlay } from "./ReaderInlineOverlay";
+import { ReaderPdfWebView } from "./ReaderPdfWebView";
+import { PDF_ZOOM_STEP } from "./constants";
+import type { useCompleteVerseScroll } from "./useCompleteVerseScroll";
+import type { useReaderAudioController } from "./useReaderAudioController";
+import type { useReaderContentModel } from "./useReaderContentModel";
+import type { useReaderCoreState } from "./useReaderCoreState";
+import type { useReaderDocumentSource } from "./useReaderDocumentSource";
+import type { useReaderInteractionBindings } from "./useReaderInteractionBindings";
+import type { useReaderViewportTracking } from "./useReaderViewportTracking";
 import type {
   PdfDocumentViewerProps,
   ReaderActionsContext,
   ReaderLayoutEvent,
   ReaderTheme,
-} from './types';
+} from "./types";
 
 type Props = {
   actions: ReaderActionsContext;
@@ -32,10 +32,10 @@ type Props = {
   hideVerseAudioControls: boolean;
   interactions: ReturnType<typeof useReaderInteractionBindings>;
   loadingMessage: string;
-  onError?: PdfDocumentViewerProps['onError'];
+  onError?: PdfDocumentViewerProps["onError"];
   onToggleShareOverlay: () => void;
-  overlayViewport?: PdfDocumentViewerProps['overlayViewport'];
-  renderRightActions?: PdfDocumentViewerProps['renderRightActions'];
+  overlayViewport?: PdfDocumentViewerProps["overlayViewport"];
+  renderRightActions?: PdfDocumentViewerProps["renderRightActions"];
   scroll: ReturnType<typeof useCompleteVerseScroll>;
   shareUrl: string;
   showHeaderControls: boolean;
@@ -118,7 +118,8 @@ export function ReaderInlineSurface({
     viewerWrapHeight,
     viewerWrapRef,
   } = viewport;
-  const { webViewOriginWhitelist, webViewSource, usesLocalFileFallback } = documentSource;
+  const { webViewOriginWhitelist, webViewSource, usesLocalFileFallback } =
+    documentSource;
   const { handleMainMessage } = interactions.documentHandlers;
   const {
     canNavigateNextPage,
@@ -134,15 +135,23 @@ export function ReaderInlineSurface({
     playPrevious,
     restart,
   } = interactions.mappedVerseNavigation;
-  const { pageSwipeResponder, pdfVerticalScrollResponder } = interactions.fullscreen.gestures;
-  const { adjustPdfZoom, zoomInDisabled, zoomInVerse, zoomOutDisabled, zoomOutVerse } =
-    interactions.zoom;
+  const { pageSwipeResponder, pdfVerticalScrollResponder } =
+    interactions.fullscreen.gestures;
+  const {
+    adjustPdfZoom,
+    zoomInDisabled,
+    zoomInVerse,
+    zoomOutDisabled,
+    zoomOutVerse,
+  } = interactions.zoom;
   const { goToNextPage, goToPreviousPage } = interactions.navigation;
   const { toggleVerseAudio } = interactions.fullscreen;
   const { progress: activeVerseAudioProgress, timeText: verseAudioTimeText } =
     interactions.audioProgress;
-  const { panHandlers: audioSliderPanHandlers, seekByLocationX: seekAudioByLocationX } =
-    interactions.audioSlider;
+  const {
+    panHandlers: audioSliderPanHandlers,
+    seekByLocationX: seekAudioByLocationX,
+  } = interactions.audioSlider;
   const { toggleVerseFullScreen, getNativeBookVersePageNumber } = interactions;
   const { shareLinks, openShareUrl, openWhatsAppShare, openSystemShare } =
     interactions.shareUrlActions;
@@ -154,7 +163,9 @@ export function ReaderInlineSurface({
     scrollCompleteToVerse,
     updateCompleteAnchorFromOffset,
   } = scroll;
-  const customHeaderActions = renderRightActions ? renderRightActions(actions) : null;
+  const customHeaderActions = renderRightActions
+    ? renderRightActions(actions)
+    : null;
 
   return (
     <View
@@ -163,7 +174,10 @@ export function ReaderInlineSurface({
         inlineFullScreenActive
           ? [
               styles.containerFullScreen,
-              { height: visibleViewportHeight, backgroundColor: theme.background },
+              {
+                height: visibleViewportHeight,
+                backgroundColor: theme.background,
+              },
             ]
           : null,
       ]}
@@ -205,22 +219,29 @@ export function ReaderInlineSurface({
               : { height: viewerHeight },
         ]}
         onLayout={(event: ReaderLayoutEvent) => {
-          if (content.contentMode === 'verse') {
+          if (content.contentMode === "verse") {
             const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
-            if (nextHeight > 0 && nextHeight !== viewerWrapHeight) setViewerWrapHeight(nextHeight);
+            if (nextHeight > 0 && nextHeight !== viewerWrapHeight)
+              setViewerWrapHeight(nextHeight);
           }
           measureViewerWindow();
         }}
-        {...(viewMode === 'book' && content.contentMode === 'verse'
+        {...(viewMode === "book" && content.contentMode === "verse"
           ? pageSwipeResponder.panHandlers
-          : content.contentMode === 'pdf' && overlayViewport
+          : content.contentMode === "pdf" && overlayViewport
             ? pdfVerticalScrollResponder.panHandlers
             : {})}
       >
-        {loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? (
-          <View style={[styles.loadingWrap, { backgroundColor: theme.background }]}>
+        {loadingPdf &&
+        !useNativeCompleteVerseView &&
+        !useNativeBookVerseView ? (
+          <View
+            style={[styles.loadingWrap, { backgroundColor: theme.background }]}
+          >
             <ActivityIndicator size="large" color={theme.accent} />
-            <Text style={[styles.loadingText, { color: theme.mutedText }]}>{loadingMessage}</Text>
+            <Text style={[styles.loadingText, { color: theme.mutedText }]}>
+              {loadingMessage}
+            </Text>
           </View>
         ) : null}
 
@@ -231,19 +252,26 @@ export function ReaderInlineSurface({
               completeVerses={completeVerses}
               getPageNumber={getNativeBookVersePageNumber}
               isEmbeddedLandscape={isEmbeddedLandscape}
-              nativeBookPageNumber={interactions.presentation.nativeBookPageNumber}
+              nativeBookPageNumber={
+                interactions.presentation.nativeBookPageNumber
+              }
               nativeBookSpreadLayoutRef={content.nativeBookSpreadLayoutRef}
               nativeBookTurn={content.nativeBookTurn}
               nativeBookTurnVisuals={content.nativeBookTurnVisuals}
-              nativeBookVerseFontSizePx={interactions.presentation.nativeBookVerseFontSizePx}
+              nativeBookVerseFontSizePx={
+                interactions.presentation.nativeBookVerseFontSizePx
+              }
               nativeBookVerses={interactions.presentation.nativeBookVerses}
+              playbackProgress={interactions.playbackProgress}
               onContentHeightChange={setEmbeddedBookContentHeight}
               onTouchStart={showOverlay}
               renderBookTurn={renderNativeBookTurn}
               reserveOverlayControlsSpace={reserveOverlayControlsSpace}
               theme={theme}
             />
-          ) : useNativeCompleteVerseView && content.contentMode === 'verse' && viewMode === 'continuous' ? (
+          ) : useNativeCompleteVerseView &&
+            content.contentMode === "verse" &&
+            viewMode === "continuous" ? (
             <NativeContinuousVerseView
               activeVerseId={activeVerseId}
               autoAlignCurrentVerse={autoAlignCurrentVerse}
@@ -265,6 +293,7 @@ export function ReaderInlineSurface({
               scrollCompleteToVerse={scrollCompleteToVerse}
               setEmbeddedContentHeight={setEmbeddedContinuousContentHeight}
               theme={theme}
+              playbackProgress={interactions.playbackProgress}
               updateCompleteAnchorFromOffset={updateCompleteAnchorFromOffset}
               userDraggingCompleteScrollRef={userDraggingCompleteScrollRef}
             />
@@ -277,12 +306,12 @@ export function ReaderInlineSurface({
               onError={onError}
               onLoadStart={() => {
                 setLoadingPdf(true);
-              core.setViewerReady(false);
+                core.setViewerReady(false);
                 setLoadingError(null);
               }}
               onLoadEnd={() => {
                 setLoadingPdf(false);
-              core.setViewerReady(true);
+                core.setViewerReady(true);
               }}
               onTouchStart={showOverlay}
               originWhitelist={webViewOriginWhitelist}
@@ -319,10 +348,14 @@ export function ReaderInlineSurface({
             !loadingError &&
             !hideControls &&
             showOverlayControls &&
-            (!hideReaderActionControls || (content.hasVerseAudio && !hideVerseAudioControls))
+            (!hideReaderActionControls ||
+              (content.hasVerseAudio && !hideVerseAudioControls) ||
+              Boolean(interactions.playbackProgress))
           }
           onHeightChange={(height) =>
-            setOverlayControlsHeight((current) => (current === height ? current : height))
+            setOverlayControlsHeight((current) =>
+              current === height ? current : height,
+            )
           }
           translateY={stickyOverlayTranslate}
           controls={{
@@ -341,7 +374,8 @@ export function ReaderInlineSurface({
             hidePageNavigationControls,
             hideReaderActionControls,
             hideVerseAudioControls,
-            onAudioSliderWidthChange: interactions.fullscreen.setActiveVerseAudioWidth,
+            onAudioSliderWidthChange:
+              interactions.fullscreen.setActiveVerseAudioWidth,
             onPlayNext: playNext,
             onPlayPrevious: playPrevious,
             onRestart: restart,
@@ -350,14 +384,27 @@ export function ReaderInlineSurface({
             pageBadgeText,
             playProgress: activeVerseAudioProgress,
             playing: verseAudioStatus.playing,
-            showPageBadge: content.effectiveBookVerseLayout?.showPageBadge !== false,
+            playbackProgress: interactions.playbackProgress,
+            autoReadAllowed: interactions.canAutoRead,
+            autoReadPlaying: interactions.autoReadPlaying,
+            autoReadCompleted: interactions.autoRead.completed,
+            onAutoReadToggle: interactions.toggleAutoRead,
+            theme,
+            showPageBadge:
+              content.effectiveBookVerseLayout?.showPageBadge !== false,
             isFullScreen: isVerseFullScreen,
             timeText: verseAudioTimeText,
             toggleFullScreen: toggleVerseFullScreen,
             viewMode,
-            zoomIn: () => content.contentMode === 'verse' ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
+            zoomIn: () =>
+              content.contentMode === "verse"
+                ? zoomInVerse()
+                : adjustPdfZoom(PDF_ZOOM_STEP),
             zoomInDisabled,
-            zoomOut: () => content.contentMode === 'verse' ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
+            zoomOut: () =>
+              content.contentMode === "verse"
+                ? zoomOutVerse()
+                : adjustPdfZoom(-PDF_ZOOM_STEP),
             zoomOutDisabled,
           }}
         />

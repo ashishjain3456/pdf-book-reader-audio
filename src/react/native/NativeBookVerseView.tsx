@@ -1,11 +1,17 @@
-import { ScrollView, View } from 'react-native';
-import { NativeBookPage } from './NativeBookPage';
-import type { NativeBookTurn, NativeBookTurnVisuals } from './nativeBookTurn';
-import { styles } from './styles';
-import type { CompleteReaderVerse, ReaderLayout, ReaderLayoutEvent, ReaderTheme } from './types';
+import { ScrollView, View } from "react-native";
+import { NativeBookPage } from "./NativeBookPage";
+import type { NativeBookTurn, NativeBookTurnVisuals } from "./nativeBookTurn";
+import { styles } from "./styles";
+import type {
+  CompleteReaderVerse,
+  ReaderLayout,
+  ReaderLayoutEvent,
+  ReaderTheme,
+} from "./types";
+import type { PagePlaybackProgress } from "./PerimeterProgress";
 
 type Props = {
-  activeBookSpreadMode: 'single' | 'double';
+  activeBookSpreadMode: "single" | "double";
   completeVerses: CompleteReaderVerse[];
   getPageNumber: (verse: CompleteReaderVerse) => number;
   isEmbeddedLandscape: boolean;
@@ -15,6 +21,8 @@ type Props = {
   nativeBookTurnVisuals: NativeBookTurnVisuals | null;
   nativeBookVerseFontSizePx: number;
   nativeBookVerses: CompleteReaderVerse[];
+  playbackProgress?:
+    (PagePlaybackProgress & { pageNumber: number | null }) | null;
   onTouchStart: () => void;
   onContentHeightChange: (update: (current: number) => number) => void;
   renderBookTurn: (fullScreen: boolean) => React.ReactNode;
@@ -33,13 +41,14 @@ export function NativeBookVerseView({
   nativeBookTurnVisuals,
   nativeBookVerseFontSizePx,
   nativeBookVerses,
+  playbackProgress,
   onContentHeightChange,
   onTouchStart,
   renderBookTurn,
   reserveOverlayControlsSpace,
   theme,
 }: Props) {
-  const doubleSpread = activeBookSpreadMode === 'double';
+  const doubleSpread = activeBookSpreadMode === "double";
 
   return (
     <ScrollView
@@ -49,7 +58,9 @@ export function NativeBookVerseView({
       nestedScrollEnabled
       onContentSizeChange={(_width: number, height: number) => {
         const nextHeight = Math.ceil(height);
-        onContentHeightChange((current) => (current === nextHeight ? current : nextHeight));
+        onContentHeightChange((current) =>
+          current === nextHeight ? current : nextHeight,
+        );
       }}
       onTouchStart={onTouchStart}
     >
@@ -82,6 +93,11 @@ export function NativeBookVerseView({
               pageBackground={theme.accentSurface}
               contentKeyPrefix={`book-${verse.id}`}
               contentOpacity={nativeBookTurnVisuals?.incomingOpacity}
+              playbackProgress={
+                playbackProgress?.pageNumber === getPageNumber(verse)
+                  ? playbackProgress
+                  : null
+              }
             />
           ))}
           {renderBookTurn(false)}

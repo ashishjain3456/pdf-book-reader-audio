@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { AppState } from 'react-native';
 import { FullScreenReaderControls } from './FullScreenReaderControls';
 import { NativeBookPage } from './NativeBookPage';
 import { NativeBookTurnOverlay } from './NativeBookTurnOverlay';
@@ -6,6 +7,8 @@ import { NativeFullScreenReaderOverlay } from './NativeFullScreenReaderOverlay';
 import { useMappedVerseNavigation } from './useMappedVerseNavigation';
 import { useReaderActions } from './useReaderActions';
 import { useReaderAudioProgress } from './useReaderAudioProgress';
+import { getMappedPageProgress } from '../../core/readerPlayback';
+import { useAutoReadPlayback } from './useAutoReadPlayback';
 import { useReaderAudioSlider } from './useReaderAudioSlider';
 import { useReaderBookControls } from './useReaderBookControls';
 import { useReaderFullscreen } from './useReaderFullscreen';
@@ -21,9 +24,12 @@ import type { useReaderAudioController } from './useReaderAudioController';
 import type { useReaderContentModel } from './useReaderContentModel';
 import type { useReaderCoreState } from './useReaderCoreState';
 import type { useReaderDocumentSource } from './useReaderDocumentSource';
-import type { PdfDocumentViewerProps, ReaderTheme, ReaderViewMode } from './types';
+import type {
+  PdfDocumentViewerProps,
+  ReaderTheme,
+  ReaderViewMode,
+} from './types';
 import { PDF_ZOOM_STEP } from './constants';
-
 
 type Props = {
   content: ReturnType<typeof useReaderContentModel>;
@@ -33,6 +39,16 @@ type Props = {
   label: string;
   onExternalAudioToggle?: PdfDocumentViewerProps['onExternalAudioToggle'];
   externalVerseAudioState: PdfDocumentViewerProps['externalVerseAudioState'];
+  externalActiveVerseId?: PdfDocumentViewerProps['externalActiveVerseId'];
+  externalVerseAudioMappings: NonNullable<
+    PdfDocumentViewerProps['externalVerseAudioMappings']
+  >;
+  audioSourceAvailable?: boolean;
+  autoReadPlaying: boolean;
+  autoReadClockMs?: number;
+  autoReadResetKey: string;
+  onAutoReadPlayingChange?: PdfDocumentViewerProps['onAutoReadPlayingChange'];
+  onAutoReadCompleteChange?: PdfDocumentViewerProps['onAutoReadCompleteChange'];
   overlayViewport?: PdfDocumentViewerProps['overlayViewport'];
   page: {
     isPageHydrated: boolean;
@@ -61,7 +77,12 @@ type Props = {
     | 'resetConfirmation'
     | 'verseLayout'
   >;
-  verseZoomConfig: { min: number; max: number; defaultSize: number; step: number };
+  verseZoomConfig: {
+    min: number;
+    max: number;
+    defaultSize: number;
+    step: number;
+  };
   viewMode: ReaderViewMode;
   zoomLevel: number;
   verseFontSizePx: number;
@@ -75,6 +96,14 @@ export function useReaderInteractionBindings({
   label,
   onExternalAudioToggle,
   externalVerseAudioState,
+  externalActiveVerseId,
+  externalVerseAudioMappings,
+  audioSourceAvailable,
+  autoReadPlaying,
+  autoReadClockMs,
+  autoReadResetKey,
+  onAutoReadPlayingChange,
+  onAutoReadCompleteChange,
   overlayViewport,
   page,
   readerDocumentId,
@@ -202,13 +231,28 @@ export function useReaderInteractionBindings({
     useFullScreenBookWebView,
     zoomLevel,
   });
+  const pauseAudioForManualPageTurn = React.useCallback(() => {
+    if (audio.verseAudioStatus.playing) {
+      audio.toggleVerseAudio();
+    } else if (externalVerseAudioState?.isPlaying) {
+      onExternalAudioToggle?.();
+    }
+  }, [audio, externalVerseAudioState?.isPlaying, onExternalAudioToggle]);
+  const goToNextPageManually = React.useCallback(() => {
+    pauseAudioForManualPageTurn();
+    goToNextPage();
+  }, [goToNextPage, pauseAudioForManualPageTurn]);
+  const goToPreviousPageManually = React.useCallback(() => {
+    pauseAudioForManualPageTurn();
+    goToPreviousPage();
+  }, [goToPreviousPage, pauseAudioForManualPageTurn]);
   const gestures = useReaderGestures({
     viewMode,
     hidePageNavigationControls: props.hidePageNavigationControls ?? false,
     overlayViewport,
     showOverlay,
-    goToNextPage,
-    goToPreviousPage,
+    goToNextPage: goToNextPageManually,
+    goToPreviousPage: goToPreviousPageManually,
   });
   const { switchReaderMode } = useReaderViewMode({
     completeVerses,
@@ -220,9 +264,12 @@ export function useReaderInteractionBindings({
     pageCount: core.pageCount,
     pageNumber: page.pageNumber,
     pageNumberRef: core.pageNumberRef,
+    nativeBookPageNumber: page.nativeBookPageNumberState,
     pendingCompleteScrollVerseIdRef: core.pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef: core.pendingModeSwitchPageRef,
-    readerVerseId: core.readerVerseId,
+    readerVerseId:
+      audio.activeVerseId || externalActiveVerseId || core.readerVerseId,
+    setNativeBookPageNumberState: page.setNativeBookPageNumberState,
     setIsVerseFullScreen: core.setIsVerseFullScreen,
     setPageNumber: page.setPageNumber,
     setReaderVerseId: core.setReaderVerseId,
@@ -272,7 +319,9 @@ export function useReaderInteractionBindings({
     verseFontSizePx,
     viewMode,
   });
-  const getNativeBookVersePageNumber = (verse: (typeof completeVerses)[number]) => {
+  const getNativeBookVersePageNumber = (
+    verse: (typeof completeVerses)[number]
+  ) => {
     const index = completeVerses.findIndex((item) => item.id === verse.id);
     return index >= 0 ? index + 1 : presentation.nativeBookPageNumber;
   };
@@ -312,6 +361,138 @@ export function useReaderInteractionBindings({
     mappings: playableVerseMappings,
     status: audio.verseAudioStatus,
   });
+  const readerPageNumber =
+    contentMode === 'verse' && useNativeVersePaging
+      ? presentation.nativeBookPageNumber
+      : page.pageNumber;
+  const visiblePageNumbers = [
+    readerPageNumber,
+    ...(viewMode === 'book' && activeBookSpreadMode === 'double'
+      ? [readerPageNumber + 1]
+      : []),
+  ];
+  const visiblePageText = visiblePageNumbers
+    .flatMap((visiblePage) => {
+      const mappedIds =
+        core.verseIdsByPage[visiblePage] ||
+        completeVerses
+          .filter((verse) => core.versePageById[verse.id] === visiblePage)
+          .map((verse) => verse.id);
+      const mappedVerses = mappedIds
+        .map((id) =>
+          completeVerses.find((verse) => String(verse.id) === String(id))
+        )
+        .filter((verse): verse is (typeof completeVerses)[number] =>
+          Boolean(verse)
+        );
+      const visibleVerses = mappedVerses.length
+        ? mappedVerses
+        : [completeVerses[visiblePage - 1]].filter(
+            (verse): verse is (typeof completeVerses)[number] => Boolean(verse)
+          );
+      return visibleVerses.map((verse) => verse.contentHtml);
+    })
+    .join(' ');
+  const hasAnyAudioSource =
+    audioSourceAvailable ??
+    Boolean(
+      externalVerseAudioState?.audioAssetUrl ||
+      externalVerseAudioMappings.length ||
+      hasVerseAudio
+    );
+  const canAutoRead = Boolean(
+    contentMode === 'verse' &&
+    completeVerses.length &&
+    (audioSourceAvailable === false ||
+      (!hasAnyAudioSource &&
+        !externalVerseAudioState?.audioAssetUrl &&
+        !externalVerseAudioMappings.length &&
+        !hasVerseAudio))
+  );
+  const subscribeToAppState = React.useCallback(
+    (listener: (state: string) => void) =>
+      AppState.addEventListener('change', listener),
+    []
+  );
+  const autoRead = useAutoReadPlayback({
+    allowed: canAutoRead,
+    isPlaying: autoReadPlaying,
+    externalClockMs: autoReadClockMs,
+    onPlaybackChange: onAutoReadPlayingChange,
+    onCompleteChange: onAutoReadCompleteChange,
+    pageNumber: readerPageNumber,
+    pageCount: completeVerses.length,
+    pageStep: viewMode === 'book' && activeBookSpreadMode === 'double' ? 2 : 1,
+    resetKey: autoReadResetKey,
+    visiblePageText,
+    goToNextPage,
+    goToFirstPage,
+    subscribeToAppState,
+  });
+  const externalTimelineProgress = externalVerseAudioState?.audioAssetUrl
+    ? getMappedPageProgress(
+        externalVerseAudioMappings,
+        externalVerseAudioState.audioAssetUrl,
+        Number(externalVerseAudioState.currentTimeMs) || 0,
+        (verseId) => scroll.getNativeVersePage(verseId) ?? null
+      )
+    : null;
+  const internalTimelineProgress =
+    !externalVerseAudioState?.audioAssetUrl && activeVerseAudio
+      ? getMappedPageProgress(
+          playableVerseMappings,
+          activeVerseAudio.audioAssetUrl,
+          Math.max(0, Number(audio.verseAudioStatus.currentTime) || 0) * 1000,
+          (verseId) => scroll.getNativeVersePage(verseId) ?? null
+        )
+      : null;
+  const mappedTimelineProgress = externalVerseAudioState?.audioAssetUrl
+    ? externalTimelineProgress
+    : internalTimelineProgress;
+  const toggleAutoRead = React.useCallback(() => {
+    const shouldStart = !autoReadPlaying;
+    if (shouldStart && contentMode === 'verse' && viewMode === 'continuous') {
+      const targetVerseId =
+        core.readerVerseId ||
+        core.verseIdsByPage[readerPageNumber]?.[0] ||
+        completeVerses[readerPageNumber - 1]?.id;
+      if (targetVerseId) {
+        core.setReaderVerseId((current) =>
+          current === targetVerseId ? current : targetVerseId
+        );
+        scroll.scrollCompleteToVerse(targetVerseId, false);
+      }
+    }
+    onAutoReadPlayingChange?.(shouldStart);
+  }, [
+    autoReadPlaying,
+    completeVerses,
+    contentMode,
+    core.readerVerseId,
+    core.setReaderVerseId,
+    core.verseIdsByPage,
+    onAutoReadPlayingChange,
+    readerPageNumber,
+    scroll.scrollCompleteToVerse,
+    viewMode,
+  ]);
+  const playbackProgress = canAutoRead
+    ? {
+        mode: 'auto-read' as const,
+        progress: autoRead.progress,
+        progressStore: autoRead.progressStore,
+        complete: autoRead.completed,
+        pageNumber: readerPageNumber,
+        verseId: core.readerVerseId,
+      }
+    : mappedTimelineProgress
+      ? {
+          mode: 'audio' as const,
+          progress: mappedTimelineProgress.progress,
+          complete: false,
+          pageNumber: mappedTimelineProgress.pageNumber,
+        }
+      : null;
   const mappedVerseNavigation = useMappedVerseNavigation({
     activeBookSpreadMode,
     activeVerseAudioIndex: audio.activeVerseAudioIndex,
@@ -349,8 +530,8 @@ export function useReaderInteractionBindings({
     canZoomOut: !zoomOutDisabled,
     hidePageNavigationControls: props.hidePageNavigationControls ?? false,
     isVerseContent: contentMode === 'verse',
-    nextPage: goToNextPage,
-    previousPage: goToPreviousPage,
+    nextPage: goToNextPageManually,
+    previousPage: goToPreviousPageManually,
     resetToFirstPage: bookControls.confirmGoToFirstPage,
     setShowShareOverlay: core.setShowShareOverlay,
     showOverlay,
@@ -368,6 +549,8 @@ export function useReaderInteractionBindings({
     actions,
     activeVerseAudio,
     audioProgress,
+    autoRead,
+    canAutoRead,
     audioSlider,
     bookControls,
     documentHandlers: { handleFullScreenMessage, handleMainMessage },
@@ -389,13 +572,28 @@ export function useReaderInteractionBindings({
     },
     getNativeBookVersePageNumber,
     mappedVerseNavigation,
-    navigation: { goToFirstPage, goToNextPage, goToPreviousPage, syncViewerStateToWebView },
+    navigation: {
+      goToFirstPage,
+      goToNextPage: goToNextPageManually,
+      goToPreviousPage: goToPreviousPageManually,
+      syncViewerStateToWebView,
+    },
     presentation,
+    playbackProgress,
+    toggleAutoRead,
+    autoReadPlaying,
     scroll,
     shareUrlActions,
     switchReaderMode,
     toggleVerseFullScreen,
-    zoom: { adjustPdfZoom, adjustVerseFontSize, zoomInDisabled, zoomInVerse, zoomOutDisabled, zoomOutVerse },
+    zoom: {
+      adjustPdfZoom,
+      adjustVerseFontSize,
+      zoomInDisabled,
+      zoomInVerse,
+      zoomOutDisabled,
+      zoomOutVerse,
+    },
   };
 }
 

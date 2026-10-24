@@ -1,19 +1,19 @@
-import { useMemo } from 'react';
+import { useMemo } from "react";
 import {
   DEFAULT_ZOOM_LEVEL,
   MAX_ZOOM_LEVEL,
   MIN_ZOOM_LEVEL,
   VERSE_BUTTON_ZOOM_STEP_PX,
-} from './constants';
-import { resolveReaderTheme } from './theme';
-import { useReaderOverlayVisibility } from './useReaderOverlayVisibility';
-import { useReaderViewportTracking } from './useReaderViewportTracking';
-import { useReaderCoreState } from './useReaderCoreState';
-import { useReaderContentModel } from './useReaderContentModel';
-import { useReaderInteractionBindings } from './useReaderInteractionBindings';
-import { ReaderFullScreenSurface } from './ReaderFullScreenSurface';
-import { ReaderInlineSurface } from './ReaderInlineSurface';
-import { useReaderSession } from './useReaderSession';
+} from "./constants";
+import { resolveReaderTheme } from "./theme";
+import { useReaderOverlayVisibility } from "./useReaderOverlayVisibility";
+import { useReaderViewportTracking } from "./useReaderViewportTracking";
+import { useReaderCoreState } from "./useReaderCoreState";
+import { useReaderContentModel } from "./useReaderContentModel";
+import { useReaderInteractionBindings } from "./useReaderInteractionBindings";
+import { ReaderFullScreenSurface } from "./ReaderFullScreenSurface";
+import { ReaderInlineSurface } from "./ReaderInlineSurface";
+import { useReaderSession } from "./useReaderSession";
 
 export type {
   ExternalVerseAudioState,
@@ -26,8 +26,8 @@ export type {
   ReaderVerse,
   VerseAudioMapping,
   VerseLayoutConfig,
-} from './types';
-import type { PdfDocumentViewerProps, ReaderViewMode } from './types';
+} from "./types";
+import type { PdfDocumentViewerProps, ReaderViewMode } from "./types";
 
 export default function PdfDocumentViewer({
   pdfUrl,
@@ -42,11 +42,11 @@ export default function PdfDocumentViewer({
   viewMode: controlledViewMode,
   zoomLevel: controlledZoomLevel,
   neighborPageCount = 3,
-  loadingMessage = 'loading content',
+  loadingMessage = "loading content",
   onReady,
   onStateChange,
   onError,
-  mode = 'auto',
+  mode = "auto",
   verses,
   verseAudioMappings = [],
   verseLayout,
@@ -57,20 +57,36 @@ export default function PdfDocumentViewer({
   hideReaderActionControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
+  externalVerseAudioMappings = [],
+  audioSourceAvailable,
   onExternalAudioToggle,
+  autoReadPlaying = false,
+  autoReadClockMs,
+  autoReadResetKey = "",
+  onAutoReadPlayingChange,
+  onAutoReadCompleteChange,
   externalActiveVerseId = null,
   initialReaderVerseId = null,
   readerTheme,
   resetConfirmation,
   overlayViewport,
 }: PdfDocumentViewerProps) {
-  const resolvedReaderTheme = useMemo(() => resolveReaderTheme(readerTheme), [readerTheme]);
+  const resolvedReaderTheme = useMemo(
+    () => resolveReaderTheme(readerTheme),
+    [readerTheme],
+  );
   const verseZoomConfig = useMemo(() => {
-    const min = Math.max(1, Math.round(Number(verseLayout?.minFontSizePx) || 18));
-    const max = Math.max(min, Math.round(Number(verseLayout?.maxFontSizePx) || 36));
+    const min = Math.max(
+      1,
+      Math.round(Number(verseLayout?.minFontSizePx) || 18),
+    );
+    const max = Math.max(
+      min,
+      Math.round(Number(verseLayout?.maxFontSizePx) || 36),
+    );
     const defaultSize = Math.max(
       min,
-      Math.min(max, Math.round(Number(verseLayout?.defaultFontSizePx) || 22))
+      Math.min(max, Math.round(Number(verseLayout?.defaultFontSizePx) || 22)),
     );
 
     return {
@@ -79,11 +95,15 @@ export default function PdfDocumentViewer({
       defaultSize,
       step: VERSE_BUTTON_ZOOM_STEP_PX,
     };
-  }, [verseLayout?.defaultFontSizePx, verseLayout?.maxFontSizePx, verseLayout?.minFontSizePx]);
+  }, [
+    verseLayout?.defaultFontSizePx,
+    verseLayout?.maxFontSizePx,
+    verseLayout?.minFontSizePx,
+  ]);
   const requestedViewMode: ReaderViewMode = controlledViewMode;
   const requestedZoomLevel = Math.max(
     MIN_ZOOM_LEVEL,
-    Math.min(MAX_ZOOM_LEVEL, Number(controlledZoomLevel) || DEFAULT_ZOOM_LEVEL)
+    Math.min(MAX_ZOOM_LEVEL, Number(controlledZoomLevel) || DEFAULT_ZOOM_LEVEL),
   );
   const readerCore = useReaderCoreState({
     controlledZoomLevel,
@@ -112,10 +132,16 @@ export default function PdfDocumentViewer({
     webViewRef,
     zoomLevel,
   } = readerCore;
-  const readerDialogOkLabel = resetConfirmation?.okLabel || 'OK';
+  const readerDialogOkLabel = resetConfirmation?.okLabel || "OK";
   const hasVerseContent = Boolean(verses?.length);
-  const contentMode: 'pdf' | 'verse' =
-    mode === 'verse' ? 'verse' : mode === 'pdf' ? 'pdf' : hasVerseContent ? 'verse' : 'pdf';
+  const contentMode: "pdf" | "verse" =
+    mode === "verse"
+      ? "verse"
+      : mode === "pdf"
+        ? "pdf"
+        : hasVerseContent
+          ? "verse"
+          : "pdf";
   const viewportTracking = useReaderViewportTracking({
     contentMode,
     overlayViewport,
@@ -159,7 +185,8 @@ export default function PdfDocumentViewer({
       readerVerseId && useNativeVersePaging
         ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1
         : 0;
-    const pendingVerseId = readerVersePage === pageNumberRef.current ? readerVerseId : pageVerseId;
+    const pendingVerseId =
+      readerVersePage === pageNumberRef.current ? readerVerseId : pageVerseId;
     if (pendingVerseId) {
       pendingCompleteScrollVerseIdRef.current = pendingVerseId;
     }
@@ -167,10 +194,11 @@ export default function PdfDocumentViewer({
   const label =
     filename?.trim() ||
     title?.trim() ||
-    (contentMode === 'verse' ? 'Verse document' : 'PDF document');
-  const shareUrl = (downloadUrl || pdfUrl || '').trim();
+    (contentMode === "verse" ? "Verse document" : "PDF document");
+  const shareUrl = (downloadUrl || pdfUrl || "").trim();
   const readerDocumentId =
-    documentId?.trim() || (contentMode === 'verse' ? `verse:${label}` : pdfUrl || label);
+    documentId?.trim() ||
+    (contentMode === "verse" ? `verse:${label}` : pdfUrl || label);
   const showHeaderControls = !hideControls && !isVerseFullScreen;
   const readerSession = useReaderSession({
     content: readerContentModel,
@@ -221,7 +249,15 @@ export default function PdfDocumentViewer({
     audio: readerAudio,
     label,
     onExternalAudioToggle,
+    externalActiveVerseId,
     externalVerseAudioState,
+    externalVerseAudioMappings,
+    audioSourceAvailable,
+    autoReadPlaying,
+    autoReadClockMs,
+    autoReadResetKey,
+    onAutoReadPlayingChange,
+    onAutoReadCompleteChange,
     overlayViewport,
     page: {
       isPageHydrated,
@@ -254,7 +290,8 @@ export default function PdfDocumentViewer({
     zoomLevel,
     verseFontSizePx,
   });
-  const { context: readerActionsContext, toggleShareOverlay } = interactions.actions;
+  const { context: readerActionsContext, toggleShareOverlay } =
+    interactions.actions;
   const nativeFullScreenOverlay = (
     <ReaderFullScreenSurface
       audio={readerAudio}
@@ -262,6 +299,7 @@ export default function PdfDocumentViewer({
       core={readerCore}
       documentSource={readerDocumentSource}
       externalVerseAudioState={externalVerseAudioState}
+      autoReadPlaying={autoReadPlaying}
       hideControls={hideControls}
       hidePageNavigationControls={hidePageNavigationControls}
       hideVerseAudioControls={hideVerseAudioControls}

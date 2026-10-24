@@ -1,1 +1,1 @@
-export { PdfDocumentViewer } from '../dist/react-native.js';
+export { PdfDocumentViewer } from '../src/react/native/index.ts';

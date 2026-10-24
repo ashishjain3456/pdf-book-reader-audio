@@ -1,11 +1,17 @@
-import { Pressable, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { ReaderPageBadge } from './ReaderPageBadge';
-import { ReaderPageNavigationButton } from './ReaderPageNavigationButton';
-import { ReaderZoomControls } from './ReaderZoomControls';
-import { styles } from './styles';
-import { VerseAudioControls } from './VerseAudioControls';
-import type { ReaderViewMode, VerseLayoutConfig } from './types';
+import { Pressable, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { ReaderPageBadge } from "./ReaderPageBadge";
+import { ReaderPageNavigationButton } from "./ReaderPageNavigationButton";
+import { ReaderZoomControls } from "./ReaderZoomControls";
+import { styles } from "./styles";
+import { VerseAudioControls } from "./VerseAudioControls";
+import { ReaderAutoReadButton } from "./ReaderAutoReadButton";
+import type {
+  PlaybackMode,
+  ReaderTheme,
+  ReaderViewMode,
+  VerseLayoutConfig,
+} from "./types";
 
 export type ReaderInlineOverlayControlsProps = {
   activeAudio: boolean;
@@ -15,7 +21,7 @@ export type ReaderInlineOverlayControlsProps = {
   canPlayNextMappedVerse: boolean;
   canPlayPreviousMappedVerse: boolean;
   canRestartMappedVerse: boolean;
-  contentMode: 'pdf' | 'verse';
+  contentMode: "pdf" | "verse";
   effectiveVerseLayout?: VerseLayoutConfig;
   goToNextPage: () => void;
   goToPreviousPage: () => void;
@@ -32,6 +38,16 @@ export type ReaderInlineOverlayControlsProps = {
   pageBadgeText: string;
   playProgress: number;
   playing: boolean;
+  playbackProgress: {
+    mode: PlaybackMode;
+    progress: number;
+    complete: boolean;
+  } | null;
+  autoReadAllowed: boolean;
+  autoReadPlaying: boolean;
+  autoReadCompleted: boolean;
+  onAutoReadToggle: () => void;
+  theme: Required<ReaderTheme>;
   showPageBadge: boolean;
   isFullScreen: boolean;
   timeText: string | null;
@@ -68,6 +84,12 @@ export function ReaderInlineOverlayControls({
   pageBadgeText,
   playProgress,
   playing,
+  playbackProgress,
+  autoReadAllowed,
+  autoReadPlaying,
+  autoReadCompleted,
+  onAutoReadToggle,
+  theme,
   showPageBadge,
   isFullScreen,
   timeText,
@@ -98,9 +120,17 @@ export function ReaderInlineOverlayControls({
           timeText={timeText}
         />
       ) : null}
+      {autoReadAllowed && !hideVerseAudioControls ? (
+        <ReaderAutoReadButton
+          playing={autoReadPlaying}
+          completed={autoReadCompleted}
+          onPress={onAutoReadToggle}
+          theme={theme}
+        />
+      ) : null}
       {!hideReaderActionControls ? (
         <View style={styles.overlayZoomGroup}>
-          {viewMode === 'book' && !hidePageNavigationControls ? (
+          {viewMode === "book" && !hidePageNavigationControls ? (
             <ReaderPageNavigationButton
               direction="previous"
               enabled={canNavigatePreviousPage}
@@ -113,23 +143,29 @@ export function ReaderInlineOverlayControls({
             onZoomOut={zoomOut}
             outDisabled={zoomOutDisabled}
           />
-          {contentMode === 'verse' ? (
+          {contentMode === "verse" ? (
             <Pressable
               onPress={toggleFullScreen}
               style={styles.overlayControlButton}
-              testID={isFullScreen ? 'reader-exit-fullscreen' : 'reader-enter-fullscreen'}
+              testID={
+                isFullScreen
+                  ? "reader-exit-fullscreen"
+                  : "reader-enter-fullscreen"
+              }
               accessibilityLabel={
-                isFullScreen ? 'Exit fullscreen reader' : 'Enter fullscreen reader'
+                isFullScreen
+                  ? "Exit fullscreen reader"
+                  : "Enter fullscreen reader"
               }
             >
               <Ionicons
-                name={isFullScreen ? 'contract-outline' : 'expand-outline'}
+                name={isFullScreen ? "contract-outline" : "expand-outline"}
                 size={20}
                 color="#fff"
               />
             </Pressable>
           ) : null}
-          {viewMode === 'book' && !hidePageNavigationControls ? (
+          {viewMode === "book" && !hidePageNavigationControls ? (
             <ReaderPageNavigationButton
               direction="next"
               enabled={canNavigateNextPage}
@@ -138,7 +174,9 @@ export function ReaderInlineOverlayControls({
           ) : null}
         </View>
       ) : null}
-      {viewMode === 'book' && showPageBadge && effectiveVerseLayout?.showPageBadge !== false ? (
+      {viewMode === "book" &&
+      showPageBadge &&
+      effectiveVerseLayout?.showPageBadge !== false ? (
         <ReaderPageBadge text={pageBadgeText} />
       ) : null}
     </>

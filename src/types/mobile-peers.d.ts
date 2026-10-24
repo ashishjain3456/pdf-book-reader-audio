@@ -147,8 +147,18 @@ declare module "react-native" {
     addEventListener: (
       event: "change",
       listener: (metrics: {
-        window: { width: number; height: number; scale: number; fontScale: number };
-        screen: { width: number; height: number; scale: number; fontScale: number };
+        window: {
+          width: number;
+          height: number;
+          scale: number;
+          fontScale: number;
+        };
+        screen: {
+          width: number;
+          height: number;
+          scale: number;
+          fontScale: number;
+        };
       }) => void,
     ) => { remove: () => void };
   };
@@ -159,6 +169,12 @@ declare module "react-native" {
   };
   export const Platform: {
     OS: "ios" | "android" | "web" | string;
+  };
+  export const AppState: {
+    addEventListener: (
+      event: "change",
+      listener: (state: string) => void,
+    ) => { remove: () => void };
   };
   export const NativeModules: {
     FPStaticServer?: {

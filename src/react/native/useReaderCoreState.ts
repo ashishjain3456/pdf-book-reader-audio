@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react';
-import type { WebView } from 'react-native-webview';
+import { useRef, useState } from "react";
+import type { WebView } from "react-native-webview";
 import type {
   ReaderDialogRequest,
   ReaderProgrammaticSync,
   ReaderScrollViewHandle,
   ReaderViewMode,
   VerseLayoutConfig,
-} from './types';
+} from "./types";
 
 type VerseZoomConfig = { defaultSize: number; max: number; min: number };
 
@@ -43,46 +43,72 @@ export function useReaderCoreState({
   const [zoomLevel, setZoomLevel] = useState(requestedZoomLevel);
   const [showShareOverlay, setShowShareOverlay] = useState(false);
   const [showOverlayControls, setShowOverlayControls] = useState(false);
-  const [readerDialog, setReaderDialog] = useState<ReaderDialogRequest | null>(null);
+  const [readerDialog, setReaderDialog] = useState<ReaderDialogRequest | null>(
+    null,
+  );
   const [viewerReloadKey, setViewerReloadKey] = useState(0);
   const [localPdfUrl, setLocalPdfUrl] = useState<string | null>(null);
   const [triedLocalFileFallback, setTriedLocalFileFallback] = useState(false);
-  const [isVerseFullScreen, setIsVerseFullScreen] = useState(verseLayout?.fullScreen === true);
+  const [isVerseFullScreen, setIsVerseFullScreen] = useState(
+    verseLayout?.fullScreen === true,
+  );
   const [verseFontSizePx, setVerseFontSizePx] = useState(() =>
     Math.max(
       verseZoomConfig.min,
-      Math.min(verseZoomConfig.max, Math.round(verseZoomConfig.defaultSize * requestedZoomLevel))
-    )
+      Math.min(
+        verseZoomConfig.max,
+        Math.round(verseZoomConfig.defaultSize * requestedZoomLevel),
+      ),
+    ),
   );
-  const [readerVerseId, setReaderVerseId] = useState<string | null>(initialReaderVerseId ?? null);
+  const [readerVerseId, setReaderVerseId] = useState<string | null>(
+    initialReaderVerseId ?? null,
+  );
   const initialReaderVerseIdRef = useRef(initialReaderVerseId);
   const initialReaderVerseAppliedRef = useRef(false);
-  const [versePageById, setVersePageById] = useState<Record<string, number>>({});
-  const [verseIdsByPage, setVerseIdsByPage] = useState<Record<number, string[]>>({});
+  const [versePageById, setVersePageById] = useState<Record<string, number>>(
+    {},
+  );
+  const [verseIdsByPage, setVerseIdsByPage] = useState<
+    Record<number, string[]>
+  >({});
   const [audioSliderWidth, setAudioSliderWidth] = useState(1);
   const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = useState(0);
-  const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] = useState(0);
+  const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] =
+    useState(0);
   const [pdfBookViewerHeight, setPdfBookViewerHeight] = useState(480);
-  const [pdfContinuousViewerHeight, setPdfContinuousViewerHeight] = useState(480);
+  const [pdfContinuousViewerHeight, setPdfContinuousViewerHeight] =
+    useState(480);
   const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = useState(true);
-  const [bookSpreadMode, setBookSpreadMode] = useState<'single' | 'double'>(() =>
-    verseLayout?.bookSpreadMode === 'double' && verseLayout?.showSecondPage !== false
-      ? 'double'
-      : 'single'
+  const [bookSpreadMode, setBookSpreadMode] = useState<"single" | "double">(
+    () =>
+      verseLayout?.bookSpreadMode === "double" &&
+      verseLayout?.showSecondPage !== false
+        ? "double"
+        : "single",
   );
 
   const webViewRef = useRef<WebView | null>(null);
   const fullScreenWebViewRef = useRef<WebView | null>(null);
   const completeScrollRef = useRef<ReaderScrollViewHandle | null>(null);
+  const fullScreenCompleteScrollRef = useRef<ReaderScrollViewHandle | null>(
+    null,
+  );
   const completeVerseYByIdRef = useRef<Record<string, number>>({});
+  const fullScreenCompleteVerseYByIdRef = useRef<Record<string, number>>({});
   const completeScrollOffsetRef = useRef(0);
   const pendingCompleteScrollVerseIdRef = useRef<string | null>(null);
   const userDraggingCompleteScrollRef = useRef(false);
-  const completeRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completeRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const completeRestoreGuardUntilRef = useRef(0);
   const suppressCompleteModeSyncRef = useRef(false);
   const pendingModeSwitchPageRef = useRef<number | null>(null);
-  const lastRenderedBookPageRef = useRef<{ mode: ReaderViewMode; page: number } | null>(null);
+  const lastRenderedBookPageRef = useRef<{
+    mode: ReaderViewMode;
+    page: number;
+  } | null>(null);
   const programmaticViewerSyncRef = useRef<ReaderProgrammaticSync | null>(null);
   const lastSyncedViewModeRef = useRef<ReaderViewMode | null>(null);
   const lastInjectedViewerStateRef = useRef<string | null>(null);
@@ -90,15 +116,15 @@ export function useReaderCoreState({
   const pageCountRef = useRef(0);
   const lastNativeReadyPageCountRef = useRef(0);
   const onReadyRef = useRef(onReady);
-  const versePagesSignatureRef = useRef('');
+  const versePagesSignatureRef = useRef("");
   const pageNumberRef = useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0
       ? Math.trunc(Number(currentPage))
-      : 1
+      : 1,
   );
   const viewModeRef = useRef<ReaderViewMode>(requestedViewMode);
   const zoomLevelRef = useRef(requestedZoomLevel);
-  const previousPdfUrlRef = useRef(pdfUrl || '');
+  const previousPdfUrlRef = useRef(pdfUrl || "");
   const lastEmittedReaderStateRef = useRef<string | null>(null);
 
   return {
@@ -109,7 +135,9 @@ export function useReaderCoreState({
     completeRestoreTimerRef,
     completeScrollOffsetRef,
     completeScrollRef,
+    fullScreenCompleteScrollRef,
     completeVerseYByIdRef,
+    fullScreenCompleteVerseYByIdRef,
     embeddedBookContentHeight,
     embeddedContinuousContentHeight,
     fullScreenWebViewRef,

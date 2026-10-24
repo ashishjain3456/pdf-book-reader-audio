@@ -1,40 +1,45 @@
-import { useCompleteVerseScroll } from './useCompleteVerseScroll';
-import { useReaderAudioController } from './useReaderAudioController';
-import { useReaderControlledSettings } from './useReaderControlledSettings';
-import { useReaderDocumentSource } from './useReaderDocumentSource';
-import { useReaderLifecycleEffects } from './useReaderLifecycleEffects';
-import type { useReaderContentModel } from './useReaderContentModel';
-import type { useReaderCoreState } from './useReaderCoreState';
-import type { useReaderViewportTracking } from './useReaderViewportTracking';
-import type { PdfDocumentViewerProps, ReaderTheme } from './types';
+import { useCompleteVerseScroll } from "./useCompleteVerseScroll";
+import { useReaderAudioController } from "./useReaderAudioController";
+import { useReaderControlledSettings } from "./useReaderControlledSettings";
+import { useReaderDocumentSource } from "./useReaderDocumentSource";
+import { useReaderLifecycleEffects } from "./useReaderLifecycleEffects";
+import type { useReaderContentModel } from "./useReaderContentModel";
+import type { useReaderCoreState } from "./useReaderCoreState";
+import type { useReaderViewportTracking } from "./useReaderViewportTracking";
+import type { PdfDocumentViewerProps, ReaderTheme } from "./types";
 
 type Props = {
   content: ReturnType<typeof useReaderContentModel>;
   core: ReturnType<typeof useReaderCoreState>;
   controlledZoomLevel?: number;
-  controlledViewMode: PdfDocumentViewerProps['viewMode'];
+  controlledViewMode: PdfDocumentViewerProps["viewMode"];
   currentPage?: number;
   downloadUrl?: string;
   enableLocalFallback: boolean;
   externalActiveVerseId?: string | null;
-  externalVerseAudioState?: PdfDocumentViewerProps['externalVerseAudioState'];
+  externalVerseAudioState?: PdfDocumentViewerProps["externalVerseAudioState"];
   label: string;
   neighborPageCount: number;
-  onError?: PdfDocumentViewerProps['onError'];
-  onFullScreenChange?: PdfDocumentViewerProps['onFullScreenChange'];
-  onReady?: PdfDocumentViewerProps['onReady'];
-  onStateChange: PdfDocumentViewerProps['onStateChange'];
-  overlayViewport?: PdfDocumentViewerProps['overlayViewport'];
+  onError?: PdfDocumentViewerProps["onError"];
+  onFullScreenChange?: PdfDocumentViewerProps["onFullScreenChange"];
+  onReady?: PdfDocumentViewerProps["onReady"];
+  onStateChange: PdfDocumentViewerProps["onStateChange"];
+  overlayViewport?: PdfDocumentViewerProps["overlayViewport"];
   pdfJsScriptUrl?: string;
   pdfJsWorkerUrl?: string;
   pdfUrl?: string;
   readerDocumentId: string;
   readerTheme: Required<ReaderTheme>;
-  verseLayout?: PdfDocumentViewerProps['verseLayout'];
-  verseZoomConfig: { defaultSize: number; max: number; min: number; step: number };
+  verseLayout?: PdfDocumentViewerProps["verseLayout"];
+  verseZoomConfig: {
+    defaultSize: number;
+    max: number;
+    min: number;
+    step: number;
+  };
   viewport: ReturnType<typeof useReaderViewportTracking>;
   showOverlay: () => void;
-  verses?: PdfDocumentViewerProps['verses'];
+  verses?: PdfDocumentViewerProps["verses"];
 };
 
 export function useReaderSession({
@@ -128,12 +133,15 @@ export function useReaderSession({
     completeRestoreTimerRef: core.completeRestoreTimerRef,
     completeScrollOffsetRef: core.completeScrollOffsetRef,
     completeScrollRef: core.completeScrollRef,
+    fullScreenCompleteScrollRef: core.fullScreenCompleteScrollRef,
     completeVerseYByIdRef: core.completeVerseYByIdRef,
+    fullScreenCompleteVerseYByIdRef: core.fullScreenCompleteVerseYByIdRef,
     completeVerses,
     contentMode,
     initialReaderVerseAppliedRef: core.initialReaderVerseAppliedRef,
     initialReaderVerseIdRef: core.initialReaderVerseIdRef,
     isPageHydrated: page.isPageHydrated,
+    isVerseFullScreen: core.isVerseFullScreen,
     overlayViewport,
     pageNumber: page.pageNumber,
     pageNumberRef: core.pageNumberRef,

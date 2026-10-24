@@ -1,4 +1,5 @@
 import { ScrollView, View } from 'react-native';
+import { getContinuousProgressIndex } from '../../core/readerPlayback.ts';
 import { CompleteVerseBlock } from './CompleteVerseBlock';
 import { styles } from './styles';
 import type {
@@ -8,6 +9,7 @@ import type {
   ReaderScrollViewRef,
   ReaderTheme,
 } from './types';
+import type { PagePlaybackProgress } from './PerimeterProgress';
 
 type Props = {
   activeVerseId: string | null;
@@ -17,6 +19,9 @@ type Props = {
   completeRestoreGuardUntilRef: { current: number };
   completeVerseYByIdRef: { current: Record<string, number> };
   completeVerses: CompleteReaderVerse[];
+  playbackProgress?:
+    | (PagePlaybackProgress & { pageNumber: number | null })
+    | null;
   fontSize: number;
   highlightCurrentVerse: boolean;
   isEmbeddedLandscape: boolean;
@@ -42,6 +47,7 @@ export function NativeContinuousVerseView({
   completeRestoreGuardUntilRef,
   completeVerseYByIdRef,
   completeVerses,
+  playbackProgress,
   fontSize,
   highlightCurrentVerse,
   isEmbeddedLandscape,
@@ -58,9 +64,25 @@ export function NativeContinuousVerseView({
   updateCompleteAnchorFromOffset,
   userDraggingCompleteScrollRef,
 }: Props) {
+  const progressIndex = playbackProgress
+    ? getContinuousProgressIndex(
+        playbackProgress.mode,
+        playbackProgress.pageNumber,
+        playbackProgress.verseId,
+        completeVerses.map((verse) => verse.id)
+      )
+    : -1;
+
   const alignPendingVerse = () => {
     const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
     if (!autoAlignCurrentVerse && !pendingVerseId) return;
+    if (
+      !pendingVerseId &&
+      autoAlignCurrentVerse &&
+      Date.now() < completeRestoreGuardUntilRef.current
+    ) {
+      return;
+    }
     scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
   };
 
@@ -91,19 +113,23 @@ export function NativeContinuousVerseView({
       }}
       onContentSizeChange={(_width: number, height: number) => {
         const nextHeight = Math.ceil(height);
-        setEmbeddedContentHeight((current) => (current === nextHeight ? current : nextHeight));
+        setEmbeddedContentHeight((current) =>
+          current === nextHeight ? current : nextHeight
+        );
         alignPendingVerse();
       }}
       onLayout={alignPendingVerse}
     >
       {completeVerses.map((verse, index) => {
         const isActive =
-          highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id);
+          highlightCurrentVerse &&
+          (readerVerseId === verse.id || activeVerseId === verse.id);
         return (
           <View
             key={verse.id}
             onLayout={(event: ReaderLayoutEvent) => {
-              completeVerseYByIdRef.current[verse.id] = event.nativeEvent.layout.y;
+              completeVerseYByIdRef.current[verse.id] =
+                event.nativeEvent.layout.y;
               if (
                 !autoAlignCurrentVerse &&
                 pendingCompleteScrollVerseIdRef.current !== verse.id
@@ -111,6 +137,8 @@ export function NativeContinuousVerseView({
                 return;
               }
               if (pendingCompleteScrollVerseIdRef.current === verse.id) {
+                // An explicit mode-switch target must win over restore guards;
+                // otherwise this onLayout is the last chance to retry it.
                 setTimeout(() => scrollCompleteToVerse(verse.id, false), 0);
               }
             }}
@@ -123,6 +151,9 @@ export function NativeContinuousVerseView({
               fullScreen={false}
               fontSize={fontSize}
               theme={theme}
+              playbackProgress={
+                progressIndex === index ? playbackProgress : null
+              }
             />
           </View>
         );

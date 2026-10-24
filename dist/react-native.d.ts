@@ -3,8 +3,8 @@ import { ReactNode } from 'react';
 import * as react_native from 'react-native';
 import { V as VerseAudioMapping } from './contracts-UxLvblLy.js';
 
-type ReaderViewMode = 'book' | 'continuous';
-type ReaderAnimatedValue = ReturnType<InstanceType<typeof react_native.Animated.Value>['interpolate']>;
+type ReaderViewMode = "book" | "continuous";
+type ReaderAnimatedValue = ReturnType<InstanceType<typeof react_native.Animated.Value>["interpolate"]>;
 type ReaderOverlayViewport = {
     top: number;
     bottom: number;
@@ -16,7 +16,7 @@ type ReaderOverlayViewport = {
         interpolate: (config: {
             inputRange: number[];
             outputRange: number[];
-            extrapolate: 'clamp';
+            extrapolate: "clamp";
         }) => ReaderAnimatedValue;
     };
     getScrollOffset: () => number;
@@ -77,6 +77,7 @@ type ReaderTheme = {
     accentRed?: string;
     accentGreen?: string;
     accentIndigo?: string;
+    autoReadAccent?: string;
     preserveInlineColors?: boolean;
 };
 type ReaderVerse = {
@@ -95,7 +96,7 @@ type VerseLayoutConfig = {
     minFontSizePx?: number;
     defaultFontSizePx?: number;
     maxFontSizePx?: number;
-    bookSpreadMode?: 'single' | 'double';
+    bookSpreadMode?: "single" | "double";
     enablePageTurnEffect?: boolean;
     showSecondPage?: boolean;
     allowDoubleSpread?: boolean;
@@ -132,7 +133,7 @@ type PdfDocumentViewerProps = {
         message: string;
         code?: string;
     }) => void;
-    mode?: 'auto' | 'pdf' | 'verse';
+    mode?: "auto" | "pdf" | "verse";
     verses?: ReaderVerse[];
     verseAudioMappings?: VerseAudioMapping[];
     verseLayout?: VerseLayoutConfig;
@@ -143,7 +144,14 @@ type PdfDocumentViewerProps = {
     hideReaderActionControls?: boolean;
     hideVerseAudioControls?: boolean;
     externalVerseAudioState?: ExternalVerseAudioState | null;
+    externalVerseAudioMappings?: VerseAudioMapping[];
+    audioSourceAvailable?: boolean;
     onExternalAudioToggle?: () => void;
+    autoReadPlaying?: boolean;
+    autoReadClockMs?: number;
+    autoReadResetKey?: string;
+    onAutoReadPlayingChange?: (playing: boolean) => void;
+    onAutoReadCompleteChange?: (complete: boolean) => void;
     externalActiveVerseId?: string | null;
     initialReaderVerseId?: string | null;
     readerTheme?: ReaderTheme;
@@ -151,6 +159,6 @@ type PdfDocumentViewerProps = {
     overlayViewport?: ReaderOverlayViewport;
 };
 
-declare function PdfDocumentViewer({ pdfUrl, pdfJsScriptUrl, pdfJsWorkerUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, onExternalAudioToggle, externalActiveVerseId, initialReaderVerseId, readerTheme, resetConfirmation, overlayViewport, }: PdfDocumentViewerProps): react.JSX.Element;
+declare function PdfDocumentViewer({ pdfUrl, pdfJsScriptUrl, pdfJsWorkerUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, externalVerseAudioMappings, audioSourceAvailable, onExternalAudioToggle, autoReadPlaying, autoReadClockMs, autoReadResetKey, onAutoReadPlayingChange, onAutoReadCompleteChange, externalActiveVerseId, initialReaderVerseId, readerTheme, resetConfirmation, overlayViewport, }: PdfDocumentViewerProps): react.JSX.Element;
 
 export { type ExternalVerseAudioState, PdfDocumentViewer, type PdfDocumentViewerProps, type ReaderActionsContext, type ReaderResetConfirmation, type ReaderState, type ReaderTheme, type ReaderVerse, type ReaderViewMode, VerseAudioMapping, type VerseLayoutConfig };

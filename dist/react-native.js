@@ -1,10 +1,11 @@
 import { findTimedAudioMappingIndex } from './chunk-7VJREGRK.js';
-import { clampPageNumber } from './chunk-JTAVLX62.js';
-import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-import { StyleSheet, Platform, Animated, Dimensions, View, ActivityIndicator, Text, Pressable, Easing, PanResponder, ScrollView, Modal } from 'react-native';
-import { jsxs, Fragment, jsx } from 'react/jsx-runtime';
+import { clampPageNumber, getReaderModeSwitchTarget } from './chunk-XMWMQCNE.js';
+import * as React from 'react';
+import { memo, useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import { StyleSheet, Platform, Animated, View, Text, ScrollView, Easing, Dimensions, AppState, ActivityIndicator, Pressable, PanResponder, Modal } from 'react-native';
+import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 import * as ExpoLinking from 'expo-linking';
-import Ionicons3 from '@expo/vector-icons/Ionicons';
+import Ionicons4 from '@expo/vector-icons/Ionicons';
 import { WebView } from 'react-native-webview';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import * as ExpoAudio from 'expo-audio';
@@ -35,6 +36,7 @@ var DEFAULT_READER_THEME = {
   accentRed: "#7f1d1d",
   accentGreen: "#166534",
   accentIndigo: "#3730a3",
+  autoReadAccent: "#d97706",
   preserveInlineColors: true
 };
 function resolveReaderTheme(theme) {
@@ -911,18 +913,6 @@ var bookStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  nativeBookPageOrnamentOuter: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    bottom: 8,
-    left: 8,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: "#f97316",
-    borderRadius: 5,
-    opacity: 0.92
-  },
   nativeBookPageOrnamentInner: {
     position: "absolute",
     top: 17,
@@ -1029,18 +1019,6 @@ var contentStyles = StyleSheet.create({
     gap: 8,
     position: "relative",
     overflow: "hidden"
-  },
-  completeVerseOrnamentOuter: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    bottom: 8,
-    left: 8,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: "#f97316",
-    borderRadius: 8,
-    opacity: 0.9
   },
   completeVerseOrnamentInner: {
     position: "absolute",
@@ -1527,6 +1505,202 @@ var styles = {
   ...bookStyles,
   ...controlsStyles
 };
+function PerimeterProgress({
+  playback,
+  theme,
+  radius,
+  inset = 0,
+  pageNumberBounds,
+  pageNumberGap = 2,
+  containerSize
+}) {
+  const animatedProgress = useRef(new Animated.Value(0)).current;
+  const lastProgressRef = useRef(0);
+  const [accessibilityProgress, setAccessibilityProgress] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const hasContainerSize = Boolean(
+    containerSize && containerSize.width > 0 && containerSize.height > 0
+  );
+  const measuredSize = useMemo(
+    () => hasContainerSize && containerSize ? {
+      width: Math.max(0, containerSize.width + 2 * inset),
+      height: Math.max(0, containerSize.height + 2 * inset)
+    } : size,
+    [
+      containerSize?.height,
+      containerSize?.width,
+      hasContainerSize,
+      inset,
+      size
+    ]
+  );
+  const fallbackProgress = playback.progressStore ? null : playback.progress;
+  useEffect(() => {
+    const store = playback.progressStore;
+    let lastAccessibilityUpdate = 0;
+    const update = () => {
+      const next = Math.max(
+        0,
+        Math.min(1, store?.getSnapshot() ?? fallbackProgress ?? 0)
+      );
+      if (next < lastProgressRef.current) {
+        animatedProgress.setValue(next);
+      } else {
+        Animated.timing(animatedProgress, {
+          toValue: next,
+          duration: 200,
+          easing: Easing.cubic,
+          useNativeDriver: true
+        }).start(() => {
+        });
+      }
+      lastProgressRef.current = next;
+      const now = Date.now();
+      if (now - lastAccessibilityUpdate >= 1e3) {
+        lastAccessibilityUpdate = now;
+        setAccessibilityProgress(next);
+      }
+    };
+    update();
+    return store?.subscribe(update);
+  }, [animatedProgress, fallbackProgress, playback.progressStore]);
+  const segments = useMemo(() => {
+    const { width, height } = measuredSize;
+    if (!width || !height) return [];
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2) - 1);
+    const hasPageNumberBounds = Boolean(pageNumberBounds?.width);
+    const pageNumberLeft = hasPageNumberBounds && pageNumberBounds ? pageNumberBounds.x + inset : width / 2;
+    const pageNumberRight = hasPageNumberBounds && pageNumberBounds ? pageNumberBounds.x + pageNumberBounds.width + inset : width / 2;
+    const startX = Math.max(1, pageNumberLeft - pageNumberGap);
+    const endX = Math.min(width - 1, pageNumberRight + pageNumberGap);
+    const points = [{ x: startX, y: height - 1 }];
+    const lineTo = (x, y) => points.push({ x, y });
+    const arc = (cx, cy, start) => {
+      const cornerSteps = 8;
+      for (let step = 0; step <= cornerSteps; step += 1) {
+        const angle = start + step / cornerSteps * (Math.PI / 2);
+        points.push({
+          x: cx + r * Math.cos(angle),
+          y: cy + r * Math.sin(angle)
+        });
+      }
+    };
+    if (hasPageNumberBounds) {
+      lineTo(1 + r, height - 1);
+      arc(1 + r, height - 1 - r, Math.PI / 2);
+      lineTo(1, 1 + r);
+      arc(1 + r, 1 + r, Math.PI);
+      lineTo(width - 1 - r, 1);
+      arc(width - 1 - r, 1 + r, -Math.PI / 2);
+      lineTo(width - 1, height - 1 - r);
+      arc(width - 1 - r, height - 1 - r, 0);
+      lineTo(endX, height - 1);
+    } else {
+      lineTo(1 + r, height - 1);
+      arc(1 + r, height - 1 - r, Math.PI / 2);
+      lineTo(1, 1 + r);
+      arc(1 + r, 1 + r, Math.PI);
+      lineTo(width - 1 - r, 1);
+      arc(width - 1 - r, 1 + r, -Math.PI / 2);
+      lineTo(width - 1, height - 1 - r);
+      arc(width - 1 - r, height - 1 - r, 0);
+      lineTo(width / 2, height - 1);
+    }
+    let offset = 0;
+    return points.slice(1).map((point, index) => {
+      const start = points[index];
+      const dx = point.x - start.x;
+      const dy = point.y - start.y;
+      const length = Math.hypot(dx, dy);
+      const segment = {
+        start,
+        dx,
+        dy,
+        length,
+        offset,
+        angle: Math.atan2(dy, dx)
+      };
+      offset += length;
+      return segment;
+    }).filter((segment) => segment.length > 0);
+  }, [inset, measuredSize, pageNumberBounds, pageNumberGap, radius]);
+  const total = segments.reduce((sum, segment) => sum + segment.length, 0);
+  const color = playback.mode === "audio" ? theme.accent : theme.autoReadAccent;
+  return /* @__PURE__ */ jsx(
+    View,
+    {
+      pointerEvents: "none",
+      accessible: true,
+      accessibilityRole: "progressbar",
+      accessibilityLabel: playback.mode === "audio" ? "Audio page progress" : "Auto-read page progress",
+      accessibilityValue: {
+        min: 0,
+        max: 100,
+        now: Math.round(accessibilityProgress * 100)
+      },
+      onLayout: (event) => {
+        if (hasContainerSize) return;
+        const { width, height } = event.nativeEvent.layout;
+        setSize(
+          (previous) => previous.width === width && previous.height === height ? previous : { width, height }
+        );
+      },
+      style: {
+        position: "absolute",
+        top: -inset,
+        right: -inset,
+        bottom: -inset,
+        left: -inset,
+        zIndex: 4
+      },
+      children: segments.map((segment, index) => /* @__PURE__ */ jsx(
+        ProgressSegment,
+        {
+          segment,
+          total,
+          progress: animatedProgress,
+          color
+        },
+        index
+      ))
+    }
+  );
+}
+var ProgressSegment = memo(function ProgressSegment2({
+  segment,
+  total,
+  progress,
+  color
+}) {
+  const scaleX = useMemo(() => {
+    const interpolate = progress.interpolate;
+    return interpolate.call(progress, {
+      inputRange: [
+        segment.offset / total,
+        (segment.offset + segment.length) / total
+      ],
+      outputRange: [0, 1],
+      extrapolate: "clamp"
+    });
+  }, [progress, segment.length, segment.offset, total]);
+  if (!segment.length || !total) return null;
+  return /* @__PURE__ */ jsx(
+    Animated.View,
+    {
+      style: {
+        position: "absolute",
+        left: segment.start.x + segment.dx / 2 - segment.length / 2,
+        top: segment.start.y + segment.dy / 2 - 1,
+        width: segment.length,
+        height: 2,
+        borderRadius: 1,
+        backgroundColor: color,
+        transformOrigin: "left center",
+        transform: [{ rotate: `${segment.angle}rad` }, { scaleX }]
+      }
+    }
+  );
+});
 var NativeAnimatedView = Animated.View;
 function NativeBookPage({
   verse,
@@ -1539,8 +1713,11 @@ function NativeBookPage({
   pageBackground = theme.page,
   contentKeyPrefix,
   contentOpacity,
-  pageStyle
+  pageStyle,
+  playbackProgress
 }) {
+  const [pageNumberBounds, setPageNumberBounds] = useState({ x: 0, width: 0 });
+  const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
   return /* @__PURE__ */ jsxs(
     View,
     {
@@ -1557,8 +1734,27 @@ function NativeBookPage({
         },
         pageStyle
       ],
+      onLayout: (event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setPageSize(
+          (current) => current.width === width && current.height === height ? current : { width, height }
+        );
+      },
       children: [
-        /* @__PURE__ */ jsx(View, { pointerEvents: "none", style: styles.nativeBookPageOrnamentOuter }),
+        playbackProgress ? /* @__PURE__ */ jsx(
+          PerimeterProgress,
+          {
+            playback: playbackProgress,
+            theme,
+            radius: 5,
+            inset: -6,
+            pageNumberBounds,
+            containerSize: {
+              width: Math.max(0, pageSize.width - 6),
+              height: Math.max(0, pageSize.height - 6)
+            }
+          }
+        ) : null,
         /* @__PURE__ */ jsx(View, { pointerEvents: "none", style: styles.nativeBookPageOrnamentInner }),
         /* @__PURE__ */ jsx(
           NativeAnimatedView,
@@ -1576,7 +1772,10 @@ function NativeBookPage({
                   { color: theme.text },
                   { fontSize, lineHeight: Math.round(fontSize * 1.45) }
                 ],
-                children: renderNativeRichText(verse.contentHtml, contentKeyPrefix || `book-${verse.id}`)
+                children: renderNativeRichText(
+                  verse.contentHtml,
+                  contentKeyPrefix || `book-${verse.id}`
+                )
               }
             )
           }
@@ -1585,6 +1784,12 @@ function NativeBookPage({
           Text,
           {
             pointerEvents: "none",
+            onLayout: (event) => {
+              const { x, width } = event.nativeEvent.layout;
+              setPageNumberBounds(
+                (current) => current.x === x && current.width === width ? current : { x, width }
+              );
+            },
             style: [
               styles.nativeBookPageNumber,
               { color: theme.text, backgroundColor: theme.accentSurface }
@@ -1830,6 +2035,339 @@ function useReaderAudioProgress({ activeMapping, mappings, status }) {
   const progress = durationSeconds > 0 ? elapsedSeconds / durationSeconds : 0;
   const timeText = activeMapping ? `${formatTime(currentSeconds)} / ${formatTime(durationSeconds)}` : "";
   return { currentSeconds, durationSeconds, elapsedSeconds, progress, timeText };
+}
+
+// src/core/readerPlayback.ts
+var AUTO_READ_CONFIG = {
+  millisecondsPerCharacter: 100,
+  speedMultiplier: 1,
+  minimumPageDurationMs: 3e3
+};
+function getContinuousProgressIndex(mode, pageNumber, verseId, verseIds) {
+  const normalizedPage = Number(pageNumber);
+  const pageIndex = Number.isInteger(normalizedPage) && normalizedPage > 0 ? normalizedPage - 1 : -1;
+  const validPageIndex = pageIndex < verseIds.length ? pageIndex : -1;
+  const verseIndex = verseId ? verseIds.indexOf(verseId) : -1;
+  if (mode === "auto-read")
+    return validPageIndex >= 0 ? validPageIndex : verseIndex;
+  return verseIndex >= 0 ? verseIndex : validPageIndex;
+}
+function decodeNumericEntity(_match, rawCode, radix = 10) {
+  const codePoint = parseInt(rawCode, radix);
+  return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 1114111 ? String.fromCodePoint(codePoint) : " ";
+}
+function countReadableCharacters(html) {
+  const text = String(html || "").replace(/<\s*br\s*\/?>/gi, " ").replace(/<\s*\/p\s*>/gi, " ").replace(/<[^>]*>/g, "").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(
+    /&#(\d+);/g,
+    (match, code) => decodeNumericEntity(match, code)
+  ).replace(
+    /&#x([\da-f]+);/gi,
+    (match, code) => decodeNumericEntity(match, code, 16)
+  ).replace(/\s+/g, " ").trim();
+  if (!text) return 0;
+  const Segmenter = Intl.Segmenter;
+  if (Segmenter) {
+    return [
+      ...new Segmenter(void 0, { granularity: "grapheme" }).segment(text)
+    ].length;
+  }
+  let count = 0;
+  let previousWasJoiner = false;
+  let previousWasVirama = false;
+  for (const character of Array.from(text.normalize("NFC"))) {
+    if (/\p{M}/u.test(character)) {
+      if (/^[\u094d\u09cd\u0a4d\u0acd\u0b4d\u0bcd\u0c4d\u0ccd\u0d4d\u0dca]$/u.test(
+        character
+      )) {
+        previousWasVirama = true;
+      }
+      continue;
+    }
+    if (character === "\u200D") {
+      previousWasJoiner = true;
+      continue;
+    }
+    if (!previousWasJoiner && !previousWasVirama) count += 1;
+    previousWasJoiner = false;
+    previousWasVirama = false;
+  }
+  return count;
+}
+function getAutoReadDurationMs(html, config = AUTO_READ_CONFIG) {
+  const characters = countReadableCharacters(html);
+  if (!characters) return 0;
+  const speedMultiplier = Math.max(0.1, Number(config.speedMultiplier) || 1);
+  return Math.max(
+    Math.max(
+      Math.max(0, Number(config.minimumPageDurationMs) || 0),
+      characters * Math.max(0, Number(config.millisecondsPerCharacter) || 0)
+    ) / speedMultiplier
+  );
+}
+function normalizeTimeline(mappings, audioAssetUrl) {
+  return mappings.filter((mapping) => {
+    const start = Number(mapping.segmentStartMs);
+    const end = Number(mapping.segmentEndMs);
+    return String(mapping.audioAssetUrl || "").trim() === audioAssetUrl && mapping.verseId !== null && mapping.verseId !== void 0 && Number.isFinite(start) && Number.isFinite(end) && end > start;
+  }).map((mapping, index) => ({
+    ...mapping,
+    verseId: String(mapping.verseId),
+    segmentStartMs: Math.max(0, Math.floor(Number(mapping.segmentStartMs))),
+    segmentEndMs: Math.max(0, Math.floor(Number(mapping.segmentEndMs))),
+    sortOrder: Number.isFinite(Number(mapping.sortOrder)) ? Number(mapping.sortOrder) : index
+  })).sort(
+    (left, right) => left.segmentStartMs - right.segmentStartMs || left.sortOrder - right.sortOrder || left.verseId.localeCompare(right.verseId)
+  );
+}
+function getMappedPageProgress(mappings, audioAssetUrl, currentTimeMs, getPageForVerse) {
+  const normalizedUrl = String(audioAssetUrl || "").trim();
+  if (!normalizedUrl) return null;
+  const timeline = normalizeTimeline(mappings, normalizedUrl);
+  if (!timeline.length) return null;
+  const time = Math.max(0, Number(currentTimeMs) || 0);
+  let index = -1;
+  for (let cursor = 0; cursor < timeline.length; cursor += 1) {
+    const candidate = timeline[cursor];
+    if (time >= candidate.segmentStartMs && time < candidate.segmentEndMs) {
+      index = cursor;
+      break;
+    }
+  }
+  if (index < 0) {
+    for (let cursor = timeline.length - 1; cursor >= 0; cursor -= 1) {
+      if (time >= timeline[cursor].segmentEndMs) {
+        index = cursor;
+        break;
+      }
+    }
+    if (index < 0) {
+      return { pageNumber: null, progress: 0, mapping: null };
+    }
+  }
+  const mapping = timeline[index];
+  const pageNumber = getPageForVerse(mapping.verseId) ?? null;
+  if (!pageNumber) return { pageNumber: null, progress: 0, mapping };
+  let first = index;
+  while (first > 0) {
+    const previous = timeline[first - 1];
+    if ((getPageForVerse(previous.verseId) ?? null) !== pageNumber) break;
+    first -= 1;
+  }
+  let last = index;
+  while (last + 1 < timeline.length) {
+    const next = timeline[last + 1];
+    if ((getPageForVerse(next.verseId) ?? null) !== pageNumber) break;
+    last += 1;
+  }
+  const startMs = timeline[first].segmentStartMs;
+  const intervals = timeline.slice(first, last + 1).map(({ segmentStartMs, segmentEndMs }) => ({
+    start: segmentStartMs,
+    end: segmentEndMs
+  })).sort((left, right) => left.start - right.start || left.end - right.end);
+  const mergedIntervals = [];
+  for (const interval of intervals) {
+    const previous = mergedIntervals[mergedIntervals.length - 1];
+    if (previous && interval.start <= previous.end) {
+      previous.end = Math.max(previous.end, interval.end);
+    } else {
+      mergedIntervals.push({ ...interval });
+    }
+  }
+  const totalDuration = mergedIntervals.reduce(
+    (total, interval) => total + interval.end - interval.start,
+    0
+  );
+  const elapsedDuration = mergedIntervals.reduce((total, interval) => {
+    const reachedEnd = Math.min(time, interval.end);
+    return total + Math.max(0, reachedEnd - interval.start);
+  }, 0);
+  return {
+    pageNumber,
+    progress: totalDuration > 0 ? Math.max(0, Math.min(1, elapsedDuration / totalDuration)) : Number(time >= startMs),
+    mapping
+  };
+}
+function useAutoReadPlayback({
+  allowed,
+  isPlaying,
+  externalClockMs,
+  onPlaybackChange,
+  onCompleteChange,
+  pageNumber,
+  pageCount,
+  pageStep,
+  resetKey,
+  visiblePageText,
+  goToNextPage,
+  goToFirstPage,
+  subscribeToAppState
+}) {
+  const progressStoreRef = useRef(null);
+  if (!progressStoreRef.current) {
+    const store = {
+      snapshot: 0,
+      listeners: /* @__PURE__ */ new Set(),
+      subscribe(listener) {
+        store.listeners.add(listener);
+        return () => store.listeners.delete(listener);
+      },
+      getSnapshot: () => store.snapshot
+    };
+    progressStoreRef.current = store;
+  }
+  const progressStore = progressStoreRef.current;
+  const setProgress = useCallback(
+    (value) => {
+      const normalized = Math.max(0, Math.min(1, value));
+      if (progressStore.snapshot === normalized) return;
+      progressStore.snapshot = normalized;
+      progressStore.listeners.forEach((listener) => listener());
+    },
+    [progressStore]
+  );
+  const [completed, setCompleted] = useState(false);
+  const elapsedBeforeStartRef = useRef(0);
+  const startedAtRef = useRef(null);
+  const pendingAutoPageRef = useRef(null);
+  const pageSnapshotRef = useRef({ pageNumber, resetKey });
+  const previousPlayingRef = useRef(false);
+  const turnRequestedRef = useRef(false);
+  const externalClockBaseRef = useRef(Number(externalClockMs) || 0);
+  const applyElapsedRef = useRef(() => {
+  });
+  const durationMs = getAutoReadDurationMs(visiblePageText);
+  const sessionKey = `${pageNumber}:${resetKey}:${durationMs}`;
+  const currentSessionKeyRef = useRef(sessionKey);
+  currentSessionKeyRef.current = sessionKey;
+  const callbacksRef = useRef({
+    onPlaybackChange,
+    onCompleteChange,
+    goToNextPage,
+    goToFirstPage,
+    subscribeToAppState
+  });
+  callbacksRef.current = {
+    onPlaybackChange,
+    onCompleteChange,
+    goToNextPage,
+    goToFirstPage,
+    subscribeToAppState
+  };
+  useEffect(() => {
+    const previous = pageSnapshotRef.current;
+    if (previous.resetKey !== resetKey) {
+      pageSnapshotRef.current = { pageNumber, resetKey };
+      pendingAutoPageRef.current = null;
+      elapsedBeforeStartRef.current = 0;
+      startedAtRef.current = isPlaying ? Date.now() : null;
+      externalClockBaseRef.current = Number(externalClockMs) || 0;
+      turnRequestedRef.current = false;
+      setProgress(0);
+      setCompleted(false);
+      callbacksRef.current.onCompleteChange?.(false);
+      if (isPlaying) callbacksRef.current.onPlaybackChange?.(false);
+      return;
+    }
+    if (previous.pageNumber !== pageNumber) {
+      pageSnapshotRef.current = { pageNumber, resetKey };
+      const isExpectedAutoTurn = pendingAutoPageRef.current === pageNumber;
+      pendingAutoPageRef.current = null;
+      elapsedBeforeStartRef.current = 0;
+      startedAtRef.current = isPlaying ? Date.now() : null;
+      externalClockBaseRef.current = Number(externalClockMs) || 0;
+      turnRequestedRef.current = false;
+      setProgress(0);
+      setCompleted(false);
+      callbacksRef.current.onCompleteChange?.(false);
+      if (!isExpectedAutoTurn && isPlaying) {
+        callbacksRef.current.onPlaybackChange?.(false);
+      }
+    }
+  }, [externalClockMs, isPlaying, pageNumber, resetKey]);
+  useEffect(() => {
+    const wasPlaying = previousPlayingRef.current;
+    previousPlayingRef.current = isPlaying;
+    if (!allowed && isPlaying) {
+      callbacksRef.current.onPlaybackChange?.(false);
+      return;
+    }
+    if (isPlaying && !wasPlaying && completed) {
+      pendingAutoPageRef.current = 1;
+      elapsedBeforeStartRef.current = 0;
+      turnRequestedRef.current = false;
+      setProgress(0);
+      setCompleted(false);
+      callbacksRef.current.onCompleteChange?.(false);
+      callbacksRef.current.goToFirstPage();
+    }
+  }, [allowed, completed, isPlaying]);
+  const applyElapsed = (elapsed) => {
+    const nextProgress = Math.max(0, Math.min(1, elapsed / durationMs));
+    setProgress(nextProgress);
+    if (elapsed < durationMs || turnRequestedRef.current) return;
+    if (pageNumber + Math.max(1, pageStep) - 1 >= pageCount) {
+      turnRequestedRef.current = true;
+      setCompleted(true);
+      callbacksRef.current.onCompleteChange?.(true);
+      callbacksRef.current.onPlaybackChange?.(false);
+      return;
+    }
+    turnRequestedRef.current = true;
+    pendingAutoPageRef.current = Math.min(
+      pageCount,
+      pageNumber + Math.max(1, pageStep)
+    );
+    callbacksRef.current.goToNextPage();
+  };
+  applyElapsedRef.current = applyElapsed;
+  useEffect(() => {
+    if (externalClockMs === void 0 || !isPlaying || !allowed || !durationMs)
+      return;
+    applyElapsed(Math.max(0, externalClockMs - externalClockBaseRef.current));
+  }, [
+    allowed,
+    durationMs,
+    externalClockMs,
+    isPlaying,
+    pageCount,
+    pageNumber,
+    pageStep
+  ]);
+  useEffect(() => {
+    if (externalClockMs !== void 0 || !isPlaying || !allowed || !durationMs)
+      return;
+    startedAtRef.current = Date.now();
+    const update = () => {
+      const startedAt = startedAtRef.current ?? Date.now();
+      const elapsed = elapsedBeforeStartRef.current + Date.now() - startedAt;
+      applyElapsedRef.current(elapsed);
+    };
+    const interval = setInterval(update, 200);
+    update();
+    const appStateSubscription = callbacksRef.current.subscribeToAppState?.(
+      (state) => {
+        if (state !== "active") {
+          callbacksRef.current.onPlaybackChange?.(false);
+        }
+      }
+    );
+    return () => {
+      clearInterval(interval);
+      appStateSubscription?.remove();
+      if (startedAtRef.current !== null) {
+        elapsedBeforeStartRef.current += Date.now() - startedAtRef.current;
+      }
+      startedAtRef.current = null;
+    };
+  }, [allowed, externalClockMs, isPlaying]);
+  return {
+    completed,
+    get progress() {
+      return progressStore.snapshot;
+    },
+    progressStore,
+    durationMs
+  };
 }
 function useReaderAudioSlider({ active, sliderWidth, seekToRatio }) {
   const seekByLocationX = useCallback(
@@ -2119,20 +2657,34 @@ function useReaderNavigation(options) {
         pageNumberRef.current = targetPage;
         setNativeBookPageNumberState(targetPage);
         void setPageNumber(targetPage);
+        if (contentMode === "verse" && completeVerses.length) {
+          const targetVerse = completeVerses[targetPage - 1];
+          const targetVerseId = targetVerse?.id == null ? null : String(targetVerse.id);
+          if (targetVerseId) {
+            pendingCompleteScrollVerseIdRef.current = targetVerseId;
+            setReaderVerseId((current) => current === targetVerseId ? current : targetVerseId);
+            scrollCompleteToVerse(targetVerseId, true);
+          }
+        }
       }
       showOverlay();
     },
     [
       activeBookSpreadMode,
       contentMode,
+      completeScrollRef,
+      completeVerses,
       navigateNativeVerseBookPage,
       nativeBookPageNumber,
       pageCount,
       pageNumber,
       pageNumberRef,
+      pendingCompleteScrollVerseIdRef,
       requestBookPageChange,
       setNativeBookPageNumberState,
       setPageNumber,
+      setReaderVerseId,
+      scrollCompleteToVerse,
       showOverlay,
       useFullScreenBookWebView,
       viewMode
@@ -2343,9 +2895,11 @@ function useReaderViewMode(options) {
     pageCount,
     pageNumber,
     pageNumberRef,
+    nativeBookPageNumber,
     pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef,
     readerVerseId,
+    setNativeBookPageNumberState,
     setIsVerseFullScreen,
     setPageNumber,
     setReaderVerseId,
@@ -2367,29 +2921,41 @@ function useReaderViewMode(options) {
   } = options;
   const switchReaderMode = useCallback(
     (mode) => {
-      const currentPage = pageNumberRef.current || pageNumber;
+      const currentPage = viewMode === "book" && nativeBookPageNumber || pageNumberRef.current || pageNumber;
       const currentZoom = zoomLevelRef.current || zoomLevel;
-      const pageForAnchor = readerVerseId ? versePageById[readerVerseId] : void 0;
-      const anchorBelongsToCurrentPage = pageForAnchor === currentPage;
-      const targetPage = pageForAnchor && anchorBelongsToCurrentPage ? pageForAnchor : clampPageNumber(currentPage, pageCount);
-      const targetVerseId = anchorBelongsToCurrentPage ? readerVerseId : verseIdsByPage[targetPage]?.[0] || (useNativeVersePaging ? completeVerses[targetPage - 1]?.id : null) || null;
+      const { targetPage, targetVerseId } = getReaderModeSwitchTarget({
+        completeVerseIds: completeVerses.map((verse) => String(verse.id)),
+        currentPage,
+        pageCount,
+        readerVerseId,
+        useNativeVersePaging,
+        verseIdsByPage,
+        versePageById
+      });
       const normalizedTargetVerseId = targetVerseId == null ? null : String(targetVerseId);
       if (mode === "continuous" && normalizedTargetVerseId) {
         pendingCompleteScrollVerseIdRef.current = normalizedTargetVerseId;
       }
       pendingModeSwitchPageRef.current = targetPage;
       pageNumberRef.current = targetPage;
+      setNativeBookPageNumberState(targetPage);
       viewModeRef.current = mode;
       setReaderVerseId(
         (current) => current === normalizedTargetVerseId ? current : normalizedTargetVerseId
       );
       void setPageNumber(targetPage);
       setViewMode(mode);
-      if (contentMode === "verse") setIsVerseFullScreen(verseLayout?.fullScreen === true);
+      if (contentMode === "verse")
+        setIsVerseFullScreen(verseLayout?.fullScreen === true);
       setShowShareOverlay(false);
       suppressCompleteModeSyncRef.current = false;
       if (viewerReady && !loadingError) {
-        syncViewerStateToWebView(mode, targetPage, normalizedTargetVerseId, currentZoom);
+        syncViewerStateToWebView(
+          mode,
+          targetPage,
+          normalizedTargetVerseId,
+          currentZoom
+        );
         lastSyncedViewModeRef.current = mode;
       }
       showOverlay();
@@ -2402,11 +2968,13 @@ function useReaderViewMode(options) {
       pageCount,
       pageNumber,
       pageNumberRef,
+      nativeBookPageNumber,
       pendingCompleteScrollVerseIdRef,
       pendingModeSwitchPageRef,
       readerVerseId,
       setIsVerseFullScreen,
       setPageNumber,
+      setNativeBookPageNumberState,
       setReaderVerseId,
       setShowShareOverlay,
       setViewMode,
@@ -2455,9 +3023,10 @@ function useReaderViewMode(options) {
   ]);
   useEffect(() => {
     if (!viewerReady || loadingError) return;
-    injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
-      { method: "setZoom", args: [zoomLevel, pageNumberRef.current] }
-    ]);
+    injectReaderBridgeScript(
+      [webViewRef, fullScreenWebViewRef],
+      [{ method: "setZoom", args: [zoomLevel, pageNumberRef.current] }]
+    );
   }, [fullScreenWebViewRef, loadingError, viewerReady, webViewRef, zoomLevel]);
   return { switchReaderMode };
 }
@@ -2784,6 +3353,14 @@ function useReaderInteractionBindings({
   label,
   onExternalAudioToggle,
   externalVerseAudioState,
+  externalActiveVerseId,
+  externalVerseAudioMappings,
+  audioSourceAvailable,
+  autoReadPlaying,
+  autoReadClockMs,
+  autoReadResetKey,
+  onAutoReadPlayingChange,
+  onAutoReadCompleteChange,
   overlayViewport,
   page,
   readerDocumentId,
@@ -2906,13 +3483,28 @@ function useReaderInteractionBindings({
     useFullScreenBookWebView,
     zoomLevel
   });
+  const pauseAudioForManualPageTurn = React.useCallback(() => {
+    if (audio.verseAudioStatus.playing) {
+      audio.toggleVerseAudio();
+    } else if (externalVerseAudioState?.isPlaying) {
+      onExternalAudioToggle?.();
+    }
+  }, [audio, externalVerseAudioState?.isPlaying, onExternalAudioToggle]);
+  const goToNextPageManually = React.useCallback(() => {
+    pauseAudioForManualPageTurn();
+    goToNextPage();
+  }, [goToNextPage, pauseAudioForManualPageTurn]);
+  const goToPreviousPageManually = React.useCallback(() => {
+    pauseAudioForManualPageTurn();
+    goToPreviousPage();
+  }, [goToPreviousPage, pauseAudioForManualPageTurn]);
   const gestures = useReaderGestures({
     viewMode,
     hidePageNavigationControls: props.hidePageNavigationControls ?? false,
     overlayViewport,
     showOverlay,
-    goToNextPage,
-    goToPreviousPage
+    goToNextPage: goToNextPageManually,
+    goToPreviousPage: goToPreviousPageManually
   });
   const { switchReaderMode } = useReaderViewMode({
     completeVerses,
@@ -2924,9 +3516,11 @@ function useReaderInteractionBindings({
     pageCount: core.pageCount,
     pageNumber: page.pageNumber,
     pageNumberRef: core.pageNumberRef,
+    nativeBookPageNumber: page.nativeBookPageNumberState,
     pendingCompleteScrollVerseIdRef: core.pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef: core.pendingModeSwitchPageRef,
-    readerVerseId: core.readerVerseId,
+    readerVerseId: audio.activeVerseId || externalActiveVerseId || core.readerVerseId,
+    setNativeBookPageNumberState: page.setNativeBookPageNumberState,
     setIsVerseFullScreen: core.setIsVerseFullScreen,
     setPageNumber: page.setPageNumber,
     setReaderVerseId: core.setReaderVerseId,
@@ -3010,6 +3604,98 @@ function useReaderInteractionBindings({
     mappings: playableVerseMappings,
     status: audio.verseAudioStatus
   });
+  const readerPageNumber = contentMode === "verse" && useNativeVersePaging ? presentation.nativeBookPageNumber : page.pageNumber;
+  const visiblePageNumbers = [
+    readerPageNumber,
+    ...viewMode === "book" && activeBookSpreadMode === "double" ? [readerPageNumber + 1] : []
+  ];
+  const visiblePageText = visiblePageNumbers.flatMap((visiblePage) => {
+    const mappedIds = core.verseIdsByPage[visiblePage] || completeVerses.filter((verse) => core.versePageById[verse.id] === visiblePage).map((verse) => verse.id);
+    const mappedVerses = mappedIds.map(
+      (id) => completeVerses.find((verse) => String(verse.id) === String(id))
+    ).filter(
+      (verse) => Boolean(verse)
+    );
+    const visibleVerses = mappedVerses.length ? mappedVerses : [completeVerses[visiblePage - 1]].filter(
+      (verse) => Boolean(verse)
+    );
+    return visibleVerses.map((verse) => verse.contentHtml);
+  }).join(" ");
+  const hasAnyAudioSource = audioSourceAvailable ?? Boolean(
+    externalVerseAudioState?.audioAssetUrl || externalVerseAudioMappings.length || hasVerseAudio
+  );
+  const canAutoRead = Boolean(
+    contentMode === "verse" && completeVerses.length && (audioSourceAvailable === false || !hasAnyAudioSource && !externalVerseAudioState?.audioAssetUrl && !externalVerseAudioMappings.length && !hasVerseAudio)
+  );
+  const subscribeToAppState = React.useCallback(
+    (listener) => AppState.addEventListener("change", listener),
+    []
+  );
+  const autoRead = useAutoReadPlayback({
+    allowed: canAutoRead,
+    isPlaying: autoReadPlaying,
+    externalClockMs: autoReadClockMs,
+    onPlaybackChange: onAutoReadPlayingChange,
+    onCompleteChange: onAutoReadCompleteChange,
+    pageNumber: readerPageNumber,
+    pageCount: completeVerses.length,
+    pageStep: viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1,
+    resetKey: autoReadResetKey,
+    visiblePageText,
+    goToNextPage,
+    goToFirstPage,
+    subscribeToAppState
+  });
+  const externalTimelineProgress = externalVerseAudioState?.audioAssetUrl ? getMappedPageProgress(
+    externalVerseAudioMappings,
+    externalVerseAudioState.audioAssetUrl,
+    Number(externalVerseAudioState.currentTimeMs) || 0,
+    (verseId) => scroll.getNativeVersePage(verseId) ?? null
+  ) : null;
+  const internalTimelineProgress = !externalVerseAudioState?.audioAssetUrl && activeVerseAudio ? getMappedPageProgress(
+    playableVerseMappings,
+    activeVerseAudio.audioAssetUrl,
+    Math.max(0, Number(audio.verseAudioStatus.currentTime) || 0) * 1e3,
+    (verseId) => scroll.getNativeVersePage(verseId) ?? null
+  ) : null;
+  const mappedTimelineProgress = externalVerseAudioState?.audioAssetUrl ? externalTimelineProgress : internalTimelineProgress;
+  const toggleAutoRead = React.useCallback(() => {
+    const shouldStart = !autoReadPlaying;
+    if (shouldStart && contentMode === "verse" && viewMode === "continuous") {
+      const targetVerseId = core.readerVerseId || core.verseIdsByPage[readerPageNumber]?.[0] || completeVerses[readerPageNumber - 1]?.id;
+      if (targetVerseId) {
+        core.setReaderVerseId(
+          (current) => current === targetVerseId ? current : targetVerseId
+        );
+        scroll.scrollCompleteToVerse(targetVerseId, false);
+      }
+    }
+    onAutoReadPlayingChange?.(shouldStart);
+  }, [
+    autoReadPlaying,
+    completeVerses,
+    contentMode,
+    core.readerVerseId,
+    core.setReaderVerseId,
+    core.verseIdsByPage,
+    onAutoReadPlayingChange,
+    readerPageNumber,
+    scroll.scrollCompleteToVerse,
+    viewMode
+  ]);
+  const playbackProgress = canAutoRead ? {
+    mode: "auto-read",
+    progress: autoRead.progress,
+    progressStore: autoRead.progressStore,
+    complete: autoRead.completed,
+    pageNumber: readerPageNumber,
+    verseId: core.readerVerseId
+  } : mappedTimelineProgress ? {
+    mode: "audio",
+    progress: mappedTimelineProgress.progress,
+    complete: false,
+    pageNumber: mappedTimelineProgress.pageNumber
+  } : null;
   const mappedVerseNavigation = useMappedVerseNavigation({
     activeBookSpreadMode,
     activeVerseAudioIndex: audio.activeVerseAudioIndex,
@@ -3047,8 +3733,8 @@ function useReaderInteractionBindings({
     canZoomOut: !zoomOutDisabled,
     hidePageNavigationControls: props.hidePageNavigationControls ?? false,
     isVerseContent: contentMode === "verse",
-    nextPage: goToNextPage,
-    previousPage: goToPreviousPage,
+    nextPage: goToNextPageManually,
+    previousPage: goToPreviousPageManually,
     resetToFirstPage: bookControls.confirmGoToFirstPage,
     setShowShareOverlay: core.setShowShareOverlay,
     showOverlay,
@@ -3063,6 +3749,8 @@ function useReaderInteractionBindings({
     actions,
     activeVerseAudio,
     audioProgress,
+    autoRead,
+    canAutoRead,
     audioSlider,
     bookControls,
     documentHandlers: { handleFullScreenMessage, handleMainMessage },
@@ -3084,13 +3772,28 @@ function useReaderInteractionBindings({
     },
     getNativeBookVersePageNumber,
     mappedVerseNavigation,
-    navigation: { goToFirstPage, goToNextPage, goToPreviousPage, syncViewerStateToWebView },
+    navigation: {
+      goToFirstPage,
+      goToNextPage: goToNextPageManually,
+      goToPreviousPage: goToPreviousPageManually,
+      syncViewerStateToWebView
+    },
     presentation,
+    playbackProgress,
+    toggleAutoRead,
+    autoReadPlaying,
     scroll,
     shareUrlActions,
     switchReaderMode,
     toggleVerseFullScreen,
-    zoom: { adjustPdfZoom, adjustVerseFontSize, zoomInDisabled, zoomInVerse, zoomOutDisabled, zoomOutVerse }
+    zoom: {
+      adjustPdfZoom,
+      adjustVerseFontSize,
+      zoomInDisabled,
+      zoomInVerse,
+      zoomOutDisabled,
+      zoomOutVerse
+    }
   };
 }
 function buildReaderWebViewHandlers(args) {
@@ -3190,7 +3893,7 @@ function ReaderZoomControls({ inDisabled, onZoomIn, onZoomOut, outDisabled }) {
         style: [styles.overlayControlButton, outDisabled ? styles.overlayButtonDisabled : null],
         accessibilityRole: "button",
         accessibilityLabel: "Zoom out",
-        children: /* @__PURE__ */ jsx(Ionicons3, { name: "remove-outline", size: 20, color: outDisabled ? "#d4d4d8" : "#fff" })
+        children: /* @__PURE__ */ jsx(Ionicons4, { name: "remove-outline", size: 20, color: outDisabled ? "#d4d4d8" : "#fff" })
       }
     ),
     /* @__PURE__ */ jsx(
@@ -3201,7 +3904,7 @@ function ReaderZoomControls({ inDisabled, onZoomIn, onZoomOut, outDisabled }) {
         style: [styles.overlayControlButton, inDisabled ? styles.overlayButtonDisabled : null],
         accessibilityRole: "button",
         accessibilityLabel: "Zoom in",
-        children: /* @__PURE__ */ jsx(Ionicons3, { name: "add-outline", size: 20, color: inDisabled ? "#d4d4d8" : "#fff" })
+        children: /* @__PURE__ */ jsx(Ionicons4, { name: "add-outline", size: 20, color: inDisabled ? "#d4d4d8" : "#fff" })
       }
     )
   ] });
@@ -3224,7 +3927,7 @@ function ReaderAudioActionButton({
       ],
       accessibilityRole: "button",
       accessibilityLabel,
-      children: /* @__PURE__ */ jsx(Ionicons3, { name: icon, size: 20, color: "#fff" })
+      children: /* @__PURE__ */ jsx(Ionicons4, { name: icon, size: 20, color: "#fff" })
     }
   );
 }
@@ -3303,6 +4006,44 @@ function VerseAudioControls({
     timeText ? /* @__PURE__ */ jsx(Text, { style: styles.overlayAudioTime, children: timeText }) : null
   ] }) });
 }
+function ReaderAutoReadButton({
+  playing,
+  completed,
+  onPress,
+  theme
+}) {
+  return /* @__PURE__ */ jsxs(View, { style: { alignItems: "center", flexDirection: "row", gap: 7 }, children: [
+    /* @__PURE__ */ jsx(
+      Pressable,
+      {
+        onPress,
+        style: [
+          styles.overlayControlButton,
+          { backgroundColor: theme.autoReadAccent }
+        ],
+        accessibilityRole: "button",
+        accessibilityLabel: completed ? "Replay auto-read" : playing ? "Pause auto-read" : "Play auto-read",
+        accessibilityHint: "Auto-read advances the selected verse text by estimated reading time",
+        testID: "reader-auto-read-toggle",
+        children: /* @__PURE__ */ jsx(
+          Ionicons4,
+          {
+            name: completed ? "refresh-outline" : playing ? "pause-outline" : "play-outline",
+            size: 20,
+            color: "#fff"
+          }
+        )
+      }
+    ),
+    completed ? /* @__PURE__ */ jsx(
+      Text,
+      {
+        style: { color: theme.overlayText, fontSize: 12, fontWeight: "700" },
+        children: "Reading complete"
+      }
+    ) : null
+  ] });
+}
 function FullScreenReaderControls({
   activeBookSpreadMode,
   activeVerseAudio,
@@ -3335,6 +4076,12 @@ function FullScreenReaderControls({
   viewMode,
   verseAudioPlaying,
   verseAudioTimeText,
+  playbackProgress,
+  autoReadAllowed,
+  autoReadPlaying,
+  autoReadCompleted,
+  onAutoReadToggle,
+  theme,
   zoomInDisabled,
   zoomInVerse,
   zoomOutDisabled,
@@ -3368,6 +4115,15 @@ function FullScreenReaderControls({
             timeText: verseAudioTimeText
           }
         ) : null,
+        autoReadAllowed ? /* @__PURE__ */ jsx(
+          ReaderAutoReadButton,
+          {
+            playing: autoReadPlaying,
+            completed: autoReadCompleted,
+            onPress: onAutoReadToggle,
+            theme
+          }
+        ) : null,
         /* @__PURE__ */ jsxs(View, { style: styles.overlayZoomGroup, children: [
           viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsx(
             ReaderPageNavigationButton,
@@ -3393,7 +4149,7 @@ function FullScreenReaderControls({
               style: styles.overlayControlButton,
               accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
               children: /* @__PURE__ */ jsx(
-                Ionicons3,
+                Ionicons4,
                 {
                   name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
                   size: 20,
@@ -3406,12 +4162,15 @@ function FullScreenReaderControls({
             Pressable,
             {
               onPress: onExternalAudioToggle,
-              style: styles.overlayControlButton,
+              style: [
+                styles.overlayControlButton,
+                { backgroundColor: theme.accent }
+              ],
               accessibilityRole: "button",
               accessibilityLabel: externalVerseAudioState.isPlaying ? "Pause audio" : "Play audio",
               testID: "reader-fullscreen-audio-toggle",
               children: /* @__PURE__ */ jsx(
-                Ionicons3,
+                Ionicons4,
                 {
                   name: externalVerseAudioState.isPlaying ? "pause-outline" : "play-outline",
                   size: 20,
@@ -3427,7 +4186,7 @@ function FullScreenReaderControls({
               style: styles.overlayControlButton,
               testID: "reader-exit-fullscreen",
               accessibilityLabel: "Exit fullscreen reader",
-              children: /* @__PURE__ */ jsx(Ionicons3, { name: "contract-outline", size: 20, color: "#fff" })
+              children: /* @__PURE__ */ jsx(Ionicons4, { name: "contract-outline", size: 20, color: "#fff" })
             }
           ),
           viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsx(
@@ -3444,15 +4203,18 @@ function FullScreenReaderControls({
     }
   );
 }
-function CompleteVerseBlock({
+function CompleteVerseBlockComponent({
   verse,
   index,
   pageCount,
   isActive,
   fullScreen,
   fontSize,
-  theme
+  theme,
+  playbackProgress
 }) {
+  const [pageNumberBounds, setPageNumberBounds] = useState({ x: 0, width: 0 });
+  const [blockSize, setBlockSize] = useState({ width: 0, height: 0 });
   const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
   const blockStyle = fullScreen ? [
     styles.nativeFullScreenVerseBlock,
@@ -3470,41 +4232,73 @@ function CompleteVerseBlock({
     },
     isActive ? styles.completeVerseBlockActive : null
   ];
-  return /* @__PURE__ */ jsxs(View, { style: blockStyle, children: [
-    /* @__PURE__ */ jsx(View, { pointerEvents: "none", style: styles.completeVerseOrnamentOuter }),
-    /* @__PURE__ */ jsx(View, { pointerEvents: "none", style: styles.completeVerseOrnamentInner }),
-    /* @__PURE__ */ jsx(
-      Text,
-      {
-        style: [
-          fullScreen ? styles.nativeFullScreenVerseText : styles.completeVerseText,
-          textStyle,
-          { color: theme.text },
-          { fontSize, lineHeight: Math.round(fontSize * 1.45) }
-        ],
-        children: renderNativeRichText(
-          verse.contentHtml,
-          `${fullScreen ? "fullscreen-complete" : "complete"}-${verse.id}`
+  return /* @__PURE__ */ jsxs(
+    View,
+    {
+      style: [blockStyle],
+      onLayout: (event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setBlockSize(
+          (current) => current.width === width && current.height === height ? current : { width, height }
+        );
+      },
+      children: [
+        playbackProgress ? /* @__PURE__ */ jsx(
+          PerimeterProgress,
+          {
+            playback: playbackProgress,
+            theme,
+            radius: 8,
+            inset: -7,
+            pageNumberBounds,
+            containerSize: {
+              width: Math.max(0, blockSize.width - 2),
+              height: Math.max(0, blockSize.height - 2)
+            }
+          }
+        ) : null,
+        /* @__PURE__ */ jsx(View, { pointerEvents: "none", style: styles.completeVerseOrnamentInner }),
+        /* @__PURE__ */ jsx(
+          Text,
+          {
+            style: [
+              fullScreen ? styles.nativeFullScreenVerseText : styles.completeVerseText,
+              textStyle,
+              { color: theme.text },
+              { fontSize, lineHeight: Math.round(fontSize * 1.45) }
+            ],
+            children: renderNativeRichText(
+              verse.contentHtml,
+              `${fullScreen ? "fullscreen-complete" : "complete"}-${verse.id}`
+            )
+          }
+        ),
+        /* @__PURE__ */ jsxs(
+          Text,
+          {
+            pointerEvents: "none",
+            onLayout: (event) => {
+              const { x, width } = event.nativeEvent.layout;
+              setPageNumberBounds(
+                (current) => current.x === x && current.width === width ? current : { x, width }
+              );
+            },
+            style: [
+              styles.nativeBookPageNumber,
+              { color: theme.text, backgroundColor: theme.accentSurface }
+            ],
+            children: [
+              index + 1,
+              "/",
+              pageCount
+            ]
+          }
         )
-      }
-    ),
-    /* @__PURE__ */ jsxs(
-      Text,
-      {
-        pointerEvents: "none",
-        style: [
-          styles.nativeBookPageNumber,
-          { color: theme.text, backgroundColor: theme.accentSurface }
-        ],
-        children: [
-          index + 1,
-          "/",
-          pageCount
-        ]
-      }
-    )
-  ] });
+      ]
+    }
+  );
 }
+var CompleteVerseBlock = memo(CompleteVerseBlockComponent);
 function ReaderModal({ children, onRequestClose, variant, visible }) {
   const isFullScreen = variant === "fullscreen";
   return /* @__PURE__ */ jsx(
@@ -3552,6 +4346,7 @@ function NativeFullScreenReaderOverlay({
   onVerseLayout,
   onRequestClose,
   pageCount,
+  playbackProgress,
   readerVerseId,
   renderBookPage,
   renderBookTurn,
@@ -3566,39 +4361,52 @@ function NativeFullScreenReaderOverlay({
     View,
     {
       testID: "reader-fullscreen-root",
-      style: [styles.nativeFullScreenRoot, { backgroundColor: theme.background }],
+      style: [
+        styles.nativeFullScreenRoot,
+        { backgroundColor: theme.background }
+      ],
       onTouchStart: onFullScreenTouchStart,
       onTouchEnd: onFullScreenTouchEnd,
       children: [
-        fullScreenBookWebView ? /* @__PURE__ */ jsx(View, { style: styles.nativeFullScreenBookSurface, onTouchStart: showOverlay, children: /* @__PURE__ */ jsx(
-          WebView,
+        fullScreenBookWebView ? /* @__PURE__ */ jsx(
+          View,
           {
-            ref: fullScreenWebViewRef,
-            originWhitelist: ["about:blank"],
-            source: fullScreenWebViewSource,
-            style: styles.nativeFullScreenWebView,
-            javaScriptEnabled: true,
-            domStorageEnabled: true,
-            startInLoadingState: false,
-            setSupportMultipleWindows: false,
-            mixedContentMode: "never",
-            scrollEnabled: true,
-            nestedScrollEnabled: true,
-            bounces: false,
-            showsVerticalScrollIndicator: false,
-            showsHorizontalScrollIndicator: false,
-            scalesPageToFit: false,
-            setBuiltInZoomControls: false,
-            setDisplayZoomControls: false,
-            onLoadStart,
-            onLoadEnd,
-            onMessage: handleFullScreenMessage
-          },
-          `fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`
-        ) }) : viewMode === "book" ? /* @__PURE__ */ jsx(
+            style: styles.nativeFullScreenBookSurface,
+            onTouchStart: showOverlay,
+            children: /* @__PURE__ */ jsx(
+              WebView,
+              {
+                ref: fullScreenWebViewRef,
+                originWhitelist: ["about:blank"],
+                source: fullScreenWebViewSource,
+                style: styles.nativeFullScreenWebView,
+                javaScriptEnabled: true,
+                domStorageEnabled: true,
+                startInLoadingState: false,
+                setSupportMultipleWindows: false,
+                mixedContentMode: "never",
+                scrollEnabled: true,
+                nestedScrollEnabled: true,
+                bounces: false,
+                showsVerticalScrollIndicator: false,
+                showsHorizontalScrollIndicator: false,
+                scalesPageToFit: false,
+                setBuiltInZoomControls: false,
+                setDisplayZoomControls: false,
+                onLoadStart,
+                onLoadEnd,
+                onMessage: handleFullScreenMessage
+              },
+              `fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`
+            )
+          }
+        ) : viewMode === "book" ? /* @__PURE__ */ jsx(
           ScrollView,
           {
-            style: [styles.nativeFullScreenScroll, { backgroundColor: theme.background }],
+            style: [
+              styles.nativeFullScreenScroll,
+              { backgroundColor: theme.background }
+            ],
             contentContainerStyle: [
               styles.nativeFullScreenBookScrollContent,
               styles.nativeFullScreenBookScrollContentCentered
@@ -3657,7 +4465,8 @@ function NativeFullScreenReaderOverlay({
                     isActive: highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id),
                     fullScreen: true,
                     fontSize: nativeBookVerseFontSizePx,
-                    theme
+                    theme,
+                    playbackProgress: playbackProgress?.pageNumber === index + 1 ? playbackProgress : null
                   }
                 )
               },
@@ -3728,6 +4537,7 @@ function ReaderFullScreenSurface({
   core,
   documentSource,
   externalVerseAudioState,
+  autoReadPlaying,
   hideControls,
   hidePageNavigationControls,
   hideVerseAudioControls,
@@ -3759,9 +4569,19 @@ function ReaderFullScreenSurface({
     nativeBookVerses,
     pageBadgeText
   } = interactions.presentation;
-  const { canPlayNext, canPlayPrevious, canRestart, playNext, playPrevious, restart } = interactions.mappedVerseNavigation;
+  const {
+    canPlayNext,
+    canPlayPrevious,
+    canRestart,
+    playNext,
+    playPrevious,
+    restart
+  } = interactions.mappedVerseNavigation;
   const { progress: activeVerseAudioProgress, timeText: verseAudioTimeText } = interactions.audioProgress;
-  const { panHandlers: audioSliderPanHandlers, seekByLocationX: seekAudioByLocationX } = interactions.audioSlider;
+  const {
+    panHandlers: audioSliderPanHandlers,
+    seekByLocationX: seekAudioByLocationX
+  } = interactions.audioSlider;
   const {
     exitVerseFullScreen,
     renderNativeBookTurn,
@@ -3789,6 +4609,12 @@ function ReaderFullScreenSurface({
             activeBookSpreadMode,
             activeVerseAudio: Boolean(interactions.activeVerseAudio),
             activeVerseAudioProgress,
+            playbackProgress: interactions.playbackProgress,
+            autoReadAllowed: interactions.canAutoRead,
+            autoReadPlaying,
+            autoReadCompleted: interactions.autoRead.completed,
+            onAutoReadToggle: interactions.toggleAutoRead,
+            theme,
             allowBookDoubleSpread: content.allowBookDoubleSpread,
             audioSliderPanHandlers,
             canNavigateNextPage,
@@ -3863,7 +4689,8 @@ function ReaderFullScreenSurface({
         },
         onVerseLayout: (verseId, y) => {
           core.completeVerseYByIdRef.current[verseId] = y;
-          if (!autoAlignCurrentVerse && core.pendingCompleteScrollVerseIdRef.current !== verseId) return;
+          if (!autoAlignCurrentVerse && core.pendingCompleteScrollVerseIdRef.current !== verseId)
+            return;
           if (core.pendingCompleteScrollVerseIdRef.current === verseId) {
             setTimeout(() => scroll.scrollCompleteToVerse(verseId, false), 0);
           }
@@ -3893,10 +4720,12 @@ function ReaderFullScreenSurface({
             doubleSpread: activeBookSpreadMode === "double",
             pageBackground: theme.accentSurface,
             contentKeyPrefix: key,
-            contentOpacity: nativeBookTurnVisuals?.incomingOpacity
+            contentOpacity: nativeBookTurnVisuals?.incomingOpacity,
+            playbackProgress: interactions.playbackProgress?.pageNumber === interactions.getNativeBookVersePageNumber(verse) ? interactions.playbackProgress : null
           },
           key
         ),
+        playbackProgress: interactions.playbackProgress,
         renderBookTurn: renderNativeBookTurn,
         showOverlay,
         theme,
@@ -3924,6 +4753,7 @@ function NativeBookVerseView({
   nativeBookTurnVisuals,
   nativeBookVerseFontSizePx,
   nativeBookVerses,
+  playbackProgress,
   onContentHeightChange,
   onTouchStart,
   renderBookTurn,
@@ -3940,7 +4770,9 @@ function NativeBookVerseView({
       nestedScrollEnabled: true,
       onContentSizeChange: (_width, height) => {
         const nextHeight = Math.ceil(height);
-        onContentHeightChange((current) => current === nextHeight ? current : nextHeight);
+        onContentHeightChange(
+          (current) => current === nextHeight ? current : nextHeight
+        );
       },
       onTouchStart,
       children: /* @__PURE__ */ jsx(
@@ -3974,7 +4806,8 @@ function NativeBookVerseView({
                     doubleSpread,
                     pageBackground: theme.accentSurface,
                     contentKeyPrefix: `book-${verse.id}`,
-                    contentOpacity: nativeBookTurnVisuals?.incomingOpacity
+                    contentOpacity: nativeBookTurnVisuals?.incomingOpacity,
+                    playbackProgress: playbackProgress?.pageNumber === getPageNumber(verse) ? playbackProgress : null
                   },
                   `book-${nativeBookPageNumber}-${index}`
                 )),
@@ -3987,7 +4820,7 @@ function NativeBookVerseView({
     }
   );
 }
-function NativeContinuousVerseView({
+function NativeContinuousVerseViewComponent({
   activeVerseId,
   autoAlignCurrentVerse,
   completeScrollOffsetRef,
@@ -3995,6 +4828,7 @@ function NativeContinuousVerseView({
   completeRestoreGuardUntilRef,
   completeVerseYByIdRef,
   completeVerses,
+  playbackProgress,
   fontSize,
   highlightCurrentVerse,
   isEmbeddedLandscape,
@@ -4011,9 +4845,18 @@ function NativeContinuousVerseView({
   updateCompleteAnchorFromOffset,
   userDraggingCompleteScrollRef
 }) {
+  const progressIndex = playbackProgress ? getContinuousProgressIndex(
+    playbackProgress.mode,
+    playbackProgress.pageNumber,
+    playbackProgress.verseId,
+    completeVerses.map((verse) => verse.id)
+  ) : -1;
   const alignPendingVerse = () => {
     const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
     if (!autoAlignCurrentVerse && !pendingVerseId) return;
+    if (!pendingVerseId && autoAlignCurrentVerse && Date.now() < completeRestoreGuardUntilRef.current) {
+      return;
+    }
     scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
   };
   return /* @__PURE__ */ jsx(
@@ -4044,7 +4887,9 @@ function NativeContinuousVerseView({
       },
       onContentSizeChange: (_width, height) => {
         const nextHeight = Math.ceil(height);
-        setEmbeddedContentHeight((current) => current === nextHeight ? current : nextHeight);
+        setEmbeddedContentHeight(
+          (current) => current === nextHeight ? current : nextHeight
+        );
         alignPendingVerse();
       },
       onLayout: alignPendingVerse,
@@ -4071,7 +4916,8 @@ function NativeContinuousVerseView({
                 isActive,
                 fullScreen: false,
                 fontSize,
-                theme
+                theme,
+                playbackProgress: progressIndex === index ? playbackProgress : null
               }
             )
           },
@@ -4080,6 +4926,18 @@ function NativeContinuousVerseView({
       })
     }
   );
+}
+var NativeContinuousVerseView = memo(
+  NativeContinuousVerseViewComponent,
+  (previous, next) => previous.activeVerseId === next.activeVerseId && previous.autoAlignCurrentVerse === next.autoAlignCurrentVerse && previous.completeScrollOffsetRef === next.completeScrollOffsetRef && previous.completeScrollRef === next.completeScrollRef && previous.completeRestoreGuardUntilRef === next.completeRestoreGuardUntilRef && previous.completeVerseYByIdRef === next.completeVerseYByIdRef && previous.completeVerses === next.completeVerses && samePlaybackProgress(previous.playbackProgress, next.playbackProgress) && previous.fontSize === next.fontSize && previous.highlightCurrentVerse === next.highlightCurrentVerse && previous.isEmbeddedLandscape === next.isEmbeddedLandscape && previous.onMomentumScrollEnd === next.onMomentumScrollEnd && previous.onScrollBeginDrag === next.onScrollBeginDrag && previous.onScrollEndDrag === next.onScrollEndDrag && previous.onTouchStart === next.onTouchStart && previous.pendingCompleteScrollVerseIdRef === next.pendingCompleteScrollVerseIdRef && previous.readerVerseId === next.readerVerseId && previous.reserveOverlayControlsSpace === next.reserveOverlayControlsSpace && previous.scrollCompleteToVerse === next.scrollCompleteToVerse && previous.setEmbeddedContentHeight === next.setEmbeddedContentHeight && previous.theme === next.theme && previous.updateCompleteAnchorFromOffset === next.updateCompleteAnchorFromOffset && previous.userDraggingCompleteScrollRef === next.userDraggingCompleteScrollRef
+);
+function samePlaybackProgress(previous, next) {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  if (previous.mode !== next.mode || previous.pageNumber !== next.pageNumber || previous.verseId !== next.verseId || previous.complete !== next.complete || previous.progressStore !== next.progressStore) {
+    return false;
+  }
+  return Boolean(previous.progressStore) || previous.progress === next.progress;
 }
 function ReaderModeToggleButton({
   accessibilityLabel,
@@ -4167,7 +5025,7 @@ function ReaderHeaderControls({
             ],
             accessibilityLabel: "Share",
             children: /* @__PURE__ */ jsx(
-              Ionicons3,
+              Ionicons4,
               {
                 name: "share-social-outline",
                 size: 15,
@@ -4210,7 +5068,7 @@ function ReaderShareMenu({
               { borderColor: theme.border, backgroundColor: theme.buttonSurface }
             ],
             onPress: onShareSystem,
-            children: /* @__PURE__ */ jsx(Ionicons3, { name: "arrow-redo-outline", size: 18, color: theme.text })
+            children: /* @__PURE__ */ jsx(Ionicons4, { name: "arrow-redo-outline", size: 18, color: theme.text })
           }
         ),
         /* @__PURE__ */ jsx(
@@ -4337,6 +5195,12 @@ function ReaderInlineOverlayControls({
   pageBadgeText,
   playProgress,
   playing,
+  playbackProgress,
+  autoReadAllowed,
+  autoReadPlaying,
+  autoReadCompleted,
+  onAutoReadToggle,
+  theme,
   showPageBadge,
   isFullScreen,
   timeText,
@@ -4367,6 +5231,15 @@ function ReaderInlineOverlayControls({
         timeText
       }
     ) : null,
+    autoReadAllowed && !hideVerseAudioControls ? /* @__PURE__ */ jsx(
+      ReaderAutoReadButton,
+      {
+        playing: autoReadPlaying,
+        completed: autoReadCompleted,
+        onPress: onAutoReadToggle,
+        theme
+      }
+    ) : null,
     !hideReaderActionControls ? /* @__PURE__ */ jsxs(View, { style: styles.overlayZoomGroup, children: [
       viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsx(
         ReaderPageNavigationButton,
@@ -4393,7 +5266,7 @@ function ReaderInlineOverlayControls({
           testID: isFullScreen ? "reader-exit-fullscreen" : "reader-enter-fullscreen",
           accessibilityLabel: isFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
           children: /* @__PURE__ */ jsx(
-            Ionicons3,
+            Ionicons4,
             {
               name: isFullScreen ? "contract-outline" : "expand-outline",
               size: 20,
@@ -4579,11 +5452,20 @@ function ReaderInlineSurface({
     restart
   } = interactions.mappedVerseNavigation;
   const { pageSwipeResponder, pdfVerticalScrollResponder } = interactions.fullscreen.gestures;
-  const { adjustPdfZoom, zoomInDisabled, zoomInVerse, zoomOutDisabled, zoomOutVerse } = interactions.zoom;
+  const {
+    adjustPdfZoom,
+    zoomInDisabled,
+    zoomInVerse,
+    zoomOutDisabled,
+    zoomOutVerse
+  } = interactions.zoom;
   const { goToNextPage, goToPreviousPage } = interactions.navigation;
   const { toggleVerseAudio } = interactions.fullscreen;
   const { progress: activeVerseAudioProgress, timeText: verseAudioTimeText } = interactions.audioProgress;
-  const { panHandlers: audioSliderPanHandlers, seekByLocationX: seekAudioByLocationX } = interactions.audioSlider;
+  const {
+    panHandlers: audioSliderPanHandlers,
+    seekByLocationX: seekAudioByLocationX
+  } = interactions.audioSlider;
   const { toggleVerseFullScreen, getNativeBookVersePageNumber } = interactions;
   const { shareLinks, openShareUrl, openWhatsAppShare, openSystemShare } = interactions.shareUrlActions;
   const { renderNativeBookTurn } = interactions.fullscreen;
@@ -4602,7 +5484,10 @@ function ReaderInlineSurface({
         styles.container,
         inlineFullScreenActive ? [
           styles.containerFullScreen,
-          { height: visibleViewportHeight, backgroundColor: theme.background }
+          {
+            height: visibleViewportHeight,
+            backgroundColor: theme.background
+          }
         ] : null
       ],
       children: [
@@ -4641,16 +5526,23 @@ function ReaderInlineSurface({
             onLayout: (event) => {
               if (content.contentMode === "verse") {
                 const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
-                if (nextHeight > 0 && nextHeight !== viewerWrapHeight) setViewerWrapHeight(nextHeight);
+                if (nextHeight > 0 && nextHeight !== viewerWrapHeight)
+                  setViewerWrapHeight(nextHeight);
               }
               measureViewerWindow();
             },
             ...viewMode === "book" && content.contentMode === "verse" ? pageSwipeResponder.panHandlers : content.contentMode === "pdf" && overlayViewport ? pdfVerticalScrollResponder.panHandlers : {},
             children: [
-              loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? /* @__PURE__ */ jsxs(View, { style: [styles.loadingWrap, { backgroundColor: theme.background }], children: [
-                /* @__PURE__ */ jsx(ActivityIndicator, { size: "large", color: theme.accent }),
-                /* @__PURE__ */ jsx(Text, { style: [styles.loadingText, { color: theme.mutedText }], children: loadingMessage })
-              ] }) : null,
+              loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? /* @__PURE__ */ jsxs(
+                View,
+                {
+                  style: [styles.loadingWrap, { backgroundColor: theme.background }],
+                  children: [
+                    /* @__PURE__ */ jsx(ActivityIndicator, { size: "large", color: theme.accent }),
+                    /* @__PURE__ */ jsx(Text, { style: [styles.loadingText, { color: theme.mutedText }], children: loadingMessage })
+                  ]
+                }
+              ) : null,
               !loadingError ? useNativeBookVerseView ? /* @__PURE__ */ jsx(
                 NativeBookVerseView,
                 {
@@ -4664,6 +5556,7 @@ function ReaderInlineSurface({
                   nativeBookTurnVisuals: content.nativeBookTurnVisuals,
                   nativeBookVerseFontSizePx: interactions.presentation.nativeBookVerseFontSizePx,
                   nativeBookVerses: interactions.presentation.nativeBookVerses,
+                  playbackProgress: interactions.playbackProgress,
                   onContentHeightChange: setEmbeddedBookContentHeight,
                   onTouchStart: showOverlay,
                   renderBookTurn: renderNativeBookTurn,
@@ -4693,6 +5586,7 @@ function ReaderInlineSurface({
                   scrollCompleteToVerse,
                   setEmbeddedContentHeight: setEmbeddedContinuousContentHeight,
                   theme,
+                  playbackProgress: interactions.playbackProgress,
                   updateCompleteAnchorFromOffset,
                   userDraggingCompleteScrollRef
                 }
@@ -4745,8 +5639,10 @@ function ReaderInlineSurface({
               /* @__PURE__ */ jsx(
                 ReaderInlineOverlay,
                 {
-                  show: !loadingError && !hideControls && showOverlayControls && (!hideReaderActionControls || content.hasVerseAudio && !hideVerseAudioControls),
-                  onHeightChange: (height) => setOverlayControlsHeight((current) => current === height ? current : height),
+                  show: !loadingError && !hideControls && showOverlayControls && (!hideReaderActionControls || content.hasVerseAudio && !hideVerseAudioControls || Boolean(interactions.playbackProgress)),
+                  onHeightChange: (height) => setOverlayControlsHeight(
+                    (current) => current === height ? current : height
+                  ),
                   translateY: stickyOverlayTranslate,
                   controls: {
                     activeAudio: Boolean(interactions.activeVerseAudio),
@@ -4773,6 +5669,12 @@ function ReaderInlineSurface({
                     pageBadgeText,
                     playProgress: activeVerseAudioProgress,
                     playing: verseAudioStatus.playing,
+                    playbackProgress: interactions.playbackProgress,
+                    autoReadAllowed: interactions.canAutoRead,
+                    autoReadPlaying: interactions.autoReadPlaying,
+                    autoReadCompleted: interactions.autoRead.completed,
+                    onAutoReadToggle: interactions.toggleAutoRead,
+                    theme,
                     showPageBadge: content.effectiveBookVerseLayout?.showPageBadge !== false,
                     isFullScreen: isVerseFullScreen,
                     timeText: verseAudioTimeText,
@@ -4823,6 +5725,7 @@ function useCompleteVerseScroll({
   viewerContentTop,
   viewerWrapHeight
 }) {
+  const previousVerseFontSizeRef = useRef(verseFontSizePx);
   const scrollCompleteToVerse = useCallback(
     (verseId, animated = false) => {
       if (!verseId) return false;
@@ -4838,10 +5741,18 @@ function useCompleteVerseScroll({
             return false;
           }
           const targetOffset = viewerContentTop + y - overlayViewport.top;
-          overlayViewport.scrollToOffset(Math.max(0, targetOffset), withAnimation);
+          overlayViewport.scrollToOffset(
+            Math.max(0, targetOffset),
+            withAnimation
+          );
           return true;
         }
-        completeScrollRef.current?.scrollTo({
+        const scrollView = completeScrollRef.current;
+        if (!scrollView) {
+          pendingCompleteScrollVerseIdRef.current = verseId;
+          return false;
+        }
+        scrollView.scrollTo({
           y: Math.max(0, y - 12),
           animated: withAnimation
         });
@@ -4849,12 +5760,14 @@ function useCompleteVerseScroll({
       };
       if (!scrollToVerse(animated)) return false;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
-      setTimeout(() => scrollToVerse(false), 120);
-      setTimeout(() => {
-        if (pendingCompleteScrollVerseIdRef.current === verseId) {
-          pendingCompleteScrollVerseIdRef.current = null;
-        }
-      }, 760);
+      setTimeout(
+        () => {
+          if (pendingCompleteScrollVerseIdRef.current === verseId) {
+            pendingCompleteScrollVerseIdRef.current = null;
+          }
+        },
+        animated ? 1800 : 760
+      );
       return true;
     },
     [
@@ -4871,23 +5784,31 @@ function useCompleteVerseScroll({
     if (!useNativeCompleteVerseView || viewerContentTop === null) return;
     const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
     if (pendingVerseId) scrollCompleteToVerse(pendingVerseId, false);
-  }, [pendingCompleteScrollVerseIdRef, scrollCompleteToVerse, useNativeCompleteVerseView, viewerContentTop]);
+  }, [
+    pendingCompleteScrollVerseIdRef,
+    scrollCompleteToVerse,
+    useNativeCompleteVerseView,
+    viewerContentTop
+  ]);
   const getNativeVersePage = useCallback(
     (verseId) => {
       if (!verseId) return 0;
       const mappedPage = versePageById[verseId];
       if (mappedPage) return mappedPage;
       if (!useNativeVersePaging) return 0;
-      const verseIndex = completeVerses.findIndex((verse) => verse.id === verseId);
+      const verseIndex = completeVerses.findIndex(
+        (verse) => verse.id === verseId
+      );
       return verseIndex >= 0 ? verseIndex + 1 : 0;
     },
     [completeVerses, useNativeVersePaging, versePageById]
   );
   useEffect(() => {
-    const verseId = initialReaderVerseIdRef.current;
-    if (initialReaderVerseAppliedRef.current || !verseId || !completeVerses.length) return;
-    const restoredPage = getNativeVersePage(verseId);
-    if (!restoredPage) return;
+    const savedVerseId = initialReaderVerseIdRef.current;
+    if (initialReaderVerseAppliedRef.current || !completeVerses.length) return;
+    const restoredPage = savedVerseId ? getNativeVersePage(savedVerseId) : pageNumber;
+    const verseId = savedVerseId || verseIdsByPage[restoredPage]?.[0] || (useNativeVersePaging ? completeVerses[restoredPage - 1]?.id : void 0);
+    if (!restoredPage || !verseId) return;
     initialReaderVerseAppliedRef.current = true;
     pageNumberRef.current = restoredPage;
     pendingModeSwitchPageRef.current = restoredPage;
@@ -4900,19 +5821,24 @@ function useCompleteVerseScroll({
     getNativeVersePage,
     initialReaderVerseAppliedRef,
     initialReaderVerseIdRef,
+    pageNumber,
     pageNumberRef,
     pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef,
     setNativeBookPageNumberState,
     setPageNumber,
-    setReaderVerseId
+    setReaderVerseId,
+    useNativeVersePaging,
+    verseIdsByPage
   ]);
   const updateCompleteAnchorFromOffset = useCallback(
     (offsetY) => {
       let bestVerseId = null;
       let bestDistance = Infinity;
       const targetY = Math.max(0, offsetY + 24);
-      for (const [verseId, y] of Object.entries(completeVerseYByIdRef.current)) {
+      for (const [verseId, y] of Object.entries(
+        completeVerseYByIdRef.current
+      )) {
         const distance = Math.abs(y - targetY);
         if (distance < bestDistance) {
           bestDistance = distance;
@@ -4920,20 +5846,33 @@ function useCompleteVerseScroll({
         }
       }
       if (!bestVerseId) return;
-      setReaderVerseId((current) => current === bestVerseId ? current : bestVerseId);
+      setReaderVerseId(
+        (current) => current === bestVerseId ? current : bestVerseId
+      );
       const pageForVerse = getNativeVersePage(bestVerseId);
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         setPageNumber(pageForVerse);
       }
     },
-    [completeVerseYByIdRef, getNativeVersePage, pageNumber, pageNumberRef, setPageNumber, setReaderVerseId]
+    [
+      completeVerseYByIdRef,
+      getNativeVersePage,
+      pageNumber,
+      pageNumberRef,
+      setPageNumber,
+      setReaderVerseId
+    ]
   );
   const handleCompleteScrollBeginDrag = useCallback(() => {
     userDraggingCompleteScrollRef.current = true;
     pendingCompleteScrollVerseIdRef.current = null;
     completeRestoreGuardUntilRef.current = 0;
-  }, [completeRestoreGuardUntilRef, pendingCompleteScrollVerseIdRef, userDraggingCompleteScrollRef]);
+  }, [
+    completeRestoreGuardUntilRef,
+    pendingCompleteScrollVerseIdRef,
+    userDraggingCompleteScrollRef
+  ]);
   const handleCompleteScrollEndDrag = useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
@@ -4942,26 +5881,52 @@ function useCompleteVerseScroll({
     [updateCompleteAnchorFromOffset, userDraggingCompleteScrollRef]
   );
   useEffect(() => {
-    if (!overlayViewport || !useNativeCompleteVerseView || viewerContentTop === null || viewerWrapHeight <= 0) return;
+    if (!overlayViewport || !useNativeCompleteVerseView || viewerContentTop === null || viewerWrapHeight <= 0)
+      return;
     const updateFromOuterScroll = (outerScrollOffset) => {
+      if (pendingCompleteScrollVerseIdRef.current || Date.now() < completeRestoreGuardUntilRef.current) {
+        return;
+      }
       const viewportTop = outerScrollOffset + overlayViewport.top;
       const viewportBottom = outerScrollOffset + overlayViewport.bottom;
       const readerBottom = viewerContentTop + viewerWrapHeight;
-      if (readerBottom <= viewportTop || viewerContentTop >= viewportBottom) return;
+      if (readerBottom <= viewportTop || viewerContentTop >= viewportBottom)
+        return;
       const innerOffset = completeScrollOffsetRef.current;
       const localOffset = outerScrollOffset + overlayViewport.top - viewerContentTop + innerOffset;
       updateCompleteAnchorFromOffset(localOffset);
     };
     updateFromOuterScroll(overlayViewport.getScrollOffset());
-    const listenerId = overlayViewport.scrollY.addListener(({ value }) => updateFromOuterScroll(value));
+    const listenerId = overlayViewport.scrollY.addListener(
+      ({ value }) => updateFromOuterScroll(value)
+    );
     return () => overlayViewport.scrollY.removeListener(listenerId);
-  }, [completeScrollOffsetRef, overlayViewport, updateCompleteAnchorFromOffset, useNativeCompleteVerseView, viewerContentTop, viewerWrapHeight]);
+  }, [
+    completeRestoreGuardUntilRef,
+    completeScrollOffsetRef,
+    overlayViewport,
+    pendingCompleteScrollVerseIdRef,
+    updateCompleteAnchorFromOffset,
+    useNativeCompleteVerseView,
+    viewerContentTop,
+    viewerWrapHeight
+  ]);
   const handleCompleteMomentumScrollEnd = useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
       updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+      if (pendingCompleteScrollVerseIdRef.current && !overlayViewport) {
+        pendingCompleteScrollVerseIdRef.current = null;
+        completeRestoreGuardUntilRef.current = Date.now() + 120;
+      }
     },
-    [updateCompleteAnchorFromOffset, userDraggingCompleteScrollRef]
+    [
+      completeRestoreGuardUntilRef,
+      overlayViewport,
+      pendingCompleteScrollVerseIdRef,
+      updateCompleteAnchorFromOffset,
+      userDraggingCompleteScrollRef
+    ]
   );
   useEffect(() => {
     if (contentMode !== "verse" || !isPageHydrated) return;
@@ -4969,22 +5934,49 @@ function useCompleteVerseScroll({
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
     setReaderVerseId((current) => {
-      if (current && current === initialReaderVerseIdRef.current) return current;
+      if (current && current === initialReaderVerseIdRef.current)
+        return current;
       if (current && pageVerses?.includes(current)) return current;
       return current === firstVerseId ? current : firstVerseId;
     });
-  }, [completeVerses, contentMode, initialReaderVerseIdRef, isPageHydrated, pageNumber, setReaderVerseId, useNativeVersePaging, verseIdsByPage]);
+  }, [
+    completeVerses,
+    contentMode,
+    initialReaderVerseIdRef,
+    isPageHydrated,
+    pageNumber,
+    setReaderVerseId,
+    useNativeVersePaging,
+    verseIdsByPage
+  ]);
   useEffect(() => {
-    if (contentMode !== "verse" || viewMode !== "continuous" || !autoAlignCurrentVerse || !isPageHydrated) return;
+    const fontSizeChanged = previousVerseFontSizeRef.current !== verseFontSizePx;
+    previousVerseFontSizeRef.current = verseFontSizePx;
+    if (contentMode !== "verse" || viewMode !== "continuous" || !autoAlignCurrentVerse || !isPageHydrated)
+      return;
     const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     if (pageNumber > 1 && (!pageVerses || pageVerses.length === 0)) return;
     const readerVerseBelongsToPage = readerVerseId && pageVerses?.includes(readerVerseId);
     const targetVerseId = readerVerseBelongsToPage ? readerVerseId : pageVerses?.[0] || completeVerses[0]?.id || null;
     if (!targetVerseId) return;
-    if (completeRestoreTimerRef.current) clearTimeout(completeRestoreTimerRef.current);
+    if (pendingCompleteScrollVerseIdRef.current === targetVerseId && completeRestoreGuardUntilRef.current > Date.now()) {
+      return;
+    }
+    if (fontSizeChanged) {
+      completeVerseYByIdRef.current = {};
+    }
+    if (completeRestoreTimerRef.current)
+      clearTimeout(completeRestoreTimerRef.current);
     pendingCompleteScrollVerseIdRef.current = targetVerseId;
-    completeRestoreGuardUntilRef.current = Date.now() + 900;
-    completeRestoreTimerRef.current = setTimeout(() => scrollCompleteToVerse(targetVerseId, false), 80);
+    completeRestoreGuardUntilRef.current = Date.now() + (fontSizeChanged ? 1800 : 900);
+    if (fontSizeChanged) {
+      completeRestoreTimerRef.current = null;
+      return;
+    }
+    completeRestoreTimerRef.current = setTimeout(
+      () => scrollCompleteToVerse(targetVerseId, false),
+      80
+    );
     return () => {
       if (completeRestoreTimerRef.current) {
         clearTimeout(completeRestoreTimerRef.current);
@@ -5359,7 +6351,7 @@ function useVerseAudioPlayback({
   webViewRef,
   fullScreenWebViewRef
 }) {
-  const player = useAudioPlayer(null, { updateInterval: 120 });
+  const player = useAudioPlayer(null, { updateInterval: 100 });
   const status = useAudioPlayerStatus(player);
   const [activeVerseAudioIndex, setActiveVerseAudioIndex] = useState(null);
   const [activeVerseId, setActiveVerseId] = useState(null);
@@ -5415,7 +6407,13 @@ function useVerseAudioPlayback({
       startPlayback();
       showOverlay();
     },
-    [currentVerseAudioUrl, playableVerseMappings, player, showMappedVerse, showOverlay]
+    [
+      currentVerseAudioUrl,
+      playableVerseMappings,
+      player,
+      showMappedVerse,
+      showOverlay
+    ]
   );
   const toggleVerseAudio = useCallback(() => {
     if (!hasVerseAudio) return;
@@ -5433,14 +6431,17 @@ function useVerseAudioPlayback({
       if (verseId) {
         const pageForVerse = getNativeVersePage(verseId);
         setActiveVerseId(verseId);
-        setReaderVerseId((current) => current === verseId ? current : verseId);
+        setReaderVerseId(
+          (current) => current === verseId ? current : verseId
+        );
         if (viewMode !== "book" && pageForVerse && pageForVerse !== pageNumber) {
           pageNumberRef.current = pageForVerse;
           setNativeBookPageNumberState(pageForVerse);
           void setPageNumber(pageForVerse);
-          injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
-            { method: "goToPage", args: [pageForVerse] }
-          ]);
+          injectReaderBridgeScript(
+            [webViewRef, fullScreenWebViewRef],
+            [{ method: "goToPage", args: [pageForVerse] }]
+          );
         }
         if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
           void scrollCompleteToVerse(verseId, true);
@@ -5488,7 +6489,10 @@ function useVerseAudioPlayback({
         0,
         Number(extendedStatus.duration ?? extendedStatus.durationSeconds ?? 0)
       );
-      const mappedTrackDurationMs = playableVerseMappings.filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl).reduce((maximum, mapping) => Math.max(maximum, mapping.segmentEndMs), 0);
+      const mappedTrackDurationMs = playableVerseMappings.filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl).reduce(
+        (maximum, mapping) => Math.max(maximum, mapping.segmentEndMs),
+        0
+      );
       const trackDurationMs = Math.max(
         Math.floor(loadedDurationSeconds * 1e3),
         mappedTrackDurationMs
@@ -8991,17 +9995,33 @@ function PdfDocumentViewer({
   hideReaderActionControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
+  externalVerseAudioMappings = [],
+  audioSourceAvailable,
   onExternalAudioToggle,
+  autoReadPlaying = false,
+  autoReadClockMs,
+  autoReadResetKey = "",
+  onAutoReadPlayingChange,
+  onAutoReadCompleteChange,
   externalActiveVerseId = null,
   initialReaderVerseId = null,
   readerTheme,
   resetConfirmation,
   overlayViewport
 }) {
-  const resolvedReaderTheme = useMemo(() => resolveReaderTheme(readerTheme), [readerTheme]);
+  const resolvedReaderTheme = useMemo(
+    () => resolveReaderTheme(readerTheme),
+    [readerTheme]
+  );
   const verseZoomConfig = useMemo(() => {
-    const min = Math.max(1, Math.round(Number(verseLayout?.minFontSizePx) || 18));
-    const max = Math.max(min, Math.round(Number(verseLayout?.maxFontSizePx) || 36));
+    const min = Math.max(
+      1,
+      Math.round(Number(verseLayout?.minFontSizePx) || 18)
+    );
+    const max = Math.max(
+      min,
+      Math.round(Number(verseLayout?.maxFontSizePx) || 36)
+    );
     const defaultSize = Math.max(
       min,
       Math.min(max, Math.round(Number(verseLayout?.defaultFontSizePx) || 22))
@@ -9012,7 +10032,11 @@ function PdfDocumentViewer({
       defaultSize,
       step: VERSE_BUTTON_ZOOM_STEP_PX
     };
-  }, [verseLayout?.defaultFontSizePx, verseLayout?.maxFontSizePx, verseLayout?.minFontSizePx]);
+  }, [
+    verseLayout?.defaultFontSizePx,
+    verseLayout?.maxFontSizePx,
+    verseLayout?.minFontSizePx
+  ]);
   const requestedViewMode = controlledViewMode;
   const requestedZoomLevel = Math.max(
     MIN_ZOOM_LEVEL,
@@ -9141,7 +10165,15 @@ function PdfDocumentViewer({
     audio: readerAudio,
     label,
     onExternalAudioToggle,
+    externalActiveVerseId,
     externalVerseAudioState,
+    externalVerseAudioMappings,
+    audioSourceAvailable,
+    autoReadPlaying,
+    autoReadClockMs,
+    autoReadResetKey,
+    onAutoReadPlayingChange,
+    onAutoReadCompleteChange,
     overlayViewport,
     page: {
       isPageHydrated,
@@ -9178,6 +10210,7 @@ function PdfDocumentViewer({
       core: readerCore,
       documentSource: readerDocumentSource,
       externalVerseAudioState,
+      autoReadPlaying,
       hideControls,
       hidePageNavigationControls,
       hideVerseAudioControls,

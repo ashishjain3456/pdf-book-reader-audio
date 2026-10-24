@@ -16,6 +16,7 @@ const DEFAULT_READER_THEME: Required<ReaderTheme> = {
   accentRed: "#7f1d1d",
   accentGreen: "#166534",
   accentIndigo: "#3730a3",
+  autoReadAccent: "#d97706",
   preserveInlineColors: true,
 };
 

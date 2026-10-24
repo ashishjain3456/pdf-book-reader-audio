@@ -90,18 +90,6 @@ export const bookStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  nativeBookPageOrnamentOuter: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    bottom: 8,
-    left: 8,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: "#f97316",
-    borderRadius: 5,
-    opacity: 0.92,
-  },
   nativeBookPageOrnamentInner: {
     position: "absolute",
     top: 17,

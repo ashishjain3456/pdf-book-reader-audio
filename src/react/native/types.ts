@@ -1,14 +1,17 @@
-import type { MutableRefObject, ReactNode } from 'react';
-import type { ScrollView as NativeScrollView, View as NativeView } from 'react-native';
-import type { WebView } from 'react-native-webview';
-import type { VerseAudioMapping } from '../../types/contracts';
+import type { MutableRefObject, ReactNode } from "react";
+import type {
+  ScrollView as NativeScrollView,
+  View as NativeView,
+} from "react-native";
+import type { WebView } from "react-native-webview";
+import type { VerseAudioMapping } from "../../types/contracts";
 
 export type { VerseAudioMapping };
 
-export type ReaderViewMode = 'book' | 'continuous';
+export type ReaderViewMode = "book" | "continuous";
 
 export type ReaderAnimatedValue = ReturnType<
-  InstanceType<typeof import('react-native').Animated.Value>['interpolate']
+  InstanceType<typeof import("react-native").Animated.Value>["interpolate"]
 >;
 
 export type ReaderLayout = { width: number; height: number };
@@ -50,7 +53,7 @@ export type ReaderOverlayViewport = {
     interpolate: (config: {
       inputRange: number[];
       outputRange: number[];
-      extrapolate: 'clamp';
+      extrapolate: "clamp";
     }) => ReaderAnimatedValue;
   };
   getScrollOffset: () => number;
@@ -96,7 +99,7 @@ export type ReaderResetConfirmation = {
 
 export type ReaderDialogButton = {
   text: string;
-  style?: 'cancel' | 'destructive';
+  style?: "cancel" | "destructive";
   onPress?: () => void;
 };
 
@@ -111,6 +114,14 @@ export type ExternalVerseAudioState = {
   currentTimeMs?: number | null;
   isPlaying?: boolean;
 };
+
+export type PlaybackMode = "audio" | "auto-read";
+export type ReaderPlaybackProgress = {
+  mode: PlaybackMode;
+  progress: number;
+  complete: boolean;
+  pageNumber: number | null;
+} | null;
 
 export type ReaderTheme = {
   background?: string;
@@ -128,6 +139,7 @@ export type ReaderTheme = {
   accentRed?: string;
   accentGreen?: string;
   accentIndigo?: string;
+  autoReadAccent?: string;
   preserveInlineColors?: boolean;
 };
 
@@ -140,7 +152,7 @@ export type ReaderVerse = {
   groupLabel?: string | null;
 };
 
-export type CompleteReaderVerse = Omit<ReaderVerse, 'id'> & {
+export type CompleteReaderVerse = Omit<ReaderVerse, "id"> & {
   id: string;
   label: string;
   contentHtml: string;
@@ -155,7 +167,7 @@ export type VerseLayoutConfig = {
   minFontSizePx?: number;
   defaultFontSizePx?: number;
   maxFontSizePx?: number;
-  bookSpreadMode?: 'single' | 'double';
+  bookSpreadMode?: "single" | "double";
   enablePageTurnEffect?: boolean;
   showSecondPage?: boolean;
   allowDoubleSpread?: boolean;
@@ -188,7 +200,7 @@ export type PdfDocumentViewerProps = {
   onReady?: (metadata: { pageCount: number }) => void;
   onStateChange: (state: ReaderState) => void;
   onError?: (error: { message: string; code?: string }) => void;
-  mode?: 'auto' | 'pdf' | 'verse';
+  mode?: "auto" | "pdf" | "verse";
   verses?: ReaderVerse[];
   verseAudioMappings?: VerseAudioMapping[];
   verseLayout?: VerseLayoutConfig;
@@ -199,7 +211,14 @@ export type PdfDocumentViewerProps = {
   hideReaderActionControls?: boolean;
   hideVerseAudioControls?: boolean;
   externalVerseAudioState?: ExternalVerseAudioState | null;
+  externalVerseAudioMappings?: VerseAudioMapping[];
+  audioSourceAvailable?: boolean;
   onExternalAudioToggle?: () => void;
+  autoReadPlaying?: boolean;
+  autoReadClockMs?: number;
+  autoReadResetKey?: string;
+  onAutoReadPlayingChange?: (playing: boolean) => void;
+  onAutoReadCompleteChange?: (complete: boolean) => void;
   externalActiveVerseId?: string | null;
   initialReaderVerseId?: string | null;
   readerTheme?: ReaderTheme;

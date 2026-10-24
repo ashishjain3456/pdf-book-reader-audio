@@ -1,10 +1,10 @@
 'use strict';
 
-var react = require('react');
+var React = require('react');
 var reactNative = require('react-native');
 var jsxRuntime = require('react/jsx-runtime');
 var ExpoLinking = require('expo-linking');
-var Ionicons3 = require('@expo/vector-icons/Ionicons');
+var Ionicons4 = require('@expo/vector-icons/Ionicons');
 var reactNativeWebview = require('react-native-webview');
 var FontAwesome6 = require('@expo/vector-icons/FontAwesome6');
 var ExpoAudio = require('expo-audio');
@@ -30,8 +30,9 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
+var React__namespace = /*#__PURE__*/_interopNamespace(React);
 var ExpoLinking__namespace = /*#__PURE__*/_interopNamespace(ExpoLinking);
-var Ionicons3__default = /*#__PURE__*/_interopDefault(Ionicons3);
+var Ionicons4__default = /*#__PURE__*/_interopDefault(Ionicons4);
 var FontAwesome6__default = /*#__PURE__*/_interopDefault(FontAwesome6);
 var ExpoAudio__namespace = /*#__PURE__*/_interopNamespace(ExpoAudio);
 
@@ -62,6 +63,7 @@ var DEFAULT_READER_THEME = {
   accentRed: "#7f1d1d",
   accentGreen: "#166534",
   accentIndigo: "#3730a3",
+  autoReadAccent: "#d97706",
   preserveInlineColors: true
 };
 function resolveReaderTheme(theme) {
@@ -72,16 +74,16 @@ function useReaderOverlayVisibility({
   setShowOverlayControls,
   useNativeVerseView
 }) {
-  const overlayTimerRef = react.useRef(null);
-  const showOverlay = react.useCallback(() => {
+  const overlayTimerRef = React.useRef(null);
+  const showOverlay = React.useCallback(() => {
     setShowOverlayControls(true);
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     overlayTimerRef.current = setTimeout(() => setShowOverlayControls(false), 8e3);
   }, [setShowOverlayControls]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (overlayViewport && useNativeVerseView) showOverlay();
   }, [overlayViewport, showOverlay, useNativeVerseView]);
-  react.useEffect(
+  React.useEffect(
     () => () => {
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     },
@@ -132,23 +134,23 @@ function useReaderViewportTracking({
   viewerReady,
   webViewRef
 }) {
-  const [windowSize, setWindowSize] = react.useState(
+  const [windowSize, setWindowSize] = React.useState(
     () => reactNative.Dimensions.get("window") || { width: 0, height: 0 }
   );
   const windowWidth = windowSize.width || 0;
   const windowHeight = windowSize.height || 0;
-  react.useEffect(() => {
+  React.useEffect(() => {
     const subscription = reactNative.Dimensions.addEventListener(
       "change",
       ({ window }) => setWindowSize(window)
     );
     return () => subscription.remove();
   }, []);
-  const viewerWrapRef = react.useRef(null);
-  const [viewerWrapHeight, setViewerWrapHeight] = react.useState(0);
-  const [viewerContentTop, setViewerContentTop] = react.useState(null);
-  const [overlayControlsHeight, setOverlayControlsHeight] = react.useState(96);
-  const measureViewerWindow = react.useCallback(() => {
+  const viewerWrapRef = React.useRef(null);
+  const [viewerWrapHeight, setViewerWrapHeight] = React.useState(0);
+  const [viewerContentTop, setViewerContentTop] = React.useState(null);
+  const [overlayControlsHeight, setOverlayControlsHeight] = React.useState(96);
+  const measureViewerWindow = React.useCallback(() => {
     if (!overlayViewport) return;
     viewerWrapRef.current?.measureInWindow?.((_x, y) => {
       const contentTop = y + overlayViewport.getScrollOffset();
@@ -157,8 +159,8 @@ function useReaderViewportTracking({
       );
     });
   }, [overlayViewport]);
-  react.useEffect(measureViewerWindow, [measureViewerWindow]);
-  react.useEffect(() => {
+  React.useEffect(measureViewerWindow, [measureViewerWindow]);
+  React.useEffect(() => {
     if (!overlayViewport || !viewerReady || contentMode !== "pdf" || viewMode !== "continuous") {
       return;
     }
@@ -193,7 +195,7 @@ function useReaderViewportTracking({
     viewMode,
     webViewRef
   ]);
-  const stickyOverlayTranslate = react.useMemo(() => {
+  const stickyOverlayTranslate = React.useMemo(() => {
     if (!overlayViewport || viewerContentTop === null || viewerWrapHeight <= 0) return null;
     const minTop = 10;
     const maxTop = Math.max(minTop + 1, viewerWrapHeight - overlayControlsHeight - 10);
@@ -229,68 +231,68 @@ function useReaderCoreState({
   verseLayout,
   verseZoomConfig
 }) {
-  const [loadingError, setLoadingError] = react.useState(null);
-  const [loadingPdf, setLoadingPdf] = react.useState(true);
-  const [viewerReady, setViewerReady] = react.useState(false);
-  const [pageCount, setPageCount] = react.useState(0);
-  const initialViewModeRef = react.useRef(requestedViewMode);
-  const initialZoomLevelRef = react.useRef(requestedZoomLevel);
-  const [viewMode, setViewMode] = react.useState(requestedViewMode);
-  const [zoomLevel, setZoomLevel] = react.useState(requestedZoomLevel);
-  const [showShareOverlay, setShowShareOverlay] = react.useState(false);
-  const [showOverlayControls, setShowOverlayControls] = react.useState(false);
-  const [readerDialog, setReaderDialog] = react.useState(null);
-  const [viewerReloadKey, setViewerReloadKey] = react.useState(0);
-  const [localPdfUrl, setLocalPdfUrl] = react.useState(null);
-  const [triedLocalFileFallback, setTriedLocalFileFallback] = react.useState(false);
-  const [isVerseFullScreen, setIsVerseFullScreen] = react.useState(verseLayout?.fullScreen === true);
-  const [verseFontSizePx, setVerseFontSizePx] = react.useState(
+  const [loadingError, setLoadingError] = React.useState(null);
+  const [loadingPdf, setLoadingPdf] = React.useState(true);
+  const [viewerReady, setViewerReady] = React.useState(false);
+  const [pageCount, setPageCount] = React.useState(0);
+  const initialViewModeRef = React.useRef(requestedViewMode);
+  const initialZoomLevelRef = React.useRef(requestedZoomLevel);
+  const [viewMode, setViewMode] = React.useState(requestedViewMode);
+  const [zoomLevel, setZoomLevel] = React.useState(requestedZoomLevel);
+  const [showShareOverlay, setShowShareOverlay] = React.useState(false);
+  const [showOverlayControls, setShowOverlayControls] = React.useState(false);
+  const [readerDialog, setReaderDialog] = React.useState(null);
+  const [viewerReloadKey, setViewerReloadKey] = React.useState(0);
+  const [localPdfUrl, setLocalPdfUrl] = React.useState(null);
+  const [triedLocalFileFallback, setTriedLocalFileFallback] = React.useState(false);
+  const [isVerseFullScreen, setIsVerseFullScreen] = React.useState(verseLayout?.fullScreen === true);
+  const [verseFontSizePx, setVerseFontSizePx] = React.useState(
     () => Math.max(
       verseZoomConfig.min,
       Math.min(verseZoomConfig.max, Math.round(verseZoomConfig.defaultSize * requestedZoomLevel))
     )
   );
-  const [readerVerseId, setReaderVerseId] = react.useState(initialReaderVerseId ?? null);
-  const initialReaderVerseIdRef = react.useRef(initialReaderVerseId);
-  const initialReaderVerseAppliedRef = react.useRef(false);
-  const [versePageById, setVersePageById] = react.useState({});
-  const [verseIdsByPage, setVerseIdsByPage] = react.useState({});
-  const [audioSliderWidth, setAudioSliderWidth] = react.useState(1);
-  const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = react.useState(0);
-  const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] = react.useState(0);
-  const [pdfBookViewerHeight, setPdfBookViewerHeight] = react.useState(480);
-  const [pdfContinuousViewerHeight, setPdfContinuousViewerHeight] = react.useState(480);
-  const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = react.useState(true);
-  const [bookSpreadMode, setBookSpreadMode] = react.useState(
+  const [readerVerseId, setReaderVerseId] = React.useState(initialReaderVerseId ?? null);
+  const initialReaderVerseIdRef = React.useRef(initialReaderVerseId);
+  const initialReaderVerseAppliedRef = React.useRef(false);
+  const [versePageById, setVersePageById] = React.useState({});
+  const [verseIdsByPage, setVerseIdsByPage] = React.useState({});
+  const [audioSliderWidth, setAudioSliderWidth] = React.useState(1);
+  const [embeddedBookContentHeight, setEmbeddedBookContentHeight] = React.useState(0);
+  const [embeddedContinuousContentHeight, setEmbeddedContinuousContentHeight] = React.useState(0);
+  const [pdfBookViewerHeight, setPdfBookViewerHeight] = React.useState(480);
+  const [pdfContinuousViewerHeight, setPdfContinuousViewerHeight] = React.useState(480);
+  const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = React.useState(true);
+  const [bookSpreadMode, setBookSpreadMode] = React.useState(
     () => verseLayout?.bookSpreadMode === "double" && verseLayout?.showSecondPage !== false ? "double" : "single"
   );
-  const webViewRef = react.useRef(null);
-  const fullScreenWebViewRef = react.useRef(null);
-  const completeScrollRef = react.useRef(null);
-  const completeVerseYByIdRef = react.useRef({});
-  const completeScrollOffsetRef = react.useRef(0);
-  const pendingCompleteScrollVerseIdRef = react.useRef(null);
-  const userDraggingCompleteScrollRef = react.useRef(false);
-  const completeRestoreTimerRef = react.useRef(null);
-  const completeRestoreGuardUntilRef = react.useRef(0);
-  const suppressCompleteModeSyncRef = react.useRef(false);
-  const pendingModeSwitchPageRef = react.useRef(null);
-  const lastRenderedBookPageRef = react.useRef(null);
-  const programmaticViewerSyncRef = react.useRef(null);
-  const lastSyncedViewModeRef = react.useRef(null);
-  const lastInjectedViewerStateRef = react.useRef(null);
-  const lastEmittedFullScreenRef = react.useRef(null);
-  const pageCountRef = react.useRef(0);
-  const lastNativeReadyPageCountRef = react.useRef(0);
-  const onReadyRef = react.useRef(onReady);
-  const versePagesSignatureRef = react.useRef("");
-  const pageNumberRef = react.useRef(
+  const webViewRef = React.useRef(null);
+  const fullScreenWebViewRef = React.useRef(null);
+  const completeScrollRef = React.useRef(null);
+  const completeVerseYByIdRef = React.useRef({});
+  const completeScrollOffsetRef = React.useRef(0);
+  const pendingCompleteScrollVerseIdRef = React.useRef(null);
+  const userDraggingCompleteScrollRef = React.useRef(false);
+  const completeRestoreTimerRef = React.useRef(null);
+  const completeRestoreGuardUntilRef = React.useRef(0);
+  const suppressCompleteModeSyncRef = React.useRef(false);
+  const pendingModeSwitchPageRef = React.useRef(null);
+  const lastRenderedBookPageRef = React.useRef(null);
+  const programmaticViewerSyncRef = React.useRef(null);
+  const lastSyncedViewModeRef = React.useRef(null);
+  const lastInjectedViewerStateRef = React.useRef(null);
+  const lastEmittedFullScreenRef = React.useRef(null);
+  const pageCountRef = React.useRef(0);
+  const lastNativeReadyPageCountRef = React.useRef(0);
+  const onReadyRef = React.useRef(onReady);
+  const versePagesSignatureRef = React.useRef("");
+  const pageNumberRef = React.useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0 ? Math.trunc(Number(currentPage)) : 1
   );
-  const viewModeRef = react.useRef(requestedViewMode);
-  const zoomLevelRef = react.useRef(requestedZoomLevel);
-  const previousPdfUrlRef = react.useRef(pdfUrl || "");
-  const lastEmittedReaderStateRef = react.useRef(null);
+  const viewModeRef = React.useRef(requestedViewMode);
+  const zoomLevelRef = React.useRef(requestedZoomLevel);
+  const previousPdfUrlRef = React.useRef(pdfUrl || "");
+  const lastEmittedReaderStateRef = React.useRef(null);
   return {
     audioSliderWidth,
     bookSpreadMode,
@@ -571,11 +573,11 @@ function useNativeBookPageTurn({
   fullScreenViewportWidth,
   viewerHeight
 }) {
-  const progress = react.useRef(new reactNative.Animated.Value(1)).current;
-  const turnTokenRef = react.useRef(0);
-  const spreadLayoutRef = react.useRef({ width: 0, height: 0 });
-  const [turn, setTurn] = react.useState(null);
-  react.useEffect(() => {
+  const progress = React.useRef(new reactNative.Animated.Value(1)).current;
+  const turnTokenRef = React.useRef(0);
+  const spreadLayoutRef = React.useRef({ width: 0, height: 0 });
+  const [turn, setTurn] = React.useState(null);
+  React.useEffect(() => {
     if (!turn) return;
     progress.setValue(0);
     const animation = reactNative.Animated.timing(progress, {
@@ -591,7 +593,7 @@ function useNativeBookPageTurn({
     });
     return () => animation.stop();
   }, [progress, turn]);
-  const playTurn = react.useCallback(
+  const playTurn = React.useCallback(
     (sourcePage, targetPage) => {
       const layout = spreadLayoutRef.current;
       const nextTurn = createNativeBookTurn({
@@ -612,7 +614,7 @@ function useNativeBookPageTurn({
     },
     [activeBookSpreadMode, completeVerses, fullScreenViewportWidth, progress, viewerHeight]
   );
-  const visuals = react.useMemo(() => {
+  const visuals = React.useMemo(() => {
     if (!turn) return null;
     const next = turn.direction === "next";
     const pivot = (next ? -1 : 1) * turn.pageWidth / 2;
@@ -688,7 +690,7 @@ function useReaderViewportMetrics({
   windowHeight,
   windowWidth
 }) {
-  const metrics = react.useMemo(() => {
+  const metrics = React.useMemo(() => {
     const configuredViewportHeight = Math.max(
       320,
       Math.floor(Number(verseLayout?.viewportHeightPx) > 0 ? Number(verseLayout?.viewportHeightPx) : 640)
@@ -778,7 +780,7 @@ function useReaderContentModel({
   const highlightCurrentVerse = verseLayout?.highlightCurrentVerse !== false;
   const allowBookDoubleSpread = verseLayout?.allowDoubleSpread !== false;
   const activeBookSpreadMode = allowBookDoubleSpread && bookSpreadMode === "double" ? "double" : "single";
-  const effectiveBookVerseLayout = react.useMemo(() => {
+  const effectiveBookVerseLayout = React.useMemo(() => {
     if (contentMode !== "verse") return verseLayout;
     return {
       ...verseLayout,
@@ -786,16 +788,16 @@ function useReaderContentModel({
       showSecondPage: activeBookSpreadMode === "double"
     };
   }, [activeBookSpreadMode, contentMode, verseLayout]);
-  const playableVerseMappings = react.useMemo(
+  const playableVerseMappings = React.useMemo(
     () => normalizeVerseAudioMappings(verseAudioMappings),
     [verseAudioMappings]
   );
   const hasVerseAudio = contentMode === "verse" && playableVerseMappings.length > 0;
-  const mappedVerseIds = react.useMemo(
+  const mappedVerseIds = React.useMemo(
     () => playableVerseMappings.map((mapping) => String(mapping.verseId)),
     [playableVerseMappings]
   );
-  const completeVerses = react.useMemo(
+  const completeVerses = React.useMemo(
     () => (verses || []).filter((verse) => String(verse?.content || "").trim()).map((verse, index) => ({
       ...verse,
       id: String(verse.id),
@@ -938,18 +940,6 @@ var bookStyles = reactNative.StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  nativeBookPageOrnamentOuter: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    bottom: 8,
-    left: 8,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: "#f97316",
-    borderRadius: 5,
-    opacity: 0.92
-  },
   nativeBookPageOrnamentInner: {
     position: "absolute",
     top: 17,
@@ -1056,18 +1046,6 @@ var contentStyles = reactNative.StyleSheet.create({
     gap: 8,
     position: "relative",
     overflow: "hidden"
-  },
-  completeVerseOrnamentOuter: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    bottom: 8,
-    left: 8,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: "#f97316",
-    borderRadius: 8,
-    opacity: 0.9
   },
   completeVerseOrnamentInner: {
     position: "absolute",
@@ -1554,6 +1532,202 @@ var styles = {
   ...bookStyles,
   ...controlsStyles
 };
+function PerimeterProgress({
+  playback,
+  theme,
+  radius,
+  inset = 0,
+  pageNumberBounds,
+  pageNumberGap = 2,
+  containerSize
+}) {
+  const animatedProgress = React.useRef(new reactNative.Animated.Value(0)).current;
+  const lastProgressRef = React.useRef(0);
+  const [accessibilityProgress, setAccessibilityProgress] = React.useState(0);
+  const [size, setSize] = React.useState({ width: 0, height: 0 });
+  const hasContainerSize = Boolean(
+    containerSize && containerSize.width > 0 && containerSize.height > 0
+  );
+  const measuredSize = React.useMemo(
+    () => hasContainerSize && containerSize ? {
+      width: Math.max(0, containerSize.width + 2 * inset),
+      height: Math.max(0, containerSize.height + 2 * inset)
+    } : size,
+    [
+      containerSize?.height,
+      containerSize?.width,
+      hasContainerSize,
+      inset,
+      size
+    ]
+  );
+  const fallbackProgress = playback.progressStore ? null : playback.progress;
+  React.useEffect(() => {
+    const store = playback.progressStore;
+    let lastAccessibilityUpdate = 0;
+    const update = () => {
+      const next = Math.max(
+        0,
+        Math.min(1, store?.getSnapshot() ?? fallbackProgress ?? 0)
+      );
+      if (next < lastProgressRef.current) {
+        animatedProgress.setValue(next);
+      } else {
+        reactNative.Animated.timing(animatedProgress, {
+          toValue: next,
+          duration: 200,
+          easing: reactNative.Easing.cubic,
+          useNativeDriver: true
+        }).start(() => {
+        });
+      }
+      lastProgressRef.current = next;
+      const now = Date.now();
+      if (now - lastAccessibilityUpdate >= 1e3) {
+        lastAccessibilityUpdate = now;
+        setAccessibilityProgress(next);
+      }
+    };
+    update();
+    return store?.subscribe(update);
+  }, [animatedProgress, fallbackProgress, playback.progressStore]);
+  const segments = React.useMemo(() => {
+    const { width, height } = measuredSize;
+    if (!width || !height) return [];
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2) - 1);
+    const hasPageNumberBounds = Boolean(pageNumberBounds?.width);
+    const pageNumberLeft = hasPageNumberBounds && pageNumberBounds ? pageNumberBounds.x + inset : width / 2;
+    const pageNumberRight = hasPageNumberBounds && pageNumberBounds ? pageNumberBounds.x + pageNumberBounds.width + inset : width / 2;
+    const startX = Math.max(1, pageNumberLeft - pageNumberGap);
+    const endX = Math.min(width - 1, pageNumberRight + pageNumberGap);
+    const points = [{ x: startX, y: height - 1 }];
+    const lineTo = (x, y) => points.push({ x, y });
+    const arc = (cx, cy, start) => {
+      const cornerSteps = 8;
+      for (let step = 0; step <= cornerSteps; step += 1) {
+        const angle = start + step / cornerSteps * (Math.PI / 2);
+        points.push({
+          x: cx + r * Math.cos(angle),
+          y: cy + r * Math.sin(angle)
+        });
+      }
+    };
+    if (hasPageNumberBounds) {
+      lineTo(1 + r, height - 1);
+      arc(1 + r, height - 1 - r, Math.PI / 2);
+      lineTo(1, 1 + r);
+      arc(1 + r, 1 + r, Math.PI);
+      lineTo(width - 1 - r, 1);
+      arc(width - 1 - r, 1 + r, -Math.PI / 2);
+      lineTo(width - 1, height - 1 - r);
+      arc(width - 1 - r, height - 1 - r, 0);
+      lineTo(endX, height - 1);
+    } else {
+      lineTo(1 + r, height - 1);
+      arc(1 + r, height - 1 - r, Math.PI / 2);
+      lineTo(1, 1 + r);
+      arc(1 + r, 1 + r, Math.PI);
+      lineTo(width - 1 - r, 1);
+      arc(width - 1 - r, 1 + r, -Math.PI / 2);
+      lineTo(width - 1, height - 1 - r);
+      arc(width - 1 - r, height - 1 - r, 0);
+      lineTo(width / 2, height - 1);
+    }
+    let offset = 0;
+    return points.slice(1).map((point, index) => {
+      const start = points[index];
+      const dx = point.x - start.x;
+      const dy = point.y - start.y;
+      const length = Math.hypot(dx, dy);
+      const segment = {
+        start,
+        dx,
+        dy,
+        length,
+        offset,
+        angle: Math.atan2(dy, dx)
+      };
+      offset += length;
+      return segment;
+    }).filter((segment) => segment.length > 0);
+  }, [inset, measuredSize, pageNumberBounds, pageNumberGap, radius]);
+  const total = segments.reduce((sum, segment) => sum + segment.length, 0);
+  const color = playback.mode === "audio" ? theme.accent : theme.autoReadAccent;
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    reactNative.View,
+    {
+      pointerEvents: "none",
+      accessible: true,
+      accessibilityRole: "progressbar",
+      accessibilityLabel: playback.mode === "audio" ? "Audio page progress" : "Auto-read page progress",
+      accessibilityValue: {
+        min: 0,
+        max: 100,
+        now: Math.round(accessibilityProgress * 100)
+      },
+      onLayout: (event) => {
+        if (hasContainerSize) return;
+        const { width, height } = event.nativeEvent.layout;
+        setSize(
+          (previous) => previous.width === width && previous.height === height ? previous : { width, height }
+        );
+      },
+      style: {
+        position: "absolute",
+        top: -inset,
+        right: -inset,
+        bottom: -inset,
+        left: -inset,
+        zIndex: 4
+      },
+      children: segments.map((segment, index) => /* @__PURE__ */ jsxRuntime.jsx(
+        ProgressSegment,
+        {
+          segment,
+          total,
+          progress: animatedProgress,
+          color
+        },
+        index
+      ))
+    }
+  );
+}
+var ProgressSegment = React.memo(function ProgressSegment2({
+  segment,
+  total,
+  progress,
+  color
+}) {
+  const scaleX = React.useMemo(() => {
+    const interpolate = progress.interpolate;
+    return interpolate.call(progress, {
+      inputRange: [
+        segment.offset / total,
+        (segment.offset + segment.length) / total
+      ],
+      outputRange: [0, 1],
+      extrapolate: "clamp"
+    });
+  }, [progress, segment.length, segment.offset, total]);
+  if (!segment.length || !total) return null;
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    reactNative.Animated.View,
+    {
+      style: {
+        position: "absolute",
+        left: segment.start.x + segment.dx / 2 - segment.length / 2,
+        top: segment.start.y + segment.dy / 2 - 1,
+        width: segment.length,
+        height: 2,
+        borderRadius: 1,
+        backgroundColor: color,
+        transformOrigin: "left center",
+        transform: [{ rotate: `${segment.angle}rad` }, { scaleX }]
+      }
+    }
+  );
+});
 var NativeAnimatedView = reactNative.Animated.View;
 function NativeBookPage({
   verse,
@@ -1566,8 +1740,11 @@ function NativeBookPage({
   pageBackground = theme.page,
   contentKeyPrefix,
   contentOpacity,
-  pageStyle
+  pageStyle,
+  playbackProgress
 }) {
+  const [pageNumberBounds, setPageNumberBounds] = React.useState({ x: 0, width: 0 });
+  const [pageSize, setPageSize] = React.useState({ width: 0, height: 0 });
   return /* @__PURE__ */ jsxRuntime.jsxs(
     reactNative.View,
     {
@@ -1584,8 +1761,27 @@ function NativeBookPage({
         },
         pageStyle
       ],
+      onLayout: (event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setPageSize(
+          (current) => current.width === width && current.height === height ? current : { width, height }
+        );
+      },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { pointerEvents: "none", style: styles.nativeBookPageOrnamentOuter }),
+        playbackProgress ? /* @__PURE__ */ jsxRuntime.jsx(
+          PerimeterProgress,
+          {
+            playback: playbackProgress,
+            theme,
+            radius: 5,
+            inset: -6,
+            pageNumberBounds,
+            containerSize: {
+              width: Math.max(0, pageSize.width - 6),
+              height: Math.max(0, pageSize.height - 6)
+            }
+          }
+        ) : null,
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { pointerEvents: "none", style: styles.nativeBookPageOrnamentInner }),
         /* @__PURE__ */ jsxRuntime.jsx(
           NativeAnimatedView,
@@ -1603,7 +1799,10 @@ function NativeBookPage({
                   { color: theme.text },
                   { fontSize, lineHeight: Math.round(fontSize * 1.45) }
                 ],
-                children: renderNativeRichText(verse.contentHtml, contentKeyPrefix || `book-${verse.id}`)
+                children: renderNativeRichText(
+                  verse.contentHtml,
+                  contentKeyPrefix || `book-${verse.id}`
+                )
               }
             )
           }
@@ -1612,6 +1811,12 @@ function NativeBookPage({
           reactNative.Text,
           {
             pointerEvents: "none",
+            onLayout: (event) => {
+              const { x, width } = event.nativeEvent.layout;
+              setPageNumberBounds(
+                (current) => current.x === x && current.width === width ? current : { x, width }
+              );
+            },
             style: [
               styles.nativeBookPageNumber,
               { color: theme.text, backgroundColor: theme.accentSurface }
@@ -1759,7 +1964,7 @@ function useMappedVerseNavigation({
   useNativeVersePaging,
   verseIdsByPage
 }) {
-  const visibleVerseIds = react.useMemo(() => {
+  const visibleVerseIds = React.useMemo(() => {
     const ids = [
       ...verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : [])
     ];
@@ -1770,11 +1975,11 @@ function useMappedVerseNavigation({
     }
     return ids.map(String);
   }, [activeBookSpreadMode, completeVerses, pageNumber, useNativeVersePaging, verseIdsByPage]);
-  const visibleIndex = react.useMemo(
+  const visibleIndex = React.useMemo(
     () => findVisibleMappedVerseIndex(playableVerseMappings, visibleVerseIds),
     [playableVerseMappings, visibleVerseIds]
   );
-  const { previous, current, next } = react.useMemo(
+  const { previous, current, next } = React.useMemo(
     () => getMappedVerseNavigationIndexes({
       hasVerseAudio,
       mappingCount: playableVerseMappings.length,
@@ -1783,13 +1988,13 @@ function useMappedVerseNavigation({
     }),
     [activeVerseAudioIndex, hasVerseAudio, playableVerseMappings.length, visibleIndex]
   );
-  const playPrevious = react.useCallback(() => {
+  const playPrevious = React.useCallback(() => {
     if (previous >= 0) activateVerseAudioIndex(previous, { autoplay: true });
   }, [activateVerseAudioIndex, previous]);
-  const restart = react.useCallback(() => {
+  const restart = React.useCallback(() => {
     if (current >= 0) activateVerseAudioIndex(current, { autoplay: true });
   }, [activateVerseAudioIndex, current]);
-  const playNext = react.useCallback(() => {
+  const playNext = React.useCallback(() => {
     if (next >= 0) activateVerseAudioIndex(next, { autoplay: true });
   }, [activateVerseAudioIndex, next]);
   return {
@@ -1820,7 +2025,7 @@ function useReaderActions({
   zoomIn,
   zoomOut
 }) {
-  const toggleShareOverlay = react.useCallback(() => {
+  const toggleShareOverlay = React.useCallback(() => {
     setShowShareOverlay((visible) => !visible);
     showOverlay();
   }, [setShowShareOverlay, showOverlay]);
@@ -1847,7 +2052,7 @@ function useReaderActions({
 }
 function useReaderAudioProgress({ activeMapping, mappings, status }) {
   const currentSeconds = Math.max(0, status.currentTime || 0);
-  const durationSeconds = react.useMemo(() => {
+  const durationSeconds = React.useMemo(() => {
     if (!activeMapping) return 0;
     const reportedDuration = Math.max(0, Number(status.duration ?? status.durationSeconds ?? 0));
     const mappedDuration = mappings.filter((mapping) => mapping.audioAssetUrl === activeMapping.audioAssetUrl).reduce((maxEnd, mapping) => Math.max(maxEnd, mapping.segmentEndMs / 1e3), 0);
@@ -1858,12 +2063,345 @@ function useReaderAudioProgress({ activeMapping, mappings, status }) {
   const timeText = activeMapping ? `${formatTime(currentSeconds)} / ${formatTime(durationSeconds)}` : "";
   return { currentSeconds, durationSeconds, elapsedSeconds, progress, timeText };
 }
+
+// src/core/readerPlayback.ts
+var AUTO_READ_CONFIG = {
+  millisecondsPerCharacter: 100,
+  speedMultiplier: 1,
+  minimumPageDurationMs: 3e3
+};
+function getContinuousProgressIndex(mode, pageNumber, verseId, verseIds) {
+  const normalizedPage = Number(pageNumber);
+  const pageIndex = Number.isInteger(normalizedPage) && normalizedPage > 0 ? normalizedPage - 1 : -1;
+  const validPageIndex = pageIndex < verseIds.length ? pageIndex : -1;
+  const verseIndex = verseId ? verseIds.indexOf(verseId) : -1;
+  if (mode === "auto-read")
+    return validPageIndex >= 0 ? validPageIndex : verseIndex;
+  return verseIndex >= 0 ? verseIndex : validPageIndex;
+}
+function decodeNumericEntity(_match, rawCode, radix = 10) {
+  const codePoint = parseInt(rawCode, radix);
+  return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 1114111 ? String.fromCodePoint(codePoint) : " ";
+}
+function countReadableCharacters(html) {
+  const text = String(html || "").replace(/<\s*br\s*\/?>/gi, " ").replace(/<\s*\/p\s*>/gi, " ").replace(/<[^>]*>/g, "").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(
+    /&#(\d+);/g,
+    (match, code) => decodeNumericEntity(match, code)
+  ).replace(
+    /&#x([\da-f]+);/gi,
+    (match, code) => decodeNumericEntity(match, code, 16)
+  ).replace(/\s+/g, " ").trim();
+  if (!text) return 0;
+  const Segmenter = Intl.Segmenter;
+  if (Segmenter) {
+    return [
+      ...new Segmenter(void 0, { granularity: "grapheme" }).segment(text)
+    ].length;
+  }
+  let count = 0;
+  let previousWasJoiner = false;
+  let previousWasVirama = false;
+  for (const character of Array.from(text.normalize("NFC"))) {
+    if (/\p{M}/u.test(character)) {
+      if (/^[\u094d\u09cd\u0a4d\u0acd\u0b4d\u0bcd\u0c4d\u0ccd\u0d4d\u0dca]$/u.test(
+        character
+      )) {
+        previousWasVirama = true;
+      }
+      continue;
+    }
+    if (character === "\u200D") {
+      previousWasJoiner = true;
+      continue;
+    }
+    if (!previousWasJoiner && !previousWasVirama) count += 1;
+    previousWasJoiner = false;
+    previousWasVirama = false;
+  }
+  return count;
+}
+function getAutoReadDurationMs(html, config = AUTO_READ_CONFIG) {
+  const characters = countReadableCharacters(html);
+  if (!characters) return 0;
+  const speedMultiplier = Math.max(0.1, Number(config.speedMultiplier) || 1);
+  return Math.max(
+    Math.max(
+      Math.max(0, Number(config.minimumPageDurationMs) || 0),
+      characters * Math.max(0, Number(config.millisecondsPerCharacter) || 0)
+    ) / speedMultiplier
+  );
+}
+function normalizeTimeline(mappings, audioAssetUrl) {
+  return mappings.filter((mapping) => {
+    const start = Number(mapping.segmentStartMs);
+    const end = Number(mapping.segmentEndMs);
+    return String(mapping.audioAssetUrl || "").trim() === audioAssetUrl && mapping.verseId !== null && mapping.verseId !== void 0 && Number.isFinite(start) && Number.isFinite(end) && end > start;
+  }).map((mapping, index) => ({
+    ...mapping,
+    verseId: String(mapping.verseId),
+    segmentStartMs: Math.max(0, Math.floor(Number(mapping.segmentStartMs))),
+    segmentEndMs: Math.max(0, Math.floor(Number(mapping.segmentEndMs))),
+    sortOrder: Number.isFinite(Number(mapping.sortOrder)) ? Number(mapping.sortOrder) : index
+  })).sort(
+    (left, right) => left.segmentStartMs - right.segmentStartMs || left.sortOrder - right.sortOrder || left.verseId.localeCompare(right.verseId)
+  );
+}
+function getMappedPageProgress(mappings, audioAssetUrl, currentTimeMs, getPageForVerse) {
+  const normalizedUrl = String(audioAssetUrl || "").trim();
+  if (!normalizedUrl) return null;
+  const timeline = normalizeTimeline(mappings, normalizedUrl);
+  if (!timeline.length) return null;
+  const time = Math.max(0, Number(currentTimeMs) || 0);
+  let index = -1;
+  for (let cursor = 0; cursor < timeline.length; cursor += 1) {
+    const candidate = timeline[cursor];
+    if (time >= candidate.segmentStartMs && time < candidate.segmentEndMs) {
+      index = cursor;
+      break;
+    }
+  }
+  if (index < 0) {
+    for (let cursor = timeline.length - 1; cursor >= 0; cursor -= 1) {
+      if (time >= timeline[cursor].segmentEndMs) {
+        index = cursor;
+        break;
+      }
+    }
+    if (index < 0) {
+      return { pageNumber: null, progress: 0, mapping: null };
+    }
+  }
+  const mapping = timeline[index];
+  const pageNumber = getPageForVerse(mapping.verseId) ?? null;
+  if (!pageNumber) return { pageNumber: null, progress: 0, mapping };
+  let first = index;
+  while (first > 0) {
+    const previous = timeline[first - 1];
+    if ((getPageForVerse(previous.verseId) ?? null) !== pageNumber) break;
+    first -= 1;
+  }
+  let last = index;
+  while (last + 1 < timeline.length) {
+    const next = timeline[last + 1];
+    if ((getPageForVerse(next.verseId) ?? null) !== pageNumber) break;
+    last += 1;
+  }
+  const startMs = timeline[first].segmentStartMs;
+  const intervals = timeline.slice(first, last + 1).map(({ segmentStartMs, segmentEndMs }) => ({
+    start: segmentStartMs,
+    end: segmentEndMs
+  })).sort((left, right) => left.start - right.start || left.end - right.end);
+  const mergedIntervals = [];
+  for (const interval of intervals) {
+    const previous = mergedIntervals[mergedIntervals.length - 1];
+    if (previous && interval.start <= previous.end) {
+      previous.end = Math.max(previous.end, interval.end);
+    } else {
+      mergedIntervals.push({ ...interval });
+    }
+  }
+  const totalDuration = mergedIntervals.reduce(
+    (total, interval) => total + interval.end - interval.start,
+    0
+  );
+  const elapsedDuration = mergedIntervals.reduce((total, interval) => {
+    const reachedEnd = Math.min(time, interval.end);
+    return total + Math.max(0, reachedEnd - interval.start);
+  }, 0);
+  return {
+    pageNumber,
+    progress: totalDuration > 0 ? Math.max(0, Math.min(1, elapsedDuration / totalDuration)) : Number(time >= startMs),
+    mapping
+  };
+}
+function useAutoReadPlayback({
+  allowed,
+  isPlaying,
+  externalClockMs,
+  onPlaybackChange,
+  onCompleteChange,
+  pageNumber,
+  pageCount,
+  pageStep,
+  resetKey,
+  visiblePageText,
+  goToNextPage,
+  goToFirstPage,
+  subscribeToAppState
+}) {
+  const progressStoreRef = React.useRef(null);
+  if (!progressStoreRef.current) {
+    const store = {
+      snapshot: 0,
+      listeners: /* @__PURE__ */ new Set(),
+      subscribe(listener) {
+        store.listeners.add(listener);
+        return () => store.listeners.delete(listener);
+      },
+      getSnapshot: () => store.snapshot
+    };
+    progressStoreRef.current = store;
+  }
+  const progressStore = progressStoreRef.current;
+  const setProgress = React.useCallback(
+    (value) => {
+      const normalized = Math.max(0, Math.min(1, value));
+      if (progressStore.snapshot === normalized) return;
+      progressStore.snapshot = normalized;
+      progressStore.listeners.forEach((listener) => listener());
+    },
+    [progressStore]
+  );
+  const [completed, setCompleted] = React.useState(false);
+  const elapsedBeforeStartRef = React.useRef(0);
+  const startedAtRef = React.useRef(null);
+  const pendingAutoPageRef = React.useRef(null);
+  const pageSnapshotRef = React.useRef({ pageNumber, resetKey });
+  const previousPlayingRef = React.useRef(false);
+  const turnRequestedRef = React.useRef(false);
+  const externalClockBaseRef = React.useRef(Number(externalClockMs) || 0);
+  const applyElapsedRef = React.useRef(() => {
+  });
+  const durationMs = getAutoReadDurationMs(visiblePageText);
+  const sessionKey = `${pageNumber}:${resetKey}:${durationMs}`;
+  const currentSessionKeyRef = React.useRef(sessionKey);
+  currentSessionKeyRef.current = sessionKey;
+  const callbacksRef = React.useRef({
+    onPlaybackChange,
+    onCompleteChange,
+    goToNextPage,
+    goToFirstPage,
+    subscribeToAppState
+  });
+  callbacksRef.current = {
+    onPlaybackChange,
+    onCompleteChange,
+    goToNextPage,
+    goToFirstPage,
+    subscribeToAppState
+  };
+  React.useEffect(() => {
+    const previous = pageSnapshotRef.current;
+    if (previous.resetKey !== resetKey) {
+      pageSnapshotRef.current = { pageNumber, resetKey };
+      pendingAutoPageRef.current = null;
+      elapsedBeforeStartRef.current = 0;
+      startedAtRef.current = isPlaying ? Date.now() : null;
+      externalClockBaseRef.current = Number(externalClockMs) || 0;
+      turnRequestedRef.current = false;
+      setProgress(0);
+      setCompleted(false);
+      callbacksRef.current.onCompleteChange?.(false);
+      if (isPlaying) callbacksRef.current.onPlaybackChange?.(false);
+      return;
+    }
+    if (previous.pageNumber !== pageNumber) {
+      pageSnapshotRef.current = { pageNumber, resetKey };
+      const isExpectedAutoTurn = pendingAutoPageRef.current === pageNumber;
+      pendingAutoPageRef.current = null;
+      elapsedBeforeStartRef.current = 0;
+      startedAtRef.current = isPlaying ? Date.now() : null;
+      externalClockBaseRef.current = Number(externalClockMs) || 0;
+      turnRequestedRef.current = false;
+      setProgress(0);
+      setCompleted(false);
+      callbacksRef.current.onCompleteChange?.(false);
+      if (!isExpectedAutoTurn && isPlaying) {
+        callbacksRef.current.onPlaybackChange?.(false);
+      }
+    }
+  }, [externalClockMs, isPlaying, pageNumber, resetKey]);
+  React.useEffect(() => {
+    const wasPlaying = previousPlayingRef.current;
+    previousPlayingRef.current = isPlaying;
+    if (!allowed && isPlaying) {
+      callbacksRef.current.onPlaybackChange?.(false);
+      return;
+    }
+    if (isPlaying && !wasPlaying && completed) {
+      pendingAutoPageRef.current = 1;
+      elapsedBeforeStartRef.current = 0;
+      turnRequestedRef.current = false;
+      setProgress(0);
+      setCompleted(false);
+      callbacksRef.current.onCompleteChange?.(false);
+      callbacksRef.current.goToFirstPage();
+    }
+  }, [allowed, completed, isPlaying]);
+  const applyElapsed = (elapsed) => {
+    const nextProgress = Math.max(0, Math.min(1, elapsed / durationMs));
+    setProgress(nextProgress);
+    if (elapsed < durationMs || turnRequestedRef.current) return;
+    if (pageNumber + Math.max(1, pageStep) - 1 >= pageCount) {
+      turnRequestedRef.current = true;
+      setCompleted(true);
+      callbacksRef.current.onCompleteChange?.(true);
+      callbacksRef.current.onPlaybackChange?.(false);
+      return;
+    }
+    turnRequestedRef.current = true;
+    pendingAutoPageRef.current = Math.min(
+      pageCount,
+      pageNumber + Math.max(1, pageStep)
+    );
+    callbacksRef.current.goToNextPage();
+  };
+  applyElapsedRef.current = applyElapsed;
+  React.useEffect(() => {
+    if (externalClockMs === void 0 || !isPlaying || !allowed || !durationMs)
+      return;
+    applyElapsed(Math.max(0, externalClockMs - externalClockBaseRef.current));
+  }, [
+    allowed,
+    durationMs,
+    externalClockMs,
+    isPlaying,
+    pageCount,
+    pageNumber,
+    pageStep
+  ]);
+  React.useEffect(() => {
+    if (externalClockMs !== void 0 || !isPlaying || !allowed || !durationMs)
+      return;
+    startedAtRef.current = Date.now();
+    const update = () => {
+      const startedAt = startedAtRef.current ?? Date.now();
+      const elapsed = elapsedBeforeStartRef.current + Date.now() - startedAt;
+      applyElapsedRef.current(elapsed);
+    };
+    const interval = setInterval(update, 200);
+    update();
+    const appStateSubscription = callbacksRef.current.subscribeToAppState?.(
+      (state) => {
+        if (state !== "active") {
+          callbacksRef.current.onPlaybackChange?.(false);
+        }
+      }
+    );
+    return () => {
+      clearInterval(interval);
+      appStateSubscription?.remove();
+      if (startedAtRef.current !== null) {
+        elapsedBeforeStartRef.current += Date.now() - startedAtRef.current;
+      }
+      startedAtRef.current = null;
+    };
+  }, [allowed, externalClockMs, isPlaying]);
+  return {
+    completed,
+    get progress() {
+      return progressStore.snapshot;
+    },
+    progressStore,
+    durationMs
+  };
+}
 function useReaderAudioSlider({ active, sliderWidth, seekToRatio }) {
-  const seekByLocationX = react.useCallback(
+  const seekByLocationX = React.useCallback(
     (locationX) => seekToRatio(Math.max(0, locationX || 0) / sliderWidth),
     [seekToRatio, sliderWidth]
   );
-  const panResponder = react.useMemo(
+  const panResponder = React.useMemo(
     () => reactNative.PanResponder.create({
       onStartShouldSetPanResponder: () => active,
       onMoveShouldSetPanResponder: () => active,
@@ -1888,7 +2426,7 @@ function useReaderBookControls({
   showOverlay,
   lastInjectedViewerStateRef
 }) {
-  const toggleBookSpreadMode = react.useCallback(() => {
+  const toggleBookSpreadMode = React.useCallback(() => {
     setBookSpreadMode((current) => {
       const next = current === "double" ? "single" : "double";
       const safeNext = allowDoubleSpread ? next : "single";
@@ -1913,7 +2451,7 @@ function useReaderBookControls({
     setPageNumber,
     showOverlay
   ]);
-  const confirmGoToFirstPage = react.useCallback(
+  const confirmGoToFirstPage = React.useCallback(
     (onReset) => {
       setReaderDialog({
         title: resetConfirmation?.title || "Restart reading?",
@@ -1945,12 +2483,12 @@ function useReaderFullscreen({
   showOverlay,
   verseAudioPlaying
 }) {
-  const enterVerseFullScreen = react.useCallback(() => {
+  const enterVerseFullScreen = React.useCallback(() => {
     if (contentMode !== "verse") return;
     setIsVerseFullScreen(true);
     showOverlay();
   }, [contentMode, setIsVerseFullScreen, showOverlay]);
-  const exitVerseFullScreen = react.useCallback(() => {
+  const exitVerseFullScreen = React.useCallback(() => {
     if (contentMode !== "verse") return;
     const activeMapping = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
     if (activeMapping) {
@@ -1970,13 +2508,13 @@ function useReaderFullscreen({
     showOverlay,
     verseAudioPlaying
   ]);
-  const toggleVerseFullScreen = react.useCallback(() => {
+  const toggleVerseFullScreen = React.useCallback(() => {
     if (isVerseFullScreen) exitVerseFullScreen();
     else enterVerseFullScreen();
   }, [enterVerseFullScreen, exitVerseFullScreen, isVerseFullScreen]);
-  const toggleRef = react.useRef(toggleVerseFullScreen);
+  const toggleRef = React.useRef(toggleVerseFullScreen);
   toggleRef.current = toggleVerseFullScreen;
-  const toggleVerseFullScreenFromActions = react.useCallback(() => toggleRef.current(), []);
+  const toggleVerseFullScreenFromActions = React.useCallback(() => toggleRef.current(), []);
   return { enterVerseFullScreen, exitVerseFullScreen, toggleVerseFullScreen, toggleVerseFullScreenFromActions };
 }
 function useReaderGestures({
@@ -1987,7 +2525,7 @@ function useReaderGestures({
   goToNextPage,
   goToPreviousPage
 }) {
-  const pageSwipeResponder = react.useMemo(
+  const pageSwipeResponder = React.useMemo(
     () => reactNative.PanResponder.create({
       onStartShouldSetPanResponderCapture: () => {
         showOverlay();
@@ -2006,8 +2544,8 @@ function useReaderGestures({
     }),
     [goToNextPage, goToPreviousPage, hidePageNavigationControls, showOverlay, viewMode]
   );
-  const pdfScrollStartRef = react.useRef(0);
-  const pdfVerticalScrollResponder = react.useMemo(
+  const pdfScrollStartRef = React.useRef(0);
+  const pdfVerticalScrollResponder = React.useMemo(
     () => reactNative.PanResponder.create({
       onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponderCapture: (_event, gestureState) => Boolean(overlayViewport) && Math.abs(gestureState.dy) > 7 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.15,
@@ -2029,8 +2567,8 @@ function useReaderGestures({
     }),
     [overlayViewport, showOverlay]
   );
-  const fullScreenSwipeStartRef = react.useRef(null);
-  const onFullScreenTouchStart = react.useCallback(
+  const fullScreenSwipeStartRef = React.useRef(null);
+  const onFullScreenTouchStart = React.useCallback(
     (event) => {
       showOverlay();
       const touch = event.nativeEvent.touches?.[0];
@@ -2038,7 +2576,7 @@ function useReaderGestures({
     },
     [showOverlay]
   );
-  const onFullScreenTouchEnd = react.useCallback(
+  const onFullScreenTouchEnd = React.useCallback(
     (event) => {
       const start = fullScreenSwipeStartRef.current;
       fullScreenSwipeStartRef.current = null;
@@ -2066,6 +2604,21 @@ function clampPageNumber(requestedPage, pageCount) {
   const page = Number.isFinite(requestedPage) ? Math.trunc(requestedPage) : 1;
   const maximumPage = Number.isFinite(pageCount) && Number(pageCount) > 0 ? Math.trunc(Number(pageCount)) : Number.MAX_SAFE_INTEGER;
   return Math.max(1, Math.min(page, maximumPage));
+}
+function getReaderModeSwitchTarget({
+  completeVerseIds,
+  currentPage,
+  pageCount,
+  readerVerseId,
+  useNativeVersePaging,
+  verseIdsByPage,
+  versePageById
+}) {
+  const nativeVerseIndex = readerVerseId && useNativeVersePaging ? completeVerseIds.indexOf(readerVerseId) + 1 : 0;
+  const pageForAnchor = readerVerseId ? nativeVerseIndex || versePageById[readerVerseId] || void 0 : void 0;
+  const targetPage = clampPageNumber(pageForAnchor || currentPage, pageCount);
+  const targetVerseId = pageForAnchor ? readerVerseId : verseIdsByPage[targetPage]?.[0] || (useNativeVersePaging ? completeVerseIds[targetPage - 1] : null) || null;
+  return { targetPage, targetVerseId };
 }
 
 // src/react/native/useReaderNavigation.ts
@@ -2100,7 +2653,7 @@ function useReaderNavigation(options) {
     useFullScreenBookWebView,
     zoomLevel
   } = options;
-  const requestBookPageChange = react.useCallback(
+  const requestBookPageChange = React.useCallback(
     (direction) => {
       const methodName = direction === "next" ? "goToNextPage" : "goToPreviousPage";
       injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
@@ -2109,7 +2662,7 @@ function useReaderNavigation(options) {
     },
     [fullScreenWebViewRef, webViewRef]
   );
-  const navigateNativeVerseBookPage = react.useCallback(
+  const navigateNativeVerseBookPage = React.useCallback(
     (targetPage) => {
       const safePageCount = completeVerses.length || pageCountRef.current || pageCount || 1;
       const safePage = clampPageNumber(targetPage, safePageCount);
@@ -2139,7 +2692,7 @@ function useReaderNavigation(options) {
       verseAudioPlaying
     ]
   );
-  const navigatePage = react.useCallback(
+  const navigatePage = React.useCallback(
     (direction) => {
       const currentPage = contentMode === "verse" && viewMode === "book" ? nativeBookPageNumber || pageNumber : pageNumberRef.current || pageNumber;
       const currentAnchor = activeBookSpreadMode === "double" && currentPage % 2 === 0 ? currentPage - 1 : currentPage;
@@ -2155,28 +2708,42 @@ function useReaderNavigation(options) {
         pageNumberRef.current = targetPage;
         setNativeBookPageNumberState(targetPage);
         void setPageNumber(targetPage);
+        if (contentMode === "verse" && completeVerses.length) {
+          const targetVerse = completeVerses[targetPage - 1];
+          const targetVerseId = targetVerse?.id == null ? null : String(targetVerse.id);
+          if (targetVerseId) {
+            pendingCompleteScrollVerseIdRef.current = targetVerseId;
+            setReaderVerseId((current) => current === targetVerseId ? current : targetVerseId);
+            scrollCompleteToVerse(targetVerseId, true);
+          }
+        }
       }
       showOverlay();
     },
     [
       activeBookSpreadMode,
       contentMode,
+      completeScrollRef,
+      completeVerses,
       navigateNativeVerseBookPage,
       nativeBookPageNumber,
       pageCount,
       pageNumber,
       pageNumberRef,
+      pendingCompleteScrollVerseIdRef,
       requestBookPageChange,
       setNativeBookPageNumberState,
       setPageNumber,
+      setReaderVerseId,
+      scrollCompleteToVerse,
       showOverlay,
       useFullScreenBookWebView,
       viewMode
     ]
   );
-  const goToPreviousPage = react.useCallback(() => navigatePage("prev"), [navigatePage]);
-  const goToNextPage = react.useCallback(() => navigatePage("next"), [navigatePage]);
-  const goToFirstPage = react.useCallback(() => {
+  const goToPreviousPage = React.useCallback(() => navigatePage("prev"), [navigatePage]);
+  const goToNextPage = React.useCallback(() => navigatePage("next"), [navigatePage]);
+  const goToFirstPage = React.useCallback(() => {
     const firstVerseId = completeVerses[0]?.id == null ? null : String(completeVerses[0].id);
     pendingModeSwitchPageRef.current = 1;
     pageNumberRef.current = 1;
@@ -2211,7 +2778,7 @@ function useReaderNavigation(options) {
     viewMode,
     webViewRef
   ]);
-  const syncViewerStateToWebView = react.useCallback(
+  const syncViewerStateToWebView = React.useCallback(
     (mode, requestedPage, anchorVerseId, requestedZoom = zoomLevel) => {
       const safePage = clampPageNumber(requestedPage, pageCount);
       const safeMode = mode === "continuous" ? "continuous" : "book";
@@ -2267,7 +2834,7 @@ function useReaderPresentation({
   const activeVerseAudio = activeVerseAudioIndex === null ? null : playableVerseMappings[activeVerseAudioIndex] || null;
   const readerVersePageNumber = readerVerseId && useNativeVersePaging ? completeVerses.findIndex((verse) => verse.id === readerVerseId) + 1 : 0;
   const nativeBookPageNumber = readerVersePageNumber > 0 ? readerVersePageNumber : nativeBookPageNumberState || pageNumber;
-  react.useLayoutEffect(() => {
+  React.useLayoutEffect(() => {
     if (!completeVerses.length) {
       lastRenderedBookPageRef.current = null;
       return;
@@ -2337,8 +2904,8 @@ function useReaderSharing({
   setShowShareOverlay,
   shareUrl
 }) {
-  const shareLinks = react.useMemo(() => buildReaderShareLinks(label, shareUrl).links, [label, shareUrl]);
-  const openShareUrl = react.useCallback(
+  const shareLinks = React.useMemo(() => buildReaderShareLinks(label, shareUrl).links, [label, shareUrl]);
+  const openShareUrl = React.useCallback(
     async (target) => {
       try {
         await ExpoLinking__namespace.openURL(target);
@@ -2354,7 +2921,7 @@ function useReaderSharing({
     },
     [readerDialogOkLabel, setReaderDialog, setShowShareOverlay]
   );
-  const openWhatsAppShare = react.useCallback(async () => {
+  const openWhatsAppShare = React.useCallback(async () => {
     try {
       await ExpoLinking__namespace.openURL(shareLinks.whatsappUrl);
       setShowShareOverlay(false);
@@ -2362,7 +2929,7 @@ function useReaderSharing({
       void openShareUrl(shareLinks.whatsappWebUrl);
     }
   }, [openShareUrl, setShowShareOverlay, shareLinks.whatsappUrl, shareLinks.whatsappWebUrl]);
-  const openSystemShare = react.useCallback(
+  const openSystemShare = React.useCallback(
     async () => void openShareUrl(shareLinks.systemUrl),
     [openShareUrl, shareLinks.systemUrl]
   );
@@ -2379,9 +2946,11 @@ function useReaderViewMode(options) {
     pageCount,
     pageNumber,
     pageNumberRef,
+    nativeBookPageNumber,
     pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef,
     readerVerseId,
+    setNativeBookPageNumberState,
     setIsVerseFullScreen,
     setPageNumber,
     setReaderVerseId,
@@ -2401,31 +2970,43 @@ function useReaderViewMode(options) {
     zoomLevel,
     zoomLevelRef
   } = options;
-  const switchReaderMode = react.useCallback(
+  const switchReaderMode = React.useCallback(
     (mode) => {
-      const currentPage = pageNumberRef.current || pageNumber;
+      const currentPage = viewMode === "book" && nativeBookPageNumber || pageNumberRef.current || pageNumber;
       const currentZoom = zoomLevelRef.current || zoomLevel;
-      const pageForAnchor = readerVerseId ? versePageById[readerVerseId] : void 0;
-      const anchorBelongsToCurrentPage = pageForAnchor === currentPage;
-      const targetPage = pageForAnchor && anchorBelongsToCurrentPage ? pageForAnchor : clampPageNumber(currentPage, pageCount);
-      const targetVerseId = anchorBelongsToCurrentPage ? readerVerseId : verseIdsByPage[targetPage]?.[0] || (useNativeVersePaging ? completeVerses[targetPage - 1]?.id : null) || null;
+      const { targetPage, targetVerseId } = getReaderModeSwitchTarget({
+        completeVerseIds: completeVerses.map((verse) => String(verse.id)),
+        currentPage,
+        pageCount,
+        readerVerseId,
+        useNativeVersePaging,
+        verseIdsByPage,
+        versePageById
+      });
       const normalizedTargetVerseId = targetVerseId == null ? null : String(targetVerseId);
       if (mode === "continuous" && normalizedTargetVerseId) {
         pendingCompleteScrollVerseIdRef.current = normalizedTargetVerseId;
       }
       pendingModeSwitchPageRef.current = targetPage;
       pageNumberRef.current = targetPage;
+      setNativeBookPageNumberState(targetPage);
       viewModeRef.current = mode;
       setReaderVerseId(
         (current) => current === normalizedTargetVerseId ? current : normalizedTargetVerseId
       );
       void setPageNumber(targetPage);
       setViewMode(mode);
-      if (contentMode === "verse") setIsVerseFullScreen(verseLayout?.fullScreen === true);
+      if (contentMode === "verse")
+        setIsVerseFullScreen(verseLayout?.fullScreen === true);
       setShowShareOverlay(false);
       suppressCompleteModeSyncRef.current = false;
       if (viewerReady && !loadingError) {
-        syncViewerStateToWebView(mode, targetPage, normalizedTargetVerseId, currentZoom);
+        syncViewerStateToWebView(
+          mode,
+          targetPage,
+          normalizedTargetVerseId,
+          currentZoom
+        );
         lastSyncedViewModeRef.current = mode;
       }
       showOverlay();
@@ -2438,11 +3019,13 @@ function useReaderViewMode(options) {
       pageCount,
       pageNumber,
       pageNumberRef,
+      nativeBookPageNumber,
       pendingCompleteScrollVerseIdRef,
       pendingModeSwitchPageRef,
       readerVerseId,
       setIsVerseFullScreen,
       setPageNumber,
+      setNativeBookPageNumberState,
       setReaderVerseId,
       setShowShareOverlay,
       setViewMode,
@@ -2459,7 +3042,7 @@ function useReaderViewMode(options) {
       zoomLevelRef
     ]
   );
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!viewerReady || loadingError) return;
     const safePage = clampPageNumber(pageNumber, pageCount);
     const modeChanged = lastSyncedViewModeRef.current !== viewMode;
@@ -2489,11 +3072,12 @@ function useReaderViewMode(options) {
     viewerReady,
     zoomLevel
   ]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!viewerReady || loadingError) return;
-    injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
-      { method: "setZoom", args: [zoomLevel, pageNumberRef.current] }
-    ]);
+    injectReaderBridgeScript(
+      [webViewRef, fullScreenWebViewRef],
+      [{ method: "setZoom", args: [zoomLevel, pageNumberRef.current] }]
+    );
   }, [fullScreenWebViewRef, loadingError, viewerReady, webViewRef, zoomLevel]);
   return { switchReaderMode };
 }
@@ -2513,7 +3097,7 @@ function useReaderZoom({
   zoomLevel,
   zoomLevelRef
 }) {
-  const adjustVerseFontSize = react.useCallback(
+  const adjustVerseFontSize = React.useCallback(
     (deltaSteps) => {
       if (!Number.isFinite(deltaSteps) || deltaSteps === 0) return;
       if (deltaSteps > 0 && viewMode === "book" && bookVerseCanZoomIn === false) {
@@ -2544,7 +3128,7 @@ function useReaderZoom({
       zoomLevelRef
     ]
   );
-  const zoomOutVerse = react.useCallback(() => {
+  const zoomOutVerse = React.useCallback(() => {
     setBookVerseCanZoomIn(true);
     setVerseFontSizePx((value) => {
       const next = Math.max(minFontSize, value - verseZoomStep);
@@ -2564,7 +3148,7 @@ function useReaderZoom({
     verseZoomStep,
     zoomLevelRef
   ]);
-  const zoomInVerse = react.useCallback(() => {
+  const zoomInVerse = React.useCallback(() => {
     if (viewMode === "book" && bookVerseCanZoomIn === false) {
       showOverlay();
       return;
@@ -2588,7 +3172,7 @@ function useReaderZoom({
     verseZoomStep,
     zoomLevelRef
   ]);
-  const adjustPdfZoom = react.useCallback(
+  const adjustPdfZoom = React.useCallback(
     (delta) => {
       setZoomLevel((value) => {
         const next = Math.max(
@@ -2820,6 +3404,14 @@ function useReaderInteractionBindings({
   label,
   onExternalAudioToggle,
   externalVerseAudioState,
+  externalActiveVerseId,
+  externalVerseAudioMappings,
+  audioSourceAvailable,
+  autoReadPlaying,
+  autoReadClockMs,
+  autoReadResetKey,
+  onAutoReadPlayingChange,
+  onAutoReadCompleteChange,
   overlayViewport,
   page,
   readerDocumentId,
@@ -2942,13 +3534,28 @@ function useReaderInteractionBindings({
     useFullScreenBookWebView,
     zoomLevel
   });
+  const pauseAudioForManualPageTurn = React__namespace.useCallback(() => {
+    if (audio.verseAudioStatus.playing) {
+      audio.toggleVerseAudio();
+    } else if (externalVerseAudioState?.isPlaying) {
+      onExternalAudioToggle?.();
+    }
+  }, [audio, externalVerseAudioState?.isPlaying, onExternalAudioToggle]);
+  const goToNextPageManually = React__namespace.useCallback(() => {
+    pauseAudioForManualPageTurn();
+    goToNextPage();
+  }, [goToNextPage, pauseAudioForManualPageTurn]);
+  const goToPreviousPageManually = React__namespace.useCallback(() => {
+    pauseAudioForManualPageTurn();
+    goToPreviousPage();
+  }, [goToPreviousPage, pauseAudioForManualPageTurn]);
   const gestures = useReaderGestures({
     viewMode,
     hidePageNavigationControls: props.hidePageNavigationControls ?? false,
     overlayViewport,
     showOverlay,
-    goToNextPage,
-    goToPreviousPage
+    goToNextPage: goToNextPageManually,
+    goToPreviousPage: goToPreviousPageManually
   });
   const { switchReaderMode } = useReaderViewMode({
     completeVerses,
@@ -2960,9 +3567,11 @@ function useReaderInteractionBindings({
     pageCount: core.pageCount,
     pageNumber: page.pageNumber,
     pageNumberRef: core.pageNumberRef,
+    nativeBookPageNumber: page.nativeBookPageNumberState,
     pendingCompleteScrollVerseIdRef: core.pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef: core.pendingModeSwitchPageRef,
-    readerVerseId: core.readerVerseId,
+    readerVerseId: audio.activeVerseId || externalActiveVerseId || core.readerVerseId,
+    setNativeBookPageNumberState: page.setNativeBookPageNumberState,
     setIsVerseFullScreen: core.setIsVerseFullScreen,
     setPageNumber: page.setPageNumber,
     setReaderVerseId: core.setReaderVerseId,
@@ -3046,6 +3655,98 @@ function useReaderInteractionBindings({
     mappings: playableVerseMappings,
     status: audio.verseAudioStatus
   });
+  const readerPageNumber = contentMode === "verse" && useNativeVersePaging ? presentation.nativeBookPageNumber : page.pageNumber;
+  const visiblePageNumbers = [
+    readerPageNumber,
+    ...viewMode === "book" && activeBookSpreadMode === "double" ? [readerPageNumber + 1] : []
+  ];
+  const visiblePageText = visiblePageNumbers.flatMap((visiblePage) => {
+    const mappedIds = core.verseIdsByPage[visiblePage] || completeVerses.filter((verse) => core.versePageById[verse.id] === visiblePage).map((verse) => verse.id);
+    const mappedVerses = mappedIds.map(
+      (id) => completeVerses.find((verse) => String(verse.id) === String(id))
+    ).filter(
+      (verse) => Boolean(verse)
+    );
+    const visibleVerses = mappedVerses.length ? mappedVerses : [completeVerses[visiblePage - 1]].filter(
+      (verse) => Boolean(verse)
+    );
+    return visibleVerses.map((verse) => verse.contentHtml);
+  }).join(" ");
+  const hasAnyAudioSource = audioSourceAvailable ?? Boolean(
+    externalVerseAudioState?.audioAssetUrl || externalVerseAudioMappings.length || hasVerseAudio
+  );
+  const canAutoRead = Boolean(
+    contentMode === "verse" && completeVerses.length && (audioSourceAvailable === false || !hasAnyAudioSource && !externalVerseAudioState?.audioAssetUrl && !externalVerseAudioMappings.length && !hasVerseAudio)
+  );
+  const subscribeToAppState = React__namespace.useCallback(
+    (listener) => reactNative.AppState.addEventListener("change", listener),
+    []
+  );
+  const autoRead = useAutoReadPlayback({
+    allowed: canAutoRead,
+    isPlaying: autoReadPlaying,
+    externalClockMs: autoReadClockMs,
+    onPlaybackChange: onAutoReadPlayingChange,
+    onCompleteChange: onAutoReadCompleteChange,
+    pageNumber: readerPageNumber,
+    pageCount: completeVerses.length,
+    pageStep: viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1,
+    resetKey: autoReadResetKey,
+    visiblePageText,
+    goToNextPage,
+    goToFirstPage,
+    subscribeToAppState
+  });
+  const externalTimelineProgress = externalVerseAudioState?.audioAssetUrl ? getMappedPageProgress(
+    externalVerseAudioMappings,
+    externalVerseAudioState.audioAssetUrl,
+    Number(externalVerseAudioState.currentTimeMs) || 0,
+    (verseId) => scroll.getNativeVersePage(verseId) ?? null
+  ) : null;
+  const internalTimelineProgress = !externalVerseAudioState?.audioAssetUrl && activeVerseAudio ? getMappedPageProgress(
+    playableVerseMappings,
+    activeVerseAudio.audioAssetUrl,
+    Math.max(0, Number(audio.verseAudioStatus.currentTime) || 0) * 1e3,
+    (verseId) => scroll.getNativeVersePage(verseId) ?? null
+  ) : null;
+  const mappedTimelineProgress = externalVerseAudioState?.audioAssetUrl ? externalTimelineProgress : internalTimelineProgress;
+  const toggleAutoRead = React__namespace.useCallback(() => {
+    const shouldStart = !autoReadPlaying;
+    if (shouldStart && contentMode === "verse" && viewMode === "continuous") {
+      const targetVerseId = core.readerVerseId || core.verseIdsByPage[readerPageNumber]?.[0] || completeVerses[readerPageNumber - 1]?.id;
+      if (targetVerseId) {
+        core.setReaderVerseId(
+          (current) => current === targetVerseId ? current : targetVerseId
+        );
+        scroll.scrollCompleteToVerse(targetVerseId, false);
+      }
+    }
+    onAutoReadPlayingChange?.(shouldStart);
+  }, [
+    autoReadPlaying,
+    completeVerses,
+    contentMode,
+    core.readerVerseId,
+    core.setReaderVerseId,
+    core.verseIdsByPage,
+    onAutoReadPlayingChange,
+    readerPageNumber,
+    scroll.scrollCompleteToVerse,
+    viewMode
+  ]);
+  const playbackProgress = canAutoRead ? {
+    mode: "auto-read",
+    progress: autoRead.progress,
+    progressStore: autoRead.progressStore,
+    complete: autoRead.completed,
+    pageNumber: readerPageNumber,
+    verseId: core.readerVerseId
+  } : mappedTimelineProgress ? {
+    mode: "audio",
+    progress: mappedTimelineProgress.progress,
+    complete: false,
+    pageNumber: mappedTimelineProgress.pageNumber
+  } : null;
   const mappedVerseNavigation = useMappedVerseNavigation({
     activeBookSpreadMode,
     activeVerseAudioIndex: audio.activeVerseAudioIndex,
@@ -3083,8 +3784,8 @@ function useReaderInteractionBindings({
     canZoomOut: !zoomOutDisabled,
     hidePageNavigationControls: props.hidePageNavigationControls ?? false,
     isVerseContent: contentMode === "verse",
-    nextPage: goToNextPage,
-    previousPage: goToPreviousPage,
+    nextPage: goToNextPageManually,
+    previousPage: goToPreviousPageManually,
     resetToFirstPage: bookControls.confirmGoToFirstPage,
     setShowShareOverlay: core.setShowShareOverlay,
     showOverlay,
@@ -3099,6 +3800,8 @@ function useReaderInteractionBindings({
     actions,
     activeVerseAudio,
     audioProgress,
+    autoRead,
+    canAutoRead,
     audioSlider,
     bookControls,
     documentHandlers: { handleFullScreenMessage, handleMainMessage },
@@ -3120,13 +3823,28 @@ function useReaderInteractionBindings({
     },
     getNativeBookVersePageNumber,
     mappedVerseNavigation,
-    navigation: { goToFirstPage, goToNextPage, goToPreviousPage, syncViewerStateToWebView },
+    navigation: {
+      goToFirstPage,
+      goToNextPage: goToNextPageManually,
+      goToPreviousPage: goToPreviousPageManually,
+      syncViewerStateToWebView
+    },
     presentation,
+    playbackProgress,
+    toggleAutoRead,
+    autoReadPlaying,
     scroll,
     shareUrlActions,
     switchReaderMode,
     toggleVerseFullScreen,
-    zoom: { adjustPdfZoom, adjustVerseFontSize, zoomInDisabled, zoomInVerse, zoomOutDisabled, zoomOutVerse }
+    zoom: {
+      adjustPdfZoom,
+      adjustVerseFontSize,
+      zoomInDisabled,
+      zoomInVerse,
+      zoomOutDisabled,
+      zoomOutVerse
+    }
   };
 }
 function buildReaderWebViewHandlers(args) {
@@ -3226,7 +3944,7 @@ function ReaderZoomControls({ inDisabled, onZoomIn, onZoomOut, outDisabled }) {
         style: [styles.overlayControlButton, outDisabled ? styles.overlayButtonDisabled : null],
         accessibilityRole: "button",
         accessibilityLabel: "Zoom out",
-        children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons3__default.default, { name: "remove-outline", size: 20, color: outDisabled ? "#d4d4d8" : "#fff" })
+        children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons4__default.default, { name: "remove-outline", size: 20, color: outDisabled ? "#d4d4d8" : "#fff" })
       }
     ),
     /* @__PURE__ */ jsxRuntime.jsx(
@@ -3237,7 +3955,7 @@ function ReaderZoomControls({ inDisabled, onZoomIn, onZoomOut, outDisabled }) {
         style: [styles.overlayControlButton, inDisabled ? styles.overlayButtonDisabled : null],
         accessibilityRole: "button",
         accessibilityLabel: "Zoom in",
-        children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons3__default.default, { name: "add-outline", size: 20, color: inDisabled ? "#d4d4d8" : "#fff" })
+        children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons4__default.default, { name: "add-outline", size: 20, color: inDisabled ? "#d4d4d8" : "#fff" })
       }
     )
   ] });
@@ -3260,7 +3978,7 @@ function ReaderAudioActionButton({
       ],
       accessibilityRole: "button",
       accessibilityLabel,
-      children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons3__default.default, { name: icon, size: 20, color: "#fff" })
+      children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons4__default.default, { name: icon, size: 20, color: "#fff" })
     }
   );
 }
@@ -3339,6 +4057,44 @@ function VerseAudioControls({
     timeText ? /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: styles.overlayAudioTime, children: timeText }) : null
   ] }) });
 }
+function ReaderAutoReadButton({
+  playing,
+  completed,
+  onPress,
+  theme
+}) {
+  return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: { alignItems: "center", flexDirection: "row", gap: 7 }, children: [
+    /* @__PURE__ */ jsxRuntime.jsx(
+      reactNative.Pressable,
+      {
+        onPress,
+        style: [
+          styles.overlayControlButton,
+          { backgroundColor: theme.autoReadAccent }
+        ],
+        accessibilityRole: "button",
+        accessibilityLabel: completed ? "Replay auto-read" : playing ? "Pause auto-read" : "Play auto-read",
+        accessibilityHint: "Auto-read advances the selected verse text by estimated reading time",
+        testID: "reader-auto-read-toggle",
+        children: /* @__PURE__ */ jsxRuntime.jsx(
+          Ionicons4__default.default,
+          {
+            name: completed ? "refresh-outline" : playing ? "pause-outline" : "play-outline",
+            size: 20,
+            color: "#fff"
+          }
+        )
+      }
+    ),
+    completed ? /* @__PURE__ */ jsxRuntime.jsx(
+      reactNative.Text,
+      {
+        style: { color: theme.overlayText, fontSize: 12, fontWeight: "700" },
+        children: "Reading complete"
+      }
+    ) : null
+  ] });
+}
 function FullScreenReaderControls({
   activeBookSpreadMode,
   activeVerseAudio,
@@ -3371,6 +4127,12 @@ function FullScreenReaderControls({
   viewMode,
   verseAudioPlaying,
   verseAudioTimeText,
+  playbackProgress,
+  autoReadAllowed,
+  autoReadPlaying,
+  autoReadCompleted,
+  onAutoReadToggle,
+  theme,
   zoomInDisabled,
   zoomInVerse,
   zoomOutDisabled,
@@ -3404,6 +4166,15 @@ function FullScreenReaderControls({
             timeText: verseAudioTimeText
           }
         ) : null,
+        autoReadAllowed ? /* @__PURE__ */ jsxRuntime.jsx(
+          ReaderAutoReadButton,
+          {
+            playing: autoReadPlaying,
+            completed: autoReadCompleted,
+            onPress: onAutoReadToggle,
+            theme
+          }
+        ) : null,
         /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles.overlayZoomGroup, children: [
           viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
             ReaderPageNavigationButton,
@@ -3429,7 +4200,7 @@ function FullScreenReaderControls({
               style: styles.overlayControlButton,
               accessibilityLabel: activeBookSpreadMode === "double" ? "Show one page" : "Show two pages",
               children: /* @__PURE__ */ jsxRuntime.jsx(
-                Ionicons3__default.default,
+                Ionicons4__default.default,
                 {
                   name: activeBookSpreadMode === "double" ? "tablet-portrait-outline" : "book-outline",
                   size: 20,
@@ -3442,12 +4213,15 @@ function FullScreenReaderControls({
             reactNative.Pressable,
             {
               onPress: onExternalAudioToggle,
-              style: styles.overlayControlButton,
+              style: [
+                styles.overlayControlButton,
+                { backgroundColor: theme.accent }
+              ],
               accessibilityRole: "button",
               accessibilityLabel: externalVerseAudioState.isPlaying ? "Pause audio" : "Play audio",
               testID: "reader-fullscreen-audio-toggle",
               children: /* @__PURE__ */ jsxRuntime.jsx(
-                Ionicons3__default.default,
+                Ionicons4__default.default,
                 {
                   name: externalVerseAudioState.isPlaying ? "pause-outline" : "play-outline",
                   size: 20,
@@ -3463,7 +4237,7 @@ function FullScreenReaderControls({
               style: styles.overlayControlButton,
               testID: "reader-exit-fullscreen",
               accessibilityLabel: "Exit fullscreen reader",
-              children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons3__default.default, { name: "contract-outline", size: 20, color: "#fff" })
+              children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons4__default.default, { name: "contract-outline", size: 20, color: "#fff" })
             }
           ),
           viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
@@ -3480,15 +4254,18 @@ function FullScreenReaderControls({
     }
   );
 }
-function CompleteVerseBlock({
+function CompleteVerseBlockComponent({
   verse,
   index,
   pageCount,
   isActive,
   fullScreen,
   fontSize,
-  theme
+  theme,
+  playbackProgress
 }) {
+  const [pageNumberBounds, setPageNumberBounds] = React.useState({ x: 0, width: 0 });
+  const [blockSize, setBlockSize] = React.useState({ width: 0, height: 0 });
   const textStyle = COMPLETE_VERSE_STYLE_MAP[verse.styleKey || "classic"] || COMPLETE_VERSE_STYLE_MAP.classic;
   const blockStyle = fullScreen ? [
     styles.nativeFullScreenVerseBlock,
@@ -3506,41 +4283,73 @@ function CompleteVerseBlock({
     },
     isActive ? styles.completeVerseBlockActive : null
   ];
-  return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: blockStyle, children: [
-    /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { pointerEvents: "none", style: styles.completeVerseOrnamentOuter }),
-    /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { pointerEvents: "none", style: styles.completeVerseOrnamentInner }),
-    /* @__PURE__ */ jsxRuntime.jsx(
-      reactNative.Text,
-      {
-        style: [
-          fullScreen ? styles.nativeFullScreenVerseText : styles.completeVerseText,
-          textStyle,
-          { color: theme.text },
-          { fontSize, lineHeight: Math.round(fontSize * 1.45) }
-        ],
-        children: renderNativeRichText(
-          verse.contentHtml,
-          `${fullScreen ? "fullscreen-complete" : "complete"}-${verse.id}`
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    reactNative.View,
+    {
+      style: [blockStyle],
+      onLayout: (event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setBlockSize(
+          (current) => current.width === width && current.height === height ? current : { width, height }
+        );
+      },
+      children: [
+        playbackProgress ? /* @__PURE__ */ jsxRuntime.jsx(
+          PerimeterProgress,
+          {
+            playback: playbackProgress,
+            theme,
+            radius: 8,
+            inset: -7,
+            pageNumberBounds,
+            containerSize: {
+              width: Math.max(0, blockSize.width - 2),
+              height: Math.max(0, blockSize.height - 2)
+            }
+          }
+        ) : null,
+        /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { pointerEvents: "none", style: styles.completeVerseOrnamentInner }),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          reactNative.Text,
+          {
+            style: [
+              fullScreen ? styles.nativeFullScreenVerseText : styles.completeVerseText,
+              textStyle,
+              { color: theme.text },
+              { fontSize, lineHeight: Math.round(fontSize * 1.45) }
+            ],
+            children: renderNativeRichText(
+              verse.contentHtml,
+              `${fullScreen ? "fullscreen-complete" : "complete"}-${verse.id}`
+            )
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          reactNative.Text,
+          {
+            pointerEvents: "none",
+            onLayout: (event) => {
+              const { x, width } = event.nativeEvent.layout;
+              setPageNumberBounds(
+                (current) => current.x === x && current.width === width ? current : { x, width }
+              );
+            },
+            style: [
+              styles.nativeBookPageNumber,
+              { color: theme.text, backgroundColor: theme.accentSurface }
+            ],
+            children: [
+              index + 1,
+              "/",
+              pageCount
+            ]
+          }
         )
-      }
-    ),
-    /* @__PURE__ */ jsxRuntime.jsxs(
-      reactNative.Text,
-      {
-        pointerEvents: "none",
-        style: [
-          styles.nativeBookPageNumber,
-          { color: theme.text, backgroundColor: theme.accentSurface }
-        ],
-        children: [
-          index + 1,
-          "/",
-          pageCount
-        ]
-      }
-    )
-  ] });
+      ]
+    }
+  );
 }
+var CompleteVerseBlock = React.memo(CompleteVerseBlockComponent);
 function ReaderModal({ children, onRequestClose, variant, visible }) {
   const isFullScreen = variant === "fullscreen";
   return /* @__PURE__ */ jsxRuntime.jsx(
@@ -3588,6 +4397,7 @@ function NativeFullScreenReaderOverlay({
   onVerseLayout,
   onRequestClose,
   pageCount,
+  playbackProgress,
   readerVerseId,
   renderBookPage,
   renderBookTurn,
@@ -3602,39 +4412,52 @@ function NativeFullScreenReaderOverlay({
     reactNative.View,
     {
       testID: "reader-fullscreen-root",
-      style: [styles.nativeFullScreenRoot, { backgroundColor: theme.background }],
+      style: [
+        styles.nativeFullScreenRoot,
+        { backgroundColor: theme.background }
+      ],
       onTouchStart: onFullScreenTouchStart,
       onTouchEnd: onFullScreenTouchEnd,
       children: [
-        fullScreenBookWebView ? /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles.nativeFullScreenBookSurface, onTouchStart: showOverlay, children: /* @__PURE__ */ jsxRuntime.jsx(
-          reactNativeWebview.WebView,
+        fullScreenBookWebView ? /* @__PURE__ */ jsxRuntime.jsx(
+          reactNative.View,
           {
-            ref: fullScreenWebViewRef,
-            originWhitelist: ["about:blank"],
-            source: fullScreenWebViewSource,
-            style: styles.nativeFullScreenWebView,
-            javaScriptEnabled: true,
-            domStorageEnabled: true,
-            startInLoadingState: false,
-            setSupportMultipleWindows: false,
-            mixedContentMode: "never",
-            scrollEnabled: true,
-            nestedScrollEnabled: true,
-            bounces: false,
-            showsVerticalScrollIndicator: false,
-            showsHorizontalScrollIndicator: false,
-            scalesPageToFit: false,
-            setBuiltInZoomControls: false,
-            setDisplayZoomControls: false,
-            onLoadStart,
-            onLoadEnd,
-            onMessage: handleFullScreenMessage
-          },
-          `fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`
-        ) }) : viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
+            style: styles.nativeFullScreenBookSurface,
+            onTouchStart: showOverlay,
+            children: /* @__PURE__ */ jsxRuntime.jsx(
+              reactNativeWebview.WebView,
+              {
+                ref: fullScreenWebViewRef,
+                originWhitelist: ["about:blank"],
+                source: fullScreenWebViewSource,
+                style: styles.nativeFullScreenWebView,
+                javaScriptEnabled: true,
+                domStorageEnabled: true,
+                startInLoadingState: false,
+                setSupportMultipleWindows: false,
+                mixedContentMode: "never",
+                scrollEnabled: true,
+                nestedScrollEnabled: true,
+                bounces: false,
+                showsVerticalScrollIndicator: false,
+                showsHorizontalScrollIndicator: false,
+                scalesPageToFit: false,
+                setBuiltInZoomControls: false,
+                setDisplayZoomControls: false,
+                onLoadStart,
+                onLoadEnd,
+                onMessage: handleFullScreenMessage
+              },
+              `fullscreen-${viewerReloadKey}-${activeBookSpreadMode}`
+            )
+          }
+        ) : viewMode === "book" ? /* @__PURE__ */ jsxRuntime.jsx(
           reactNative.ScrollView,
           {
-            style: [styles.nativeFullScreenScroll, { backgroundColor: theme.background }],
+            style: [
+              styles.nativeFullScreenScroll,
+              { backgroundColor: theme.background }
+            ],
             contentContainerStyle: [
               styles.nativeFullScreenBookScrollContent,
               styles.nativeFullScreenBookScrollContentCentered
@@ -3693,7 +4516,8 @@ function NativeFullScreenReaderOverlay({
                     isActive: highlightCurrentVerse && (readerVerseId === verse.id || activeVerseId === verse.id),
                     fullScreen: true,
                     fontSize: nativeBookVerseFontSizePx,
-                    theme
+                    theme,
+                    playbackProgress: playbackProgress?.pageNumber === index + 1 ? playbackProgress : null
                   }
                 )
               },
@@ -3764,6 +4588,7 @@ function ReaderFullScreenSurface({
   core,
   documentSource,
   externalVerseAudioState,
+  autoReadPlaying,
   hideControls,
   hidePageNavigationControls,
   hideVerseAudioControls,
@@ -3795,9 +4620,19 @@ function ReaderFullScreenSurface({
     nativeBookVerses,
     pageBadgeText
   } = interactions.presentation;
-  const { canPlayNext, canPlayPrevious, canRestart, playNext, playPrevious, restart } = interactions.mappedVerseNavigation;
+  const {
+    canPlayNext,
+    canPlayPrevious,
+    canRestart,
+    playNext,
+    playPrevious,
+    restart
+  } = interactions.mappedVerseNavigation;
   const { progress: activeVerseAudioProgress, timeText: verseAudioTimeText } = interactions.audioProgress;
-  const { panHandlers: audioSliderPanHandlers, seekByLocationX: seekAudioByLocationX } = interactions.audioSlider;
+  const {
+    panHandlers: audioSliderPanHandlers,
+    seekByLocationX: seekAudioByLocationX
+  } = interactions.audioSlider;
   const {
     exitVerseFullScreen,
     renderNativeBookTurn,
@@ -3825,6 +4660,12 @@ function ReaderFullScreenSurface({
             activeBookSpreadMode,
             activeVerseAudio: Boolean(interactions.activeVerseAudio),
             activeVerseAudioProgress,
+            playbackProgress: interactions.playbackProgress,
+            autoReadAllowed: interactions.canAutoRead,
+            autoReadPlaying,
+            autoReadCompleted: interactions.autoRead.completed,
+            onAutoReadToggle: interactions.toggleAutoRead,
+            theme,
             allowBookDoubleSpread: content.allowBookDoubleSpread,
             audioSliderPanHandlers,
             canNavigateNextPage,
@@ -3899,7 +4740,8 @@ function ReaderFullScreenSurface({
         },
         onVerseLayout: (verseId, y) => {
           core.completeVerseYByIdRef.current[verseId] = y;
-          if (!autoAlignCurrentVerse && core.pendingCompleteScrollVerseIdRef.current !== verseId) return;
+          if (!autoAlignCurrentVerse && core.pendingCompleteScrollVerseIdRef.current !== verseId)
+            return;
           if (core.pendingCompleteScrollVerseIdRef.current === verseId) {
             setTimeout(() => scroll.scrollCompleteToVerse(verseId, false), 0);
           }
@@ -3929,10 +4771,12 @@ function ReaderFullScreenSurface({
             doubleSpread: activeBookSpreadMode === "double",
             pageBackground: theme.accentSurface,
             contentKeyPrefix: key,
-            contentOpacity: nativeBookTurnVisuals?.incomingOpacity
+            contentOpacity: nativeBookTurnVisuals?.incomingOpacity,
+            playbackProgress: interactions.playbackProgress?.pageNumber === interactions.getNativeBookVersePageNumber(verse) ? interactions.playbackProgress : null
           },
           key
         ),
+        playbackProgress: interactions.playbackProgress,
         renderBookTurn: renderNativeBookTurn,
         showOverlay,
         theme,
@@ -3960,6 +4804,7 @@ function NativeBookVerseView({
   nativeBookTurnVisuals,
   nativeBookVerseFontSizePx,
   nativeBookVerses,
+  playbackProgress,
   onContentHeightChange,
   onTouchStart,
   renderBookTurn,
@@ -3976,7 +4821,9 @@ function NativeBookVerseView({
       nestedScrollEnabled: true,
       onContentSizeChange: (_width, height) => {
         const nextHeight = Math.ceil(height);
-        onContentHeightChange((current) => current === nextHeight ? current : nextHeight);
+        onContentHeightChange(
+          (current) => current === nextHeight ? current : nextHeight
+        );
       },
       onTouchStart,
       children: /* @__PURE__ */ jsxRuntime.jsx(
@@ -4010,7 +4857,8 @@ function NativeBookVerseView({
                     doubleSpread,
                     pageBackground: theme.accentSurface,
                     contentKeyPrefix: `book-${verse.id}`,
-                    contentOpacity: nativeBookTurnVisuals?.incomingOpacity
+                    contentOpacity: nativeBookTurnVisuals?.incomingOpacity,
+                    playbackProgress: playbackProgress?.pageNumber === getPageNumber(verse) ? playbackProgress : null
                   },
                   `book-${nativeBookPageNumber}-${index}`
                 )),
@@ -4023,7 +4871,7 @@ function NativeBookVerseView({
     }
   );
 }
-function NativeContinuousVerseView({
+function NativeContinuousVerseViewComponent({
   activeVerseId,
   autoAlignCurrentVerse,
   completeScrollOffsetRef,
@@ -4031,6 +4879,7 @@ function NativeContinuousVerseView({
   completeRestoreGuardUntilRef,
   completeVerseYByIdRef,
   completeVerses,
+  playbackProgress,
   fontSize,
   highlightCurrentVerse,
   isEmbeddedLandscape,
@@ -4047,9 +4896,18 @@ function NativeContinuousVerseView({
   updateCompleteAnchorFromOffset,
   userDraggingCompleteScrollRef
 }) {
+  const progressIndex = playbackProgress ? getContinuousProgressIndex(
+    playbackProgress.mode,
+    playbackProgress.pageNumber,
+    playbackProgress.verseId,
+    completeVerses.map((verse) => verse.id)
+  ) : -1;
   const alignPendingVerse = () => {
     const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
     if (!autoAlignCurrentVerse && !pendingVerseId) return;
+    if (!pendingVerseId && autoAlignCurrentVerse && Date.now() < completeRestoreGuardUntilRef.current) {
+      return;
+    }
     scrollCompleteToVerse(pendingVerseId || readerVerseId, false);
   };
   return /* @__PURE__ */ jsxRuntime.jsx(
@@ -4080,7 +4938,9 @@ function NativeContinuousVerseView({
       },
       onContentSizeChange: (_width, height) => {
         const nextHeight = Math.ceil(height);
-        setEmbeddedContentHeight((current) => current === nextHeight ? current : nextHeight);
+        setEmbeddedContentHeight(
+          (current) => current === nextHeight ? current : nextHeight
+        );
         alignPendingVerse();
       },
       onLayout: alignPendingVerse,
@@ -4107,7 +4967,8 @@ function NativeContinuousVerseView({
                 isActive,
                 fullScreen: false,
                 fontSize,
-                theme
+                theme,
+                playbackProgress: progressIndex === index ? playbackProgress : null
               }
             )
           },
@@ -4116,6 +4977,18 @@ function NativeContinuousVerseView({
       })
     }
   );
+}
+var NativeContinuousVerseView = React.memo(
+  NativeContinuousVerseViewComponent,
+  (previous, next) => previous.activeVerseId === next.activeVerseId && previous.autoAlignCurrentVerse === next.autoAlignCurrentVerse && previous.completeScrollOffsetRef === next.completeScrollOffsetRef && previous.completeScrollRef === next.completeScrollRef && previous.completeRestoreGuardUntilRef === next.completeRestoreGuardUntilRef && previous.completeVerseYByIdRef === next.completeVerseYByIdRef && previous.completeVerses === next.completeVerses && samePlaybackProgress(previous.playbackProgress, next.playbackProgress) && previous.fontSize === next.fontSize && previous.highlightCurrentVerse === next.highlightCurrentVerse && previous.isEmbeddedLandscape === next.isEmbeddedLandscape && previous.onMomentumScrollEnd === next.onMomentumScrollEnd && previous.onScrollBeginDrag === next.onScrollBeginDrag && previous.onScrollEndDrag === next.onScrollEndDrag && previous.onTouchStart === next.onTouchStart && previous.pendingCompleteScrollVerseIdRef === next.pendingCompleteScrollVerseIdRef && previous.readerVerseId === next.readerVerseId && previous.reserveOverlayControlsSpace === next.reserveOverlayControlsSpace && previous.scrollCompleteToVerse === next.scrollCompleteToVerse && previous.setEmbeddedContentHeight === next.setEmbeddedContentHeight && previous.theme === next.theme && previous.updateCompleteAnchorFromOffset === next.updateCompleteAnchorFromOffset && previous.userDraggingCompleteScrollRef === next.userDraggingCompleteScrollRef
+);
+function samePlaybackProgress(previous, next) {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  if (previous.mode !== next.mode || previous.pageNumber !== next.pageNumber || previous.verseId !== next.verseId || previous.complete !== next.complete || previous.progressStore !== next.progressStore) {
+    return false;
+  }
+  return Boolean(previous.progressStore) || previous.progress === next.progress;
 }
 function ReaderModeToggleButton({
   accessibilityLabel,
@@ -4203,7 +5076,7 @@ function ReaderHeaderControls({
             ],
             accessibilityLabel: "Share",
             children: /* @__PURE__ */ jsxRuntime.jsx(
-              Ionicons3__default.default,
+              Ionicons4__default.default,
               {
                 name: "share-social-outline",
                 size: 15,
@@ -4246,7 +5119,7 @@ function ReaderShareMenu({
               { borderColor: theme.border, backgroundColor: theme.buttonSurface }
             ],
             onPress: onShareSystem,
-            children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons3__default.default, { name: "arrow-redo-outline", size: 18, color: theme.text })
+            children: /* @__PURE__ */ jsxRuntime.jsx(Ionicons4__default.default, { name: "arrow-redo-outline", size: 18, color: theme.text })
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx(
@@ -4373,6 +5246,12 @@ function ReaderInlineOverlayControls({
   pageBadgeText,
   playProgress,
   playing,
+  playbackProgress,
+  autoReadAllowed,
+  autoReadPlaying,
+  autoReadCompleted,
+  onAutoReadToggle,
+  theme,
   showPageBadge,
   isFullScreen,
   timeText,
@@ -4403,6 +5282,15 @@ function ReaderInlineOverlayControls({
         timeText
       }
     ) : null,
+    autoReadAllowed && !hideVerseAudioControls ? /* @__PURE__ */ jsxRuntime.jsx(
+      ReaderAutoReadButton,
+      {
+        playing: autoReadPlaying,
+        completed: autoReadCompleted,
+        onPress: onAutoReadToggle,
+        theme
+      }
+    ) : null,
     !hideReaderActionControls ? /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles.overlayZoomGroup, children: [
       viewMode === "book" && !hidePageNavigationControls ? /* @__PURE__ */ jsxRuntime.jsx(
         ReaderPageNavigationButton,
@@ -4429,7 +5317,7 @@ function ReaderInlineOverlayControls({
           testID: isFullScreen ? "reader-exit-fullscreen" : "reader-enter-fullscreen",
           accessibilityLabel: isFullScreen ? "Exit fullscreen reader" : "Enter fullscreen reader",
           children: /* @__PURE__ */ jsxRuntime.jsx(
-            Ionicons3__default.default,
+            Ionicons4__default.default,
             {
               name: isFullScreen ? "contract-outline" : "expand-outline",
               size: 20,
@@ -4615,11 +5503,20 @@ function ReaderInlineSurface({
     restart
   } = interactions.mappedVerseNavigation;
   const { pageSwipeResponder, pdfVerticalScrollResponder } = interactions.fullscreen.gestures;
-  const { adjustPdfZoom, zoomInDisabled, zoomInVerse, zoomOutDisabled, zoomOutVerse } = interactions.zoom;
+  const {
+    adjustPdfZoom,
+    zoomInDisabled,
+    zoomInVerse,
+    zoomOutDisabled,
+    zoomOutVerse
+  } = interactions.zoom;
   const { goToNextPage, goToPreviousPage } = interactions.navigation;
   const { toggleVerseAudio } = interactions.fullscreen;
   const { progress: activeVerseAudioProgress, timeText: verseAudioTimeText } = interactions.audioProgress;
-  const { panHandlers: audioSliderPanHandlers, seekByLocationX: seekAudioByLocationX } = interactions.audioSlider;
+  const {
+    panHandlers: audioSliderPanHandlers,
+    seekByLocationX: seekAudioByLocationX
+  } = interactions.audioSlider;
   const { toggleVerseFullScreen, getNativeBookVersePageNumber } = interactions;
   const { shareLinks, openShareUrl, openWhatsAppShare, openSystemShare } = interactions.shareUrlActions;
   const { renderNativeBookTurn } = interactions.fullscreen;
@@ -4638,7 +5535,10 @@ function ReaderInlineSurface({
         styles.container,
         inlineFullScreenActive ? [
           styles.containerFullScreen,
-          { height: visibleViewportHeight, backgroundColor: theme.background }
+          {
+            height: visibleViewportHeight,
+            backgroundColor: theme.background
+          }
         ] : null
       ],
       children: [
@@ -4677,16 +5577,23 @@ function ReaderInlineSurface({
             onLayout: (event) => {
               if (content.contentMode === "verse") {
                 const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
-                if (nextHeight > 0 && nextHeight !== viewerWrapHeight) setViewerWrapHeight(nextHeight);
+                if (nextHeight > 0 && nextHeight !== viewerWrapHeight)
+                  setViewerWrapHeight(nextHeight);
               }
               measureViewerWindow();
             },
             ...viewMode === "book" && content.contentMode === "verse" ? pageSwipeResponder.panHandlers : content.contentMode === "pdf" && overlayViewport ? pdfVerticalScrollResponder.panHandlers : {},
             children: [
-              loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles.loadingWrap, { backgroundColor: theme.background }], children: [
-                /* @__PURE__ */ jsxRuntime.jsx(reactNative.ActivityIndicator, { size: "large", color: theme.accent }),
-                /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles.loadingText, { color: theme.mutedText }], children: loadingMessage })
-              ] }) : null,
+              loadingPdf && !useNativeCompleteVerseView && !useNativeBookVerseView ? /* @__PURE__ */ jsxRuntime.jsxs(
+                reactNative.View,
+                {
+                  style: [styles.loadingWrap, { backgroundColor: theme.background }],
+                  children: [
+                    /* @__PURE__ */ jsxRuntime.jsx(reactNative.ActivityIndicator, { size: "large", color: theme.accent }),
+                    /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles.loadingText, { color: theme.mutedText }], children: loadingMessage })
+                  ]
+                }
+              ) : null,
               !loadingError ? useNativeBookVerseView ? /* @__PURE__ */ jsxRuntime.jsx(
                 NativeBookVerseView,
                 {
@@ -4700,6 +5607,7 @@ function ReaderInlineSurface({
                   nativeBookTurnVisuals: content.nativeBookTurnVisuals,
                   nativeBookVerseFontSizePx: interactions.presentation.nativeBookVerseFontSizePx,
                   nativeBookVerses: interactions.presentation.nativeBookVerses,
+                  playbackProgress: interactions.playbackProgress,
                   onContentHeightChange: setEmbeddedBookContentHeight,
                   onTouchStart: showOverlay,
                   renderBookTurn: renderNativeBookTurn,
@@ -4729,6 +5637,7 @@ function ReaderInlineSurface({
                   scrollCompleteToVerse,
                   setEmbeddedContentHeight: setEmbeddedContinuousContentHeight,
                   theme,
+                  playbackProgress: interactions.playbackProgress,
                   updateCompleteAnchorFromOffset,
                   userDraggingCompleteScrollRef
                 }
@@ -4781,8 +5690,10 @@ function ReaderInlineSurface({
               /* @__PURE__ */ jsxRuntime.jsx(
                 ReaderInlineOverlay,
                 {
-                  show: !loadingError && !hideControls && showOverlayControls && (!hideReaderActionControls || content.hasVerseAudio && !hideVerseAudioControls),
-                  onHeightChange: (height) => setOverlayControlsHeight((current) => current === height ? current : height),
+                  show: !loadingError && !hideControls && showOverlayControls && (!hideReaderActionControls || content.hasVerseAudio && !hideVerseAudioControls || Boolean(interactions.playbackProgress)),
+                  onHeightChange: (height) => setOverlayControlsHeight(
+                    (current) => current === height ? current : height
+                  ),
                   translateY: stickyOverlayTranslate,
                   controls: {
                     activeAudio: Boolean(interactions.activeVerseAudio),
@@ -4809,6 +5720,12 @@ function ReaderInlineSurface({
                     pageBadgeText,
                     playProgress: activeVerseAudioProgress,
                     playing: verseAudioStatus.playing,
+                    playbackProgress: interactions.playbackProgress,
+                    autoReadAllowed: interactions.canAutoRead,
+                    autoReadPlaying: interactions.autoReadPlaying,
+                    autoReadCompleted: interactions.autoRead.completed,
+                    onAutoReadToggle: interactions.toggleAutoRead,
+                    theme,
                     showPageBadge: content.effectiveBookVerseLayout?.showPageBadge !== false,
                     isFullScreen: isVerseFullScreen,
                     timeText: verseAudioTimeText,
@@ -4859,7 +5776,8 @@ function useCompleteVerseScroll({
   viewerContentTop,
   viewerWrapHeight
 }) {
-  const scrollCompleteToVerse = react.useCallback(
+  const previousVerseFontSizeRef = React.useRef(verseFontSizePx);
+  const scrollCompleteToVerse = React.useCallback(
     (verseId, animated = false) => {
       if (!verseId) return false;
       const y = completeVerseYByIdRef.current[verseId];
@@ -4874,10 +5792,18 @@ function useCompleteVerseScroll({
             return false;
           }
           const targetOffset = viewerContentTop + y - overlayViewport.top;
-          overlayViewport.scrollToOffset(Math.max(0, targetOffset), withAnimation);
+          overlayViewport.scrollToOffset(
+            Math.max(0, targetOffset),
+            withAnimation
+          );
           return true;
         }
-        completeScrollRef.current?.scrollTo({
+        const scrollView = completeScrollRef.current;
+        if (!scrollView) {
+          pendingCompleteScrollVerseIdRef.current = verseId;
+          return false;
+        }
+        scrollView.scrollTo({
           y: Math.max(0, y - 12),
           animated: withAnimation
         });
@@ -4885,12 +5811,14 @@ function useCompleteVerseScroll({
       };
       if (!scrollToVerse(animated)) return false;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
-      setTimeout(() => scrollToVerse(false), 120);
-      setTimeout(() => {
-        if (pendingCompleteScrollVerseIdRef.current === verseId) {
-          pendingCompleteScrollVerseIdRef.current = null;
-        }
-      }, 760);
+      setTimeout(
+        () => {
+          if (pendingCompleteScrollVerseIdRef.current === verseId) {
+            pendingCompleteScrollVerseIdRef.current = null;
+          }
+        },
+        animated ? 1800 : 760
+      );
       return true;
     },
     [
@@ -4903,27 +5831,35 @@ function useCompleteVerseScroll({
       viewerContentTop
     ]
   );
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!useNativeCompleteVerseView || viewerContentTop === null) return;
     const pendingVerseId = pendingCompleteScrollVerseIdRef.current;
     if (pendingVerseId) scrollCompleteToVerse(pendingVerseId, false);
-  }, [pendingCompleteScrollVerseIdRef, scrollCompleteToVerse, useNativeCompleteVerseView, viewerContentTop]);
-  const getNativeVersePage = react.useCallback(
+  }, [
+    pendingCompleteScrollVerseIdRef,
+    scrollCompleteToVerse,
+    useNativeCompleteVerseView,
+    viewerContentTop
+  ]);
+  const getNativeVersePage = React.useCallback(
     (verseId) => {
       if (!verseId) return 0;
       const mappedPage = versePageById[verseId];
       if (mappedPage) return mappedPage;
       if (!useNativeVersePaging) return 0;
-      const verseIndex = completeVerses.findIndex((verse) => verse.id === verseId);
+      const verseIndex = completeVerses.findIndex(
+        (verse) => verse.id === verseId
+      );
       return verseIndex >= 0 ? verseIndex + 1 : 0;
     },
     [completeVerses, useNativeVersePaging, versePageById]
   );
-  react.useEffect(() => {
-    const verseId = initialReaderVerseIdRef.current;
-    if (initialReaderVerseAppliedRef.current || !verseId || !completeVerses.length) return;
-    const restoredPage = getNativeVersePage(verseId);
-    if (!restoredPage) return;
+  React.useEffect(() => {
+    const savedVerseId = initialReaderVerseIdRef.current;
+    if (initialReaderVerseAppliedRef.current || !completeVerses.length) return;
+    const restoredPage = savedVerseId ? getNativeVersePage(savedVerseId) : pageNumber;
+    const verseId = savedVerseId || verseIdsByPage[restoredPage]?.[0] || (useNativeVersePaging ? completeVerses[restoredPage - 1]?.id : void 0);
+    if (!restoredPage || !verseId) return;
     initialReaderVerseAppliedRef.current = true;
     pageNumberRef.current = restoredPage;
     pendingModeSwitchPageRef.current = restoredPage;
@@ -4936,19 +5872,24 @@ function useCompleteVerseScroll({
     getNativeVersePage,
     initialReaderVerseAppliedRef,
     initialReaderVerseIdRef,
+    pageNumber,
     pageNumberRef,
     pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef,
     setNativeBookPageNumberState,
     setPageNumber,
-    setReaderVerseId
+    setReaderVerseId,
+    useNativeVersePaging,
+    verseIdsByPage
   ]);
-  const updateCompleteAnchorFromOffset = react.useCallback(
+  const updateCompleteAnchorFromOffset = React.useCallback(
     (offsetY) => {
       let bestVerseId = null;
       let bestDistance = Infinity;
       const targetY = Math.max(0, offsetY + 24);
-      for (const [verseId, y] of Object.entries(completeVerseYByIdRef.current)) {
+      for (const [verseId, y] of Object.entries(
+        completeVerseYByIdRef.current
+      )) {
         const distance = Math.abs(y - targetY);
         if (distance < bestDistance) {
           bestDistance = distance;
@@ -4956,71 +5897,137 @@ function useCompleteVerseScroll({
         }
       }
       if (!bestVerseId) return;
-      setReaderVerseId((current) => current === bestVerseId ? current : bestVerseId);
+      setReaderVerseId(
+        (current) => current === bestVerseId ? current : bestVerseId
+      );
       const pageForVerse = getNativeVersePage(bestVerseId);
       if (pageForVerse && pageForVerse !== pageNumber) {
         pageNumberRef.current = pageForVerse;
         setPageNumber(pageForVerse);
       }
     },
-    [completeVerseYByIdRef, getNativeVersePage, pageNumber, pageNumberRef, setPageNumber, setReaderVerseId]
+    [
+      completeVerseYByIdRef,
+      getNativeVersePage,
+      pageNumber,
+      pageNumberRef,
+      setPageNumber,
+      setReaderVerseId
+    ]
   );
-  const handleCompleteScrollBeginDrag = react.useCallback(() => {
+  const handleCompleteScrollBeginDrag = React.useCallback(() => {
     userDraggingCompleteScrollRef.current = true;
     pendingCompleteScrollVerseIdRef.current = null;
     completeRestoreGuardUntilRef.current = 0;
-  }, [completeRestoreGuardUntilRef, pendingCompleteScrollVerseIdRef, userDraggingCompleteScrollRef]);
-  const handleCompleteScrollEndDrag = react.useCallback(
+  }, [
+    completeRestoreGuardUntilRef,
+    pendingCompleteScrollVerseIdRef,
+    userDraggingCompleteScrollRef
+  ]);
+  const handleCompleteScrollEndDrag = React.useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
       updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
     },
     [updateCompleteAnchorFromOffset, userDraggingCompleteScrollRef]
   );
-  react.useEffect(() => {
-    if (!overlayViewport || !useNativeCompleteVerseView || viewerContentTop === null || viewerWrapHeight <= 0) return;
+  React.useEffect(() => {
+    if (!overlayViewport || !useNativeCompleteVerseView || viewerContentTop === null || viewerWrapHeight <= 0)
+      return;
     const updateFromOuterScroll = (outerScrollOffset) => {
+      if (pendingCompleteScrollVerseIdRef.current || Date.now() < completeRestoreGuardUntilRef.current) {
+        return;
+      }
       const viewportTop = outerScrollOffset + overlayViewport.top;
       const viewportBottom = outerScrollOffset + overlayViewport.bottom;
       const readerBottom = viewerContentTop + viewerWrapHeight;
-      if (readerBottom <= viewportTop || viewerContentTop >= viewportBottom) return;
+      if (readerBottom <= viewportTop || viewerContentTop >= viewportBottom)
+        return;
       const innerOffset = completeScrollOffsetRef.current;
       const localOffset = outerScrollOffset + overlayViewport.top - viewerContentTop + innerOffset;
       updateCompleteAnchorFromOffset(localOffset);
     };
     updateFromOuterScroll(overlayViewport.getScrollOffset());
-    const listenerId = overlayViewport.scrollY.addListener(({ value }) => updateFromOuterScroll(value));
+    const listenerId = overlayViewport.scrollY.addListener(
+      ({ value }) => updateFromOuterScroll(value)
+    );
     return () => overlayViewport.scrollY.removeListener(listenerId);
-  }, [completeScrollOffsetRef, overlayViewport, updateCompleteAnchorFromOffset, useNativeCompleteVerseView, viewerContentTop, viewerWrapHeight]);
-  const handleCompleteMomentumScrollEnd = react.useCallback(
+  }, [
+    completeRestoreGuardUntilRef,
+    completeScrollOffsetRef,
+    overlayViewport,
+    pendingCompleteScrollVerseIdRef,
+    updateCompleteAnchorFromOffset,
+    useNativeCompleteVerseView,
+    viewerContentTop,
+    viewerWrapHeight
+  ]);
+  const handleCompleteMomentumScrollEnd = React.useCallback(
     (event) => {
       userDraggingCompleteScrollRef.current = false;
       updateCompleteAnchorFromOffset(event.nativeEvent.contentOffset.y);
+      if (pendingCompleteScrollVerseIdRef.current && !overlayViewport) {
+        pendingCompleteScrollVerseIdRef.current = null;
+        completeRestoreGuardUntilRef.current = Date.now() + 120;
+      }
     },
-    [updateCompleteAnchorFromOffset, userDraggingCompleteScrollRef]
+    [
+      completeRestoreGuardUntilRef,
+      overlayViewport,
+      pendingCompleteScrollVerseIdRef,
+      updateCompleteAnchorFromOffset,
+      userDraggingCompleteScrollRef
+    ]
   );
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (contentMode !== "verse" || !isPageHydrated) return;
     const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     const firstVerseId = pageVerses?.[0];
     if (!firstVerseId) return;
     setReaderVerseId((current) => {
-      if (current && current === initialReaderVerseIdRef.current) return current;
+      if (current && current === initialReaderVerseIdRef.current)
+        return current;
       if (current && pageVerses?.includes(current)) return current;
       return current === firstVerseId ? current : firstVerseId;
     });
-  }, [completeVerses, contentMode, initialReaderVerseIdRef, isPageHydrated, pageNumber, setReaderVerseId, useNativeVersePaging, verseIdsByPage]);
-  react.useEffect(() => {
-    if (contentMode !== "verse" || viewMode !== "continuous" || !autoAlignCurrentVerse || !isPageHydrated) return;
+  }, [
+    completeVerses,
+    contentMode,
+    initialReaderVerseIdRef,
+    isPageHydrated,
+    pageNumber,
+    setReaderVerseId,
+    useNativeVersePaging,
+    verseIdsByPage
+  ]);
+  React.useEffect(() => {
+    const fontSizeChanged = previousVerseFontSizeRef.current !== verseFontSizePx;
+    previousVerseFontSizeRef.current = verseFontSizePx;
+    if (contentMode !== "verse" || viewMode !== "continuous" || !autoAlignCurrentVerse || !isPageHydrated)
+      return;
     const pageVerses = verseIdsByPage[pageNumber] || (useNativeVersePaging && completeVerses[pageNumber - 1]?.id ? [completeVerses[pageNumber - 1].id] : void 0);
     if (pageNumber > 1 && (!pageVerses || pageVerses.length === 0)) return;
     const readerVerseBelongsToPage = readerVerseId && pageVerses?.includes(readerVerseId);
     const targetVerseId = readerVerseBelongsToPage ? readerVerseId : pageVerses?.[0] || completeVerses[0]?.id || null;
     if (!targetVerseId) return;
-    if (completeRestoreTimerRef.current) clearTimeout(completeRestoreTimerRef.current);
+    if (pendingCompleteScrollVerseIdRef.current === targetVerseId && completeRestoreGuardUntilRef.current > Date.now()) {
+      return;
+    }
+    if (fontSizeChanged) {
+      completeVerseYByIdRef.current = {};
+    }
+    if (completeRestoreTimerRef.current)
+      clearTimeout(completeRestoreTimerRef.current);
     pendingCompleteScrollVerseIdRef.current = targetVerseId;
-    completeRestoreGuardUntilRef.current = Date.now() + 900;
-    completeRestoreTimerRef.current = setTimeout(() => scrollCompleteToVerse(targetVerseId, false), 80);
+    completeRestoreGuardUntilRef.current = Date.now() + (fontSizeChanged ? 1800 : 900);
+    if (fontSizeChanged) {
+      completeRestoreTimerRef.current = null;
+      return;
+    }
+    completeRestoreTimerRef.current = setTimeout(
+      () => scrollCompleteToVerse(targetVerseId, false),
+      80
+    );
     return () => {
       if (completeRestoreTimerRef.current) {
         clearTimeout(completeRestoreTimerRef.current);
@@ -5081,8 +6088,8 @@ function useExternalVerseSync({
   syncActiveVerseToWebView,
   viewMode
 }) {
-  const lastExternalVerseRef = react.useRef(null);
-  react.useEffect(() => {
+  const lastExternalVerseRef = React.useRef(null);
+  React.useEffect(() => {
     if (!externalActiveVerseId) {
       lastExternalVerseRef.current = null;
       return;
@@ -5130,7 +6137,7 @@ function useExternalVerseSync({
     showMappedVerse,
     viewMode
   ]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!hasVerseAudio || !externalVerseAudioState?.audioAssetUrl) return;
     const isPlaying = externalVerseAudioState.isPlaying === true;
     if (!isPlaying) return;
@@ -5203,7 +6210,7 @@ function useReaderVerseSync({
   viewMode,
   webViewRef
 }) {
-  const syncActiveVerseToWebView = react.useCallback(
+  const syncActiveVerseToWebView = React.useCallback(
     (verseId, isPlaying = false, shouldScroll = false) => {
       injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
         { method: "setActiveVerse", args: [verseId || "", isPlaying, shouldScroll] }
@@ -5211,7 +6218,7 @@ function useReaderVerseSync({
     },
     [fullScreenWebViewRef, webViewRef]
   );
-  const showMappedVerse = react.useCallback(
+  const showMappedVerse = React.useCallback(
     (verseId, options) => {
       const pageForVerse = getNativeVersePage(verseId);
       if (!pageForVerse) return;
@@ -5280,7 +6287,7 @@ function useVerseAudioMappingSync({
   viewMode,
   webViewRef
 }) {
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!hasVerseAudio || !status.isLoaded || !currentVerseAudioUrl) return;
     if (!status.playing) return;
     const currentMs = Math.max(0, Math.floor((status.currentTime || 0) * 1e3));
@@ -5404,16 +6411,16 @@ function useVerseAudioPlayback({
   webViewRef,
   fullScreenWebViewRef
 }) {
-  const player = useAudioPlayer(null, { updateInterval: 120 });
+  const player = useAudioPlayer(null, { updateInterval: 100 });
   const status = useAudioPlayerStatus(player);
-  const [activeVerseAudioIndex, setActiveVerseAudioIndex] = react.useState(null);
-  const [activeVerseId, setActiveVerseId] = react.useState(null);
-  const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = react.useState(null);
-  const [pendingVerseAudioSeekMs, setPendingVerseAudioSeekMs] = react.useState(null);
-  const pendingVerseAudioAutoplayRef = react.useRef(true);
-  const pendingAudioSeekTargetRef = react.useRef(null);
-  const lastAudioVerseWebSyncRef = react.useRef(null);
-  const activateVerseAudioIndex = react.useCallback(
+  const [activeVerseAudioIndex, setActiveVerseAudioIndex] = React.useState(null);
+  const [activeVerseId, setActiveVerseId] = React.useState(null);
+  const [currentVerseAudioUrl, setCurrentVerseAudioUrl] = React.useState(null);
+  const [pendingVerseAudioSeekMs, setPendingVerseAudioSeekMs] = React.useState(null);
+  const pendingVerseAudioAutoplayRef = React.useRef(true);
+  const pendingAudioSeekTargetRef = React.useRef(null);
+  const lastAudioVerseWebSyncRef = React.useRef(null);
+  const activateVerseAudioIndex = React.useCallback(
     (targetIndex, options) => {
       const item = playableVerseMappings[targetIndex];
       if (!item) return;
@@ -5460,9 +6467,15 @@ function useVerseAudioPlayback({
       startPlayback();
       showOverlay();
     },
-    [currentVerseAudioUrl, playableVerseMappings, player, showMappedVerse, showOverlay]
+    [
+      currentVerseAudioUrl,
+      playableVerseMappings,
+      player,
+      showMappedVerse,
+      showOverlay
+    ]
   );
-  const toggleVerseAudio = react.useCallback(() => {
+  const toggleVerseAudio = React.useCallback(() => {
     if (!hasVerseAudio) return;
     if (status.playing) {
       try {
@@ -5478,14 +6491,17 @@ function useVerseAudioPlayback({
       if (verseId) {
         const pageForVerse = getNativeVersePage(verseId);
         setActiveVerseId(verseId);
-        setReaderVerseId((current) => current === verseId ? current : verseId);
+        setReaderVerseId(
+          (current) => current === verseId ? current : verseId
+        );
         if (viewMode !== "book" && pageForVerse && pageForVerse !== pageNumber) {
           pageNumberRef.current = pageForVerse;
           setNativeBookPageNumberState(pageForVerse);
           void setPageNumber(pageForVerse);
-          injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
-            { method: "goToPage", args: [pageForVerse] }
-          ]);
+          injectReaderBridgeScript(
+            [webViewRef, fullScreenWebViewRef],
+            [{ method: "goToPage", args: [pageForVerse] }]
+          );
         }
         if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
           void scrollCompleteToVerse(verseId, true);
@@ -5522,7 +6538,7 @@ function useVerseAudioPlayback({
     webViewRef,
     fullScreenWebViewRef
   ]);
-  const seekActiveVerseAudioToRatio = react.useCallback(
+  const seekActiveVerseAudioToRatio = React.useCallback(
     (ratio) => {
       if (!hasVerseAudio || activeVerseAudioIndex === null) return;
       const item = playableVerseMappings[activeVerseAudioIndex];
@@ -5533,7 +6549,10 @@ function useVerseAudioPlayback({
         0,
         Number(extendedStatus.duration ?? extendedStatus.durationSeconds ?? 0)
       );
-      const mappedTrackDurationMs = playableVerseMappings.filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl).reduce((maximum, mapping) => Math.max(maximum, mapping.segmentEndMs), 0);
+      const mappedTrackDurationMs = playableVerseMappings.filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl).reduce(
+        (maximum, mapping) => Math.max(maximum, mapping.segmentEndMs),
+        0
+      );
       const trackDurationMs = Math.max(
         Math.floor(loadedDurationSeconds * 1e3),
         mappedTrackDurationMs
@@ -5569,7 +6588,7 @@ function useVerseAudioPlayback({
       status
     ]
   );
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!hasVerseAudio || !setAudioModeAsync2) return;
     void setAudioModeAsync2({
       playsInSilentMode: true,
@@ -5582,7 +6601,7 @@ function useVerseAudioPlayback({
       });
     });
   }, [hasVerseAudio]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     const extendedStatus = status;
     if (!extendedStatus.error) return;
     console.warn("[pdf-reader] Verse audio playback error", {
@@ -5592,7 +6611,7 @@ function useVerseAudioPlayback({
       timeControlStatus: extendedStatus.timeControlStatus
     });
   }, [currentVerseAudioUrl, status]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!hasVerseAudio) {
       setActiveVerseAudioIndex(null);
       setActiveVerseId(null);
@@ -5609,7 +6628,7 @@ function useVerseAudioPlayback({
       }
     };
   }, [hasVerseAudio, player, syncActiveVerseToWebView]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!hasVerseAudio || pendingVerseAudioSeekMs === null || !status.isLoaded)
       return;
     const targetMs = pendingVerseAudioSeekMs;
@@ -5661,7 +6680,7 @@ function useVerseAudioPlayback({
     viewMode,
     webViewRef
   });
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!viewerReady || contentMode !== "verse") return;
     syncActiveVerseToWebView(activeVerseId, status.playing, false);
   }, [
@@ -5707,7 +6726,7 @@ function useReaderAudioController({
   viewMode,
   viewerReady
 }) {
-  const setActiveVerseIdRef = react.useRef(
+  const setActiveVerseIdRef = React.useRef(
     () => void 0
   );
   const { showMappedVerse, syncActiveVerseToWebView } = useReaderVerseSync({
@@ -5806,11 +6825,11 @@ function useReaderControlledSettings({
   viewModeRef,
   zoomLevelRef
 }) {
-  react.useEffect(() => {
+  React.useEffect(() => {
     viewModeRef.current = controlledViewMode;
     setViewMode((value) => value === controlledViewMode ? value : controlledViewMode);
   }, [controlledViewMode, setViewMode, viewModeRef]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!Number.isFinite(Number(controlledZoomLevel))) return;
     const nextZoom = Math.max(
       MIN_ZOOM_LEVEL,
@@ -5851,8 +6870,8 @@ function useLocalPdfFallback({
   setViewerReloadKey,
   triedLocalFileFallback
 }) {
-  const staticServerRef = react.useRef(null);
-  const stopStaticServer = react.useCallback(async () => {
+  const staticServerRef = React.useRef(null);
+  const stopStaticServer = React.useCallback(async () => {
     const server = staticServerRef.current;
     if (!server || typeof server.stop !== "function") {
       staticServerRef.current = null;
@@ -5865,13 +6884,13 @@ function useLocalPdfFallback({
       staticServerRef.current = null;
     }
   }, []);
-  const reloadSource = react.useCallback(() => {
+  const reloadSource = React.useCallback(() => {
     setLocalPdfUrl(downloadUrl);
     setViewerReloadKey((key) => key + 1);
     setLoadingPdf(true);
     setLoadingError(null);
   }, [downloadUrl, setLoadingError, setLoadingPdf, setLocalPdfUrl, setViewerReloadKey]);
-  const handlePdfLoadError = react.useCallback(
+  const handlePdfLoadError = React.useCallback(
     (message, errorCode) => {
       const isLocalPdfSource = effectivePdfUrl?.startsWith("file://") === true || /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\//i.test(
         effectivePdfUrl || ""
@@ -8463,7 +9482,7 @@ function useReaderHtml({
   viewMode
 }) {
   const verseLayoutSignature = JSON.stringify(effectiveBookVerseLayout || null);
-  const pdfHtml = react.useMemo(
+  const pdfHtml = React.useMemo(
     () => contentMode === "verse" ? buildVerseHtml(
       verses || [],
       label,
@@ -8515,7 +9534,7 @@ function useReaderHtml({
       effectiveBookVerseLayout
     ]
   );
-  const pdfDocumentOrigin = react.useMemo(() => {
+  const pdfDocumentOrigin = React.useMemo(() => {
     if (!effectivePdfUrl) return null;
     try {
       const url = new URL(effectivePdfUrl);
@@ -8524,15 +9543,15 @@ function useReaderHtml({
       return null;
     }
   }, [effectivePdfUrl]);
-  const webViewSource = react.useMemo(
+  const webViewSource = React.useMemo(
     () => pdfDocumentOrigin ? { html: pdfHtml, baseUrl: pdfDocumentOrigin } : { html: pdfHtml },
     [pdfDocumentOrigin, pdfHtml]
   );
-  const webViewOriginWhitelist = react.useMemo(
+  const webViewOriginWhitelist = React.useMemo(
     () => pdfDocumentOrigin ? ["about:blank", pdfDocumentOrigin] : ["about:blank"],
     [pdfDocumentOrigin]
   );
-  const fullScreenVerseHtml = react.useMemo(
+  const fullScreenVerseHtml = React.useMemo(
     () => contentMode === "verse" ? buildVerseHtml(
       verses || [],
       label,
@@ -8572,7 +9591,7 @@ function useReaderHtml({
       pageNumberRef
     ]
   );
-  const fullScreenWebViewSource = react.useMemo(
+  const fullScreenWebViewSource = React.useMemo(
     () => ({ html: fullScreenVerseHtml }),
     [fullScreenVerseHtml]
   );
@@ -8618,7 +9637,7 @@ function useReaderDocumentSource({
     triedLocalFileFallback,
     viewerReloadKey
   } = core;
-  const downloadName = react.useMemo(() => {
+  const downloadName = React.useMemo(() => {
     const normalized = label.replace(/[\\/:*?"<>|]/g, "_").trim() || "document";
     return normalized.toLowerCase().endsWith(".pdf") ? normalized : `${normalized}.pdf`;
   }, [label]);
@@ -8636,7 +9655,7 @@ function useReaderDocumentSource({
     setViewerReloadKey,
     triedLocalFileFallback
   });
-  react.useEffect(() => {
+  React.useEffect(() => {
     const nextPdfUrl = pdfUrl || "";
     if (previousPdfUrlRef.current === nextPdfUrl) return;
     previousPdfUrlRef.current = nextPdfUrl;
@@ -8660,7 +9679,7 @@ function useReaderDocumentSource({
     setViewerReloadKey,
     stopStaticServer
   ]);
-  react.useEffect(() => () => void stopStaticServer(), [stopStaticServer]);
+  React.useEffect(() => () => void stopStaticServer(), [stopStaticServer]);
   const source = useReaderHtml({
     activeBookSpreadMode,
     contentMode,
@@ -8729,40 +9748,40 @@ function useReaderLifecycleEffects({
     viewModeRef,
     zoomLevelRef
   } = core;
-  const initialPageRef = react.useRef(
+  const initialPageRef = React.useRef(
     Number.isInteger(Number(currentPage)) && Number(currentPage) > 0 ? Math.trunc(Number(currentPage)) : 1
   );
   const externalInitialPageNumber = initialPageRef.current;
-  const [pageNumber, setPageNumber] = react.useState(externalInitialPageNumber);
-  const [nativeBookPageNumberState, setNativeBookPageNumberState] = react.useState(externalInitialPageNumber);
+  const [pageNumber, setPageNumber] = React.useState(externalInitialPageNumber);
+  const [nativeBookPageNumberState, setNativeBookPageNumberState] = React.useState(externalInitialPageNumber);
   const isPageHydrated = true;
-  react.useEffect(() => setIsVerseFullScreen(configuredFullScreen), [
+  React.useEffect(() => setIsVerseFullScreen(configuredFullScreen), [
     configuredFullScreen,
     setIsVerseFullScreen
   ]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!allowBookDoubleSpread) setBookSpreadMode("single");
   }, [allowBookDoubleSpread, setBookSpreadMode]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     const nextFullScreen = contentMode === "verse" && isVerseFullScreen;
     if (lastEmittedFullScreenRef.current === nextFullScreen) return;
     lastEmittedFullScreenRef.current = nextFullScreen;
     onFullScreenChange?.(nextFullScreen);
   }, [contentMode, isVerseFullScreen, lastEmittedFullScreenRef, onFullScreenChange]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (contentMode === "verse" && showShareOverlay) setShowShareOverlay(false);
   }, [contentMode, setShowShareOverlay, showShareOverlay]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     pageNumberRef.current = pageNumber;
     setNativeBookPageNumberState((current) => current === pageNumber ? current : pageNumber);
   }, [pageNumber, pageNumberRef]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     viewModeRef.current = viewMode;
   }, [viewMode, viewModeRef]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     zoomLevelRef.current = zoomLevel;
   }, [zoomLevel, zoomLevelRef]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     const nextState = {
       currentPage: pageNumber,
       pageCount,
@@ -8784,13 +9803,13 @@ function useReaderLifecycleEffects({
     viewMode,
     zoomLevel
   ]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     pageCountRef.current = pageCount;
   }, [pageCount, pageCountRef]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     onReadyRef.current = onReady;
   }, [onReady, onReadyRef]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!useNativeVersePaging) return;
     const nextPageCount = Math.max(1, completeVerseCount);
     pageCountRef.current = nextPageCount;
@@ -8819,7 +9838,7 @@ function useReaderLifecycleEffects({
     setViewerReady,
     useNativeVersePaging
   ]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     setVerseFontSizePx(
       (value) => Math.max(verseZoomConfig.min, Math.min(verseZoomConfig.max, value))
     );
@@ -9036,17 +10055,33 @@ function PdfDocumentViewer({
   hideReaderActionControls = false,
   hideVerseAudioControls = false,
   externalVerseAudioState = null,
+  externalVerseAudioMappings = [],
+  audioSourceAvailable,
   onExternalAudioToggle,
+  autoReadPlaying = false,
+  autoReadClockMs,
+  autoReadResetKey = "",
+  onAutoReadPlayingChange,
+  onAutoReadCompleteChange,
   externalActiveVerseId = null,
   initialReaderVerseId = null,
   readerTheme,
   resetConfirmation,
   overlayViewport
 }) {
-  const resolvedReaderTheme = react.useMemo(() => resolveReaderTheme(readerTheme), [readerTheme]);
-  const verseZoomConfig = react.useMemo(() => {
-    const min = Math.max(1, Math.round(Number(verseLayout?.minFontSizePx) || 18));
-    const max = Math.max(min, Math.round(Number(verseLayout?.maxFontSizePx) || 36));
+  const resolvedReaderTheme = React.useMemo(
+    () => resolveReaderTheme(readerTheme),
+    [readerTheme]
+  );
+  const verseZoomConfig = React.useMemo(() => {
+    const min = Math.max(
+      1,
+      Math.round(Number(verseLayout?.minFontSizePx) || 18)
+    );
+    const max = Math.max(
+      min,
+      Math.round(Number(verseLayout?.maxFontSizePx) || 36)
+    );
     const defaultSize = Math.max(
       min,
       Math.min(max, Math.round(Number(verseLayout?.defaultFontSizePx) || 22))
@@ -9057,7 +10092,11 @@ function PdfDocumentViewer({
       defaultSize,
       step: VERSE_BUTTON_ZOOM_STEP_PX
     };
-  }, [verseLayout?.defaultFontSizePx, verseLayout?.maxFontSizePx, verseLayout?.minFontSizePx]);
+  }, [
+    verseLayout?.defaultFontSizePx,
+    verseLayout?.maxFontSizePx,
+    verseLayout?.minFontSizePx
+  ]);
   const requestedViewMode = controlledViewMode;
   const requestedZoomLevel = Math.max(
     MIN_ZOOM_LEVEL,
@@ -9186,7 +10225,15 @@ function PdfDocumentViewer({
     audio: readerAudio,
     label,
     onExternalAudioToggle,
+    externalActiveVerseId,
     externalVerseAudioState,
+    externalVerseAudioMappings,
+    audioSourceAvailable,
+    autoReadPlaying,
+    autoReadClockMs,
+    autoReadResetKey,
+    onAutoReadPlayingChange,
+    onAutoReadCompleteChange,
     overlayViewport,
     page: {
       isPageHydrated,
@@ -9223,6 +10270,7 @@ function PdfDocumentViewer({
       core: readerCore,
       documentSource: readerDocumentSource,
       externalVerseAudioState,
+      autoReadPlaying,
       hideControls,
       hidePageNavigationControls,
       hideVerseAudioControls,

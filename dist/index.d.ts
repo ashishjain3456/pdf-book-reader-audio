@@ -12,6 +12,18 @@ declare function createStorageKey(documentId: string): string;
 
 /** Clamp a requested page to the document bounds; unknown page counts stay open-ended. */
 declare function clampPageNumber(requestedPage: number, pageCount?: number): number;
+declare function getReaderModeSwitchTarget({ completeVerseIds, currentPage, pageCount, readerVerseId, useNativeVersePaging, verseIdsByPage, versePageById, }: {
+    completeVerseIds: string[];
+    currentPage: number;
+    pageCount: number;
+    readerVerseId: string | null;
+    useNativeVersePaging: boolean;
+    verseIdsByPage: Record<number, string[]>;
+    versePageById: Record<string, number>;
+}): {
+    targetPage: number;
+    targetVerseId: string | null;
+};
 
 type TimedAudioMapping = {
     audioAssetUrl: string;
@@ -22,4 +34,4 @@ declare function findTimedAudioMappingIndex<T extends TimedAudioMapping>(mapping
 declare function mergePageAudioMappings(taggedMappings: PageAudioMapping[], directMappings: PageAudioMapping[]): PageAudioMapping[];
 declare function getMappingsForPage(mappings: PageAudioMapping[], pageNumber: number): PageAudioMapping[];
 
-export { PageAudioMapping, type TimedAudioMapping, buildPageUrl, clampPageNumber, createStorageKey, findTimedAudioMappingIndex, getMappingsForPage, mergePageAudioMappings, parsePageFromUrl, resolveInitialPage };
+export { PageAudioMapping, type TimedAudioMapping, buildPageUrl, clampPageNumber, createStorageKey, findTimedAudioMappingIndex, getMappingsForPage, getReaderModeSwitchTarget, mergePageAudioMappings, parsePageFromUrl, resolveInitialPage };

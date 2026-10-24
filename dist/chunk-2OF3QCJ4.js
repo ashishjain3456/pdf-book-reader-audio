@@ -1,5 +1,5 @@
-import { createStorageKey, resolveInitialPage } from './chunk-MJ2J2J3T.js';
-import { clampPageNumber } from './chunk-JTAVLX62.js';
+import { createStorageKey, resolveInitialPage } from './chunk-U5A26QTQ.js';
+import { clampPageNumber } from './chunk-XMWMQCNE.js';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 
 function useReaderPageState({
@@ -43,5 +43,5 @@ function useReaderPageState({
 }
 
 export { useReaderPageState };
-//# sourceMappingURL=chunk-C4RLC2YI.js.map
-//# sourceMappingURL=chunk-C4RLC2YI.js.map
+//# sourceMappingURL=chunk-2OF3QCJ4.js.map
+//# sourceMappingURL=chunk-2OF3QCJ4.js.map

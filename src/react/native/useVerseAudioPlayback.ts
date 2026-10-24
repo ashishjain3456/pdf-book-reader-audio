@@ -75,7 +75,7 @@ export function useVerseAudioPlayback({
   webViewRef,
   fullScreenWebViewRef,
 }: Options) {
-  const player = useAudioPlayer(null, { updateInterval: 120 });
+  const player = useAudioPlayer(null, { updateInterval: 100 });
   const status = useAudioPlayerStatus(player);
   const [activeVerseAudioIndex, setActiveVerseAudioIndex] = useState<
     number | null
@@ -146,7 +146,13 @@ export function useVerseAudioPlayback({
       startPlayback();
       showOverlay();
     },
-    [currentVerseAudioUrl, playableVerseMappings, player, showMappedVerse, showOverlay],
+    [
+      currentVerseAudioUrl,
+      playableVerseMappings,
+      player,
+      showMappedVerse,
+      showOverlay,
+    ],
   );
 
   const toggleVerseAudio = useCallback(() => {
@@ -167,14 +173,21 @@ export function useVerseAudioPlayback({
       if (verseId) {
         const pageForVerse = getNativeVersePage(verseId);
         setActiveVerseId(verseId);
-        setReaderVerseId((current) => (current === verseId ? current : verseId));
-        if (viewMode !== "book" && pageForVerse && pageForVerse !== pageNumber) {
+        setReaderVerseId((current) =>
+          current === verseId ? current : verseId,
+        );
+        if (
+          viewMode !== "book" &&
+          pageForVerse &&
+          pageForVerse !== pageNumber
+        ) {
           pageNumberRef.current = pageForVerse;
           setNativeBookPageNumberState(pageForVerse);
           void setPageNumber(pageForVerse);
-          injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
-            { method: "goToPage", args: [pageForVerse] },
-          ]);
+          injectReaderBridgeScript(
+            [webViewRef, fullScreenWebViewRef],
+            [{ method: "goToPage", args: [pageForVerse] }],
+          );
         }
         if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
           void scrollCompleteToVerse(verseId, true);
@@ -227,7 +240,10 @@ export function useVerseAudioPlayback({
       );
       const mappedTrackDurationMs = playableVerseMappings
         .filter((mapping) => mapping.audioAssetUrl === item.audioAssetUrl)
-        .reduce((maximum, mapping) => Math.max(maximum, mapping.segmentEndMs), 0);
+        .reduce(
+          (maximum, mapping) => Math.max(maximum, mapping.segmentEndMs),
+          0,
+        );
       const trackDurationMs = Math.max(
         Math.floor(loadedDurationSeconds * 1000),
         mappedTrackDurationMs,
