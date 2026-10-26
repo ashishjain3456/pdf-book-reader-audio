@@ -224,4 +224,6 @@ export type PdfDocumentViewerProps = {
   readerTheme?: ReaderTheme;
   resetConfirmation?: ReaderResetConfirmation;
   overlayViewport?: ReaderOverlayViewport;
+  /** Bottom safe-area inset used to keep fullscreen controls above system navigation. */
+  safeAreaBottomInset?: number;
 };

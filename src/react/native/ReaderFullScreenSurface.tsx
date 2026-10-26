@@ -31,6 +31,7 @@ type Props = {
   showOverlay: () => void;
   theme: Required<ReaderTheme>;
   verseLayout?: VerseLayoutConfig;
+  safeAreaBottomInset: number;
 };
 
 export function ReaderFullScreenSurface({
@@ -50,6 +51,7 @@ export function ReaderFullScreenSurface({
   showOverlay,
   theme,
   verseLayout,
+  safeAreaBottomInset,
 }: Props) {
   const fullscreen = interactions.fullscreen;
   const {
@@ -133,6 +135,7 @@ export function ReaderFullScreenSurface({
               hidePageNavigationControls={hidePageNavigationControls}
               hideVerseAudioControls={hideVerseAudioControls}
               isFullScreenLandscape={isFullScreenLandscape}
+              safeAreaBottomInset={safeAreaBottomInset}
               onAudioSliderWidthChange={setActiveVerseAudioWidth}
               onExternalAudioToggle={onExternalAudioToggle}
               pageBadgeText={pageBadgeText}

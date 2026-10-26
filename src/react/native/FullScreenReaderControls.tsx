@@ -32,6 +32,7 @@ type Props = {
   hidePageNavigationControls: boolean;
   hideVerseAudioControls: boolean;
   isFullScreenLandscape: boolean;
+  safeAreaBottomInset: number;
   onAudioSliderWidthChange: (width: number) => void;
   onExternalAudioToggle?: () => void;
   pageBadgeText: string;
@@ -80,6 +81,7 @@ export function FullScreenReaderControls({
   hidePageNavigationControls,
   hideVerseAudioControls,
   isFullScreenLandscape,
+  safeAreaBottomInset,
   onAudioSliderWidthChange,
   onExternalAudioToggle,
   pageBadgeText,
@@ -110,6 +112,7 @@ export function FullScreenReaderControls({
       style={[
         styles.nativeFullScreenControls,
         isFullScreenLandscape ? styles.nativeFullScreenControlsLandscape : null,
+        { bottom: (isFullScreenLandscape ? 6 : 18) + safeAreaBottomInset },
       ]}
     >
       {hasVerseAudio && !hideVerseAudioControls ? (

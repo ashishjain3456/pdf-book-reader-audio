@@ -157,8 +157,10 @@ type PdfDocumentViewerProps = {
     readerTheme?: ReaderTheme;
     resetConfirmation?: ReaderResetConfirmation;
     overlayViewport?: ReaderOverlayViewport;
+    /** Bottom safe-area inset used to keep fullscreen controls above system navigation. */
+    safeAreaBottomInset?: number;
 };
 
-declare function PdfDocumentViewer({ pdfUrl, pdfJsScriptUrl, pdfJsWorkerUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, externalVerseAudioMappings, audioSourceAvailable, onExternalAudioToggle, autoReadPlaying, autoReadClockMs, autoReadResetKey, onAutoReadPlayingChange, onAutoReadCompleteChange, externalActiveVerseId, initialReaderVerseId, readerTheme, resetConfirmation, overlayViewport, }: PdfDocumentViewerProps): react.JSX.Element;
+declare function PdfDocumentViewer({ pdfUrl, pdfJsScriptUrl, pdfJsWorkerUrl, downloadUrl, enableLocalFallback, title, filename, documentId, currentPage, viewMode: controlledViewMode, zoomLevel: controlledZoomLevel, neighborPageCount, loadingMessage, onReady, onStateChange, onError, mode, verses, verseAudioMappings, verseLayout, renderRightActions, onFullScreenChange, hideControls, hidePageNavigationControls, hideReaderActionControls, hideVerseAudioControls, externalVerseAudioState, externalVerseAudioMappings, audioSourceAvailable, onExternalAudioToggle, autoReadPlaying, autoReadClockMs, autoReadResetKey, onAutoReadPlayingChange, onAutoReadCompleteChange, externalActiveVerseId, initialReaderVerseId, readerTheme, resetConfirmation, overlayViewport, safeAreaBottomInset, }: PdfDocumentViewerProps): react.JSX.Element;
 
 export { type ExternalVerseAudioState, PdfDocumentViewer, type PdfDocumentViewerProps, type ReaderActionsContext, type ReaderResetConfirmation, type ReaderState, type ReaderTheme, type ReaderVerse, type ReaderViewMode, VerseAudioMapping, type VerseLayoutConfig };

@@ -1,35 +1,35 @@
-import * as React from 'react';
-import { AppState } from 'react-native';
-import { FullScreenReaderControls } from './FullScreenReaderControls';
-import { NativeBookPage } from './NativeBookPage';
-import { NativeBookTurnOverlay } from './NativeBookTurnOverlay';
-import { NativeFullScreenReaderOverlay } from './NativeFullScreenReaderOverlay';
-import { useMappedVerseNavigation } from './useMappedVerseNavigation';
-import { useReaderActions } from './useReaderActions';
-import { useReaderAudioProgress } from './useReaderAudioProgress';
-import { getMappedPageProgress } from '../../core/readerPlayback';
-import { useAutoReadPlayback } from './useAutoReadPlayback';
-import { useReaderAudioSlider } from './useReaderAudioSlider';
-import { useReaderBookControls } from './useReaderBookControls';
-import { useReaderFullscreen } from './useReaderFullscreen';
-import { useReaderGestures } from './useReaderGestures';
-import { useReaderNavigation } from './useReaderNavigation';
-import { useReaderPresentation } from './useReaderPresentation';
-import { useReaderSharing } from './useReaderSharing';
-import { useReaderViewMode } from './useReaderViewMode';
-import { useReaderZoom } from './useReaderZoom';
-import { createReaderWebViewHandlers } from './readerWebViewHandlers';
-import type { useCompleteVerseScroll } from './useCompleteVerseScroll';
-import type { useReaderAudioController } from './useReaderAudioController';
-import type { useReaderContentModel } from './useReaderContentModel';
-import type { useReaderCoreState } from './useReaderCoreState';
-import type { useReaderDocumentSource } from './useReaderDocumentSource';
+import * as React from "react";
+import { AppState } from "react-native";
+import { FullScreenReaderControls } from "./FullScreenReaderControls";
+import { NativeBookPage } from "./NativeBookPage";
+import { NativeBookTurnOverlay } from "./NativeBookTurnOverlay";
+import { NativeFullScreenReaderOverlay } from "./NativeFullScreenReaderOverlay";
+import { useMappedVerseNavigation } from "./useMappedVerseNavigation";
+import { useReaderActions } from "./useReaderActions";
+import { useReaderAudioProgress } from "./useReaderAudioProgress";
+import { getMappedPageProgress } from "../../core/readerPlayback";
+import { useAutoReadPlayback } from "./useAutoReadPlayback";
+import { useReaderAudioSlider } from "./useReaderAudioSlider";
+import { useReaderBookControls } from "./useReaderBookControls";
+import { useReaderFullscreen } from "./useReaderFullscreen";
+import { useReaderGestures } from "./useReaderGestures";
+import { useReaderNavigation } from "./useReaderNavigation";
+import { useReaderPresentation } from "./useReaderPresentation";
+import { useReaderSharing } from "./useReaderSharing";
+import { useReaderViewMode } from "./useReaderViewMode";
+import { useReaderZoom } from "./useReaderZoom";
+import { createReaderWebViewHandlers } from "./readerWebViewHandlers";
+import type { useCompleteVerseScroll } from "./useCompleteVerseScroll";
+import type { useReaderAudioController } from "./useReaderAudioController";
+import type { useReaderContentModel } from "./useReaderContentModel";
+import type { useReaderCoreState } from "./useReaderCoreState";
+import type { useReaderDocumentSource } from "./useReaderDocumentSource";
 import type {
   PdfDocumentViewerProps,
   ReaderTheme,
   ReaderViewMode,
-} from './types';
-import { PDF_ZOOM_STEP } from './constants';
+} from "./types";
+import { PDF_ZOOM_STEP } from "./constants";
 
 type Props = {
   content: ReturnType<typeof useReaderContentModel>;
@@ -37,19 +37,19 @@ type Props = {
   documentSource: ReturnType<typeof useReaderDocumentSource>;
   audio: ReturnType<typeof useReaderAudioController>;
   label: string;
-  onExternalAudioToggle?: PdfDocumentViewerProps['onExternalAudioToggle'];
-  externalVerseAudioState: PdfDocumentViewerProps['externalVerseAudioState'];
-  externalActiveVerseId?: PdfDocumentViewerProps['externalActiveVerseId'];
+  onExternalAudioToggle?: PdfDocumentViewerProps["onExternalAudioToggle"];
+  externalVerseAudioState: PdfDocumentViewerProps["externalVerseAudioState"];
+  externalActiveVerseId?: PdfDocumentViewerProps["externalActiveVerseId"];
   externalVerseAudioMappings: NonNullable<
-    PdfDocumentViewerProps['externalVerseAudioMappings']
+    PdfDocumentViewerProps["externalVerseAudioMappings"]
   >;
   audioSourceAvailable?: boolean;
   autoReadPlaying: boolean;
   autoReadClockMs?: number;
   autoReadResetKey: string;
-  onAutoReadPlayingChange?: PdfDocumentViewerProps['onAutoReadPlayingChange'];
-  onAutoReadCompleteChange?: PdfDocumentViewerProps['onAutoReadCompleteChange'];
-  overlayViewport?: PdfDocumentViewerProps['overlayViewport'];
+  onAutoReadPlayingChange?: PdfDocumentViewerProps["onAutoReadPlayingChange"];
+  onAutoReadCompleteChange?: PdfDocumentViewerProps["onAutoReadCompleteChange"];
+  overlayViewport?: PdfDocumentViewerProps["overlayViewport"];
   page: {
     isPageHydrated: boolean;
     nativeBookPageNumberState: number;
@@ -60,22 +60,22 @@ type Props = {
   readerDocumentId: string;
   readerDialogOkLabel: string;
   readerTheme: Required<ReaderTheme>;
-  resetConfirmation?: PdfDocumentViewerProps['resetConfirmation'];
+  resetConfirmation?: PdfDocumentViewerProps["resetConfirmation"];
   scroll: ReturnType<typeof useCompleteVerseScroll>;
   shareUrl: string;
   viewerContentTop: number | null;
   showOverlay: () => void;
   props: Pick<
     PdfDocumentViewerProps,
-    | 'hidePageNavigationControls'
-    | 'hideReaderActionControls'
-    | 'hideVerseAudioControls'
-    | 'onError'
-    | 'onExternalAudioToggle'
-    | 'onReady'
-    | 'renderRightActions'
-    | 'resetConfirmation'
-    | 'verseLayout'
+    | "hidePageNavigationControls"
+    | "hideReaderActionControls"
+    | "hideVerseAudioControls"
+    | "onError"
+    | "onExternalAudioToggle"
+    | "onReady"
+    | "renderRightActions"
+    | "resetConfirmation"
+    | "verseLayout"
   >;
   verseZoomConfig: {
     min: number;
@@ -164,7 +164,6 @@ export function useReaderInteractionBindings({
     zoomLevel,
     zoomLevelRef: core.zoomLevelRef,
   });
-
   const { handleFullScreenMessage, handleMainMessage } =
     buildReaderWebViewHandlers({
       adjustVerseFontSize,
@@ -231,13 +230,33 @@ export function useReaderInteractionBindings({
     useFullScreenBookWebView,
     zoomLevel,
   });
+  const manualPageAudioRef = React.useRef({
+    verseAudioPlaying: audio.verseAudioStatus.playing,
+    toggleVerseAudio: audio.toggleVerseAudio,
+    externalAudioPlaying: externalVerseAudioState?.isPlaying,
+    onExternalAudioToggle,
+  });
+  React.useEffect(() => {
+    manualPageAudioRef.current = {
+      verseAudioPlaying: audio.verseAudioStatus.playing,
+      toggleVerseAudio: audio.toggleVerseAudio,
+      externalAudioPlaying: externalVerseAudioState?.isPlaying,
+      onExternalAudioToggle,
+    };
+  }, [
+    audio.toggleVerseAudio,
+    audio.verseAudioStatus.playing,
+    externalVerseAudioState?.isPlaying,
+    onExternalAudioToggle,
+  ]);
   const pauseAudioForManualPageTurn = React.useCallback(() => {
-    if (audio.verseAudioStatus.playing) {
-      audio.toggleVerseAudio();
-    } else if (externalVerseAudioState?.isPlaying) {
-      onExternalAudioToggle?.();
+    const audioState = manualPageAudioRef.current;
+    if (audioState.verseAudioPlaying) {
+      audioState.toggleVerseAudio();
+    } else if (audioState.externalAudioPlaying) {
+      audioState.onExternalAudioToggle?.();
     }
-  }, [audio, externalVerseAudioState?.isPlaying, onExternalAudioToggle]);
+  }, []);
   const goToNextPageManually = React.useCallback(() => {
     pauseAudioForManualPageTurn();
     goToNextPage();
@@ -320,7 +339,7 @@ export function useReaderInteractionBindings({
     viewMode,
   });
   const getNativeBookVersePageNumber = (
-    verse: (typeof completeVerses)[number]
+    verse: (typeof completeVerses)[number],
   ) => {
     const index = completeVerses.findIndex((item) => item.id === verse.id);
     return index >= 0 ? index + 1 : presentation.nativeBookPageNumber;
@@ -329,7 +348,7 @@ export function useReaderInteractionBindings({
     verse: (typeof completeVerses)[number],
     key: string,
     fullScreen: boolean,
-    pageStyle?: Record<string, unknown>
+    pageStyle?: Record<string, unknown>,
   ) => (
     <NativeBookPage
       key={key}
@@ -339,7 +358,7 @@ export function useReaderInteractionBindings({
       fontSize={presentation.nativeBookVerseFontSizePx}
       theme={readerTheme}
       fullScreen={fullScreen}
-      doubleSpread={activeBookSpreadMode === 'double'}
+      doubleSpread={activeBookSpreadMode === "double"}
       contentKeyPrefix={key}
       pageStyle={pageStyle}
     />
@@ -362,12 +381,12 @@ export function useReaderInteractionBindings({
     status: audio.verseAudioStatus,
   });
   const readerPageNumber =
-    contentMode === 'verse' && useNativeVersePaging
+    contentMode === "verse" && useNativeVersePaging
       ? presentation.nativeBookPageNumber
       : page.pageNumber;
   const visiblePageNumbers = [
     readerPageNumber,
-    ...(viewMode === 'book' && activeBookSpreadMode === 'double'
+    ...(viewMode === "book" && activeBookSpreadMode === "double"
       ? [readerPageNumber + 1]
       : []),
   ];
@@ -380,39 +399,39 @@ export function useReaderInteractionBindings({
           .map((verse) => verse.id);
       const mappedVerses = mappedIds
         .map((id) =>
-          completeVerses.find((verse) => String(verse.id) === String(id))
+          completeVerses.find((verse) => String(verse.id) === String(id)),
         )
         .filter((verse): verse is (typeof completeVerses)[number] =>
-          Boolean(verse)
+          Boolean(verse),
         );
       const visibleVerses = mappedVerses.length
         ? mappedVerses
         : [completeVerses[visiblePage - 1]].filter(
-            (verse): verse is (typeof completeVerses)[number] => Boolean(verse)
+            (verse): verse is (typeof completeVerses)[number] => Boolean(verse),
           );
       return visibleVerses.map((verse) => verse.contentHtml);
     })
-    .join(' ');
+    .join(" ");
   const hasAnyAudioSource =
     audioSourceAvailable ??
     Boolean(
       externalVerseAudioState?.audioAssetUrl ||
       externalVerseAudioMappings.length ||
-      hasVerseAudio
+      hasVerseAudio,
     );
   const canAutoRead = Boolean(
-    contentMode === 'verse' &&
+    contentMode === "verse" &&
     completeVerses.length &&
     (audioSourceAvailable === false ||
       (!hasAnyAudioSource &&
         !externalVerseAudioState?.audioAssetUrl &&
         !externalVerseAudioMappings.length &&
-        !hasVerseAudio))
+        !hasVerseAudio)),
   );
   const subscribeToAppState = React.useCallback(
     (listener: (state: string) => void) =>
-      AppState.addEventListener('change', listener),
-    []
+      AppState.addEventListener("change", listener),
+    [],
   );
   const autoRead = useAutoReadPlayback({
     allowed: canAutoRead,
@@ -422,7 +441,7 @@ export function useReaderInteractionBindings({
     onCompleteChange: onAutoReadCompleteChange,
     pageNumber: readerPageNumber,
     pageCount: completeVerses.length,
-    pageStep: viewMode === 'book' && activeBookSpreadMode === 'double' ? 2 : 1,
+    pageStep: viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1,
     resetKey: autoReadResetKey,
     visiblePageText,
     goToNextPage,
@@ -434,7 +453,7 @@ export function useReaderInteractionBindings({
         externalVerseAudioMappings,
         externalVerseAudioState.audioAssetUrl,
         Number(externalVerseAudioState.currentTimeMs) || 0,
-        (verseId) => scroll.getNativeVersePage(verseId) ?? null
+        (verseId) => scroll.getNativeVersePage(verseId) ?? null,
       )
     : null;
   const internalTimelineProgress =
@@ -443,7 +462,7 @@ export function useReaderInteractionBindings({
           playableVerseMappings,
           activeVerseAudio.audioAssetUrl,
           Math.max(0, Number(audio.verseAudioStatus.currentTime) || 0) * 1000,
-          (verseId) => scroll.getNativeVersePage(verseId) ?? null
+          (verseId) => scroll.getNativeVersePage(verseId) ?? null,
         )
       : null;
   const mappedTimelineProgress = externalVerseAudioState?.audioAssetUrl
@@ -451,14 +470,14 @@ export function useReaderInteractionBindings({
     : internalTimelineProgress;
   const toggleAutoRead = React.useCallback(() => {
     const shouldStart = !autoReadPlaying;
-    if (shouldStart && contentMode === 'verse' && viewMode === 'continuous') {
+    if (shouldStart && contentMode === "verse" && viewMode === "continuous") {
       const targetVerseId =
         core.readerVerseId ||
         core.verseIdsByPage[readerPageNumber]?.[0] ||
         completeVerses[readerPageNumber - 1]?.id;
       if (targetVerseId) {
         core.setReaderVerseId((current) =>
-          current === targetVerseId ? current : targetVerseId
+          current === targetVerseId ? current : targetVerseId,
         );
         scroll.scrollCompleteToVerse(targetVerseId, false);
       }
@@ -478,7 +497,7 @@ export function useReaderInteractionBindings({
   ]);
   const playbackProgress = canAutoRead
     ? {
-        mode: 'auto-read' as const,
+        mode: "auto-read" as const,
         progress: autoRead.progress,
         progressStore: autoRead.progressStore,
         complete: autoRead.completed,
@@ -487,7 +506,7 @@ export function useReaderInteractionBindings({
       }
     : mappedTimelineProgress
       ? {
-          mode: 'audio' as const,
+          mode: "audio" as const,
           progress: mappedTimelineProgress.progress,
           complete: false,
           pageNumber: mappedTimelineProgress.pageNumber,
@@ -529,7 +548,7 @@ export function useReaderInteractionBindings({
     canZoomIn: !zoomInDisabled,
     canZoomOut: !zoomOutDisabled,
     hidePageNavigationControls: props.hidePageNavigationControls ?? false,
-    isVerseContent: contentMode === 'verse',
+    isVerseContent: contentMode === "verse",
     nextPage: goToNextPageManually,
     previousPage: goToPreviousPageManually,
     resetToFirstPage: bookControls.confirmGoToFirstPage,
@@ -540,9 +559,9 @@ export function useReaderInteractionBindings({
     toggleFullScreen: toggleVerseFullScreenFromActions,
     viewMode,
     zoomIn: () =>
-      contentMode === 'verse' ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
+      contentMode === "verse" ? zoomInVerse() : adjustPdfZoom(PDF_ZOOM_STEP),
     zoomOut: () =>
-      contentMode === 'verse' ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
+      contentMode === "verse" ? zoomOutVerse() : adjustPdfZoom(-PDF_ZOOM_STEP),
   });
 
   return {
@@ -602,10 +621,10 @@ function buildReaderWebViewHandlers(args: {
   content: ReturnType<typeof useReaderContentModel>;
   core: ReturnType<typeof useReaderCoreState>;
   documentSource: ReturnType<typeof useReaderDocumentSource>;
-  onError?: PdfDocumentViewerProps['onError'];
-  onReady?: PdfDocumentViewerProps['onReady'];
-  overlayViewport?: PdfDocumentViewerProps['overlayViewport'];
-  page: Props['page'];
+  onError?: PdfDocumentViewerProps["onError"];
+  onReady?: PdfDocumentViewerProps["onReady"];
+  overlayViewport?: PdfDocumentViewerProps["overlayViewport"];
+  page: Props["page"];
   scroll: ReturnType<typeof useCompleteVerseScroll>;
   showOverlay: () => void;
   viewerContentTop: number | null;

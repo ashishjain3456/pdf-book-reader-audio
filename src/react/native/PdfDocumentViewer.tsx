@@ -70,6 +70,7 @@ export default function PdfDocumentViewer({
   readerTheme,
   resetConfirmation,
   overlayViewport,
+  safeAreaBottomInset = 0,
 }: PdfDocumentViewerProps) {
   const resolvedReaderTheme = useMemo(
     () => resolveReaderTheme(readerTheme),
@@ -310,6 +311,7 @@ export default function PdfDocumentViewer({
       showOverlay={showOverlay}
       theme={resolvedReaderTheme}
       verseLayout={verseLayout}
+      safeAreaBottomInset={safeAreaBottomInset}
     />
   );
   const readerContent = (
