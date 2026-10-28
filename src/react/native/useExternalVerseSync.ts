@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { findTimedAudioMappingIndex } from "../../core/pageAudioMapping";
+import { findTimedAudioMappingIndex } from "../../core/pageAudioMapping.ts";
 import type { ExternalVerseAudioState, ReaderViewMode } from "./types";
 
 type PlayableMapping = {
@@ -71,7 +71,7 @@ export function useExternalVerseSync({
 
     const externalAudioIsDrivingVerse = Boolean(
       externalVerseAudioState?.isPlaying &&
-        externalVerseAudioState.audioAssetUrl,
+      externalVerseAudioState.audioAssetUrl,
     );
     if (viewMode === "continuous" && externalAudioIsDrivingVerse) {
       const previous = lastExternalVerseRef.current;
@@ -108,7 +108,20 @@ export function useExternalVerseSync({
       verseId: externalActiveVerseId,
       isFullScreen: isVerseFullScreen,
     };
-    showMappedVerse(externalActiveVerseId);
+    if (pageForVerse === pageNumber) {
+      setActiveVerseId(externalActiveVerseId);
+      setReaderVerseId(externalActiveVerseId);
+      syncActiveVerseToWebView(
+        externalActiveVerseId,
+        externalAudioIsDrivingVerse,
+        false,
+      );
+      return;
+    }
+    showMappedVerse(externalActiveVerseId, {
+      isPlaying: externalAudioIsDrivingVerse,
+      animated: previous !== null,
+    });
   }, [
     externalActiveVerseId,
     externalVerseAudioState?.audioAssetUrl,

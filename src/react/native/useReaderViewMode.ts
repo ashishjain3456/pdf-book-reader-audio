@@ -1,18 +1,19 @@
-import { useCallback, useEffect, type MutableRefObject } from 'react';
+import { useCallback, useEffect, type MutableRefObject } from "react";
 import {
   clampPageNumber,
   getReaderModeSwitchTarget,
-} from '../../core/readerNavigation.ts';
-import { injectReaderBridgeScript } from './readerWebViewBridge';
+} from "../../core/readerNavigation.ts";
+import { injectReaderBridgeScript } from "./readerWebViewBridge.ts";
 import type {
   ReaderViewMode,
   ReaderWebViewRef,
   VerseLayoutConfig,
-} from './types';
+} from "./types";
 
 type Options = {
   completeVerses: { id: string | number }[];
-  contentMode: 'pdf' | 'verse';
+  autoReadPageNumberRef: MutableRefObject<number | null>;
+  contentMode: "pdf" | "verse";
   fullScreenWebViewRef: ReaderWebViewRef;
   lastInjectedViewerStateRef: MutableRefObject<string | null>;
   lastSyncedViewModeRef: MutableRefObject<ReaderViewMode | null>;
@@ -36,7 +37,7 @@ type Options = {
     mode: ReaderViewMode,
     page: number,
     verseId?: string | null,
-    zoom?: number
+    zoom?: number,
   ) => void;
   useNativeVersePaging: boolean;
   verseIdsByPage: Record<number, string[]>;
@@ -53,6 +54,7 @@ type Options = {
 export function useReaderViewMode(options: Options) {
   const {
     completeVerses,
+    autoReadPageNumberRef,
     contentMode,
     fullScreenWebViewRef,
     lastInjectedViewerStateRef,
@@ -89,22 +91,28 @@ export function useReaderViewMode(options: Options) {
   const switchReaderMode = useCallback(
     (mode: ReaderViewMode) => {
       const currentPage =
-        (viewMode === 'book' && nativeBookPageNumber) ||
+        autoReadPageNumberRef.current ||
+        (viewMode === "book" && nativeBookPageNumber) ||
         pageNumberRef.current ||
         pageNumber;
       const currentZoom = zoomLevelRef.current || zoomLevel;
+      const autoReadVerseId =
+        autoReadPageNumberRef.current === null
+          ? null
+          : completeVerses[autoReadPageNumberRef.current - 1]?.id;
       const { targetPage, targetVerseId } = getReaderModeSwitchTarget({
         completeVerseIds: completeVerses.map((verse) => String(verse.id)),
         currentPage,
         pageCount,
-        readerVerseId,
+        readerVerseId:
+          autoReadVerseId == null ? readerVerseId : String(autoReadVerseId),
         useNativeVersePaging,
         verseIdsByPage,
         versePageById,
       });
       const normalizedTargetVerseId =
         targetVerseId == null ? null : String(targetVerseId);
-      if (mode === 'continuous' && normalizedTargetVerseId) {
+      if (mode === "continuous" && normalizedTargetVerseId) {
         pendingCompleteScrollVerseIdRef.current = normalizedTargetVerseId;
       }
       pendingModeSwitchPageRef.current = targetPage;
@@ -112,11 +120,11 @@ export function useReaderViewMode(options: Options) {
       setNativeBookPageNumberState(targetPage);
       viewModeRef.current = mode;
       setReaderVerseId((current) =>
-        current === normalizedTargetVerseId ? current : normalizedTargetVerseId
+        current === normalizedTargetVerseId ? current : normalizedTargetVerseId,
       );
       void setPageNumber(targetPage);
       setViewMode(mode);
-      if (contentMode === 'verse')
+      if (contentMode === "verse")
         setIsVerseFullScreen(verseLayout?.fullScreen === true);
       setShowShareOverlay(false);
       suppressCompleteModeSyncRef.current = false;
@@ -125,7 +133,7 @@ export function useReaderViewMode(options: Options) {
           mode,
           targetPage,
           normalizedTargetVerseId,
-          currentZoom
+          currentZoom,
         );
         lastSyncedViewModeRef.current = mode;
       }
@@ -133,6 +141,7 @@ export function useReaderViewMode(options: Options) {
     },
     [
       completeVerses,
+      autoReadPageNumberRef,
       contentMode,
       lastSyncedViewModeRef,
       loadingError,
@@ -160,7 +169,7 @@ export function useReaderViewMode(options: Options) {
       viewerReady,
       zoomLevel,
       zoomLevelRef,
-    ]
+    ],
   );
 
   useEffect(() => {
@@ -172,7 +181,7 @@ export function useReaderViewMode(options: Options) {
     const syncSignature = JSON.stringify({
       viewMode,
       pageNumber: syncPage,
-      readerVerseId: readerVerseId || '',
+      readerVerseId: readerVerseId || "",
       zoomLevel: Math.round(zoomLevel * 100) / 100,
     });
     if (lastInjectedViewerStateRef.current === syncSignature) return;
@@ -198,7 +207,7 @@ export function useReaderViewMode(options: Options) {
     if (!viewerReady || loadingError) return;
     injectReaderBridgeScript(
       [webViewRef, fullScreenWebViewRef],
-      [{ method: 'setZoom', args: [zoomLevel, pageNumberRef.current] }]
+      [{ method: "setZoom", args: [zoomLevel, pageNumberRef.current] }],
     );
   }, [fullScreenWebViewRef, loadingError, viewerReady, webViewRef, zoomLevel]);
 

@@ -80,7 +80,13 @@ test("auto-read counts visible text, decodes entities, and counts Hindi grapheme
   assert.doesNotThrow(() => countReadableCharacters("x&#999999999999;"));
   assert.equal(countReadableCharacters("<p><br /></p>"), 0);
   assert.equal(getAutoReadDurationMs("<p>abc</p>"), 3000);
-  assert.equal(getAutoReadDurationMs("a".repeat(20)), 5600);
+  assert.equal(getAutoReadDurationMs("a".repeat(20)), 3000);
+  assert.equal(
+    getAutoReadDurationMs(
+      '<div style="font-size: calc(100% - 2px)">' + "a".repeat(300) + "</div>",
+    ),
+    36000,
+  );
   assert.equal(
     getAutoReadDurationMs("a".repeat(50), {
       millisecondsPerCharacter: 100,

@@ -1,6 +1,6 @@
 {
   "name": "react-audio-book-reader",
-  "version": "0.1.103",
+  "version": "0.1.104",
   "description": "Cross-platform PDF and verse reader bindings for React and Expo with synchronized audio mapping.",
   "license": "MIT",
   "type": "module",

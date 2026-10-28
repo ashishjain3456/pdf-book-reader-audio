@@ -1,14 +1,17 @@
-import { useCallback } from 'react';
-import type { ReaderDialogRequest, ReaderResetConfirmation } from './types';
+import { useCallback } from "react";
+import type { ReaderDialogRequest, ReaderResetConfirmation } from "./types";
 
 type Options = {
   allowDoubleSpread: boolean;
+  activeAutoReadPageRef: { current: number | null };
   goToFirstPage: () => void;
   pageNumber: number;
   pageNumberRef: { current: number };
   pendingModeSwitchPageRef: { current: number | null };
   resetConfirmation?: ReaderResetConfirmation;
-  setBookSpreadMode: (update: (current: 'single' | 'double') => 'single' | 'double') => void;
+  setBookSpreadMode: (
+    update: (current: "single" | "double") => "single" | "double",
+  ) => void;
   setBookVerseCanZoomIn: (value: boolean) => void;
   setPageNumber: (page: number) => unknown;
   setReaderDialog: (dialog: ReaderDialogRequest) => void;
@@ -18,6 +21,7 @@ type Options = {
 
 export function useReaderBookControls({
   allowDoubleSpread,
+  activeAutoReadPageRef,
   goToFirstPage,
   pageNumber,
   pageNumberRef,
@@ -32,11 +36,14 @@ export function useReaderBookControls({
 }: Options) {
   const toggleBookSpreadMode = useCallback(() => {
     setBookSpreadMode((current) => {
-      const next = current === 'double' ? 'single' : 'double';
-      const safeNext = allowDoubleSpread ? next : 'single';
-      const currentPage = pageNumberRef.current || pageNumber;
+      const next = current === "double" ? "single" : "double";
+      const safeNext = allowDoubleSpread ? next : "single";
+      const currentPage =
+        activeAutoReadPageRef.current || pageNumberRef.current || pageNumber;
       const anchoredPage =
-        safeNext === 'double' && currentPage % 2 === 0 ? Math.max(1, currentPage - 1) : currentPage;
+        safeNext === "double" && currentPage % 2 === 0
+          ? Math.max(1, currentPage - 1)
+          : currentPage;
       pageNumberRef.current = anchoredPage;
       pendingModeSwitchPageRef.current = anchoredPage;
       lastInjectedViewerStateRef.current = null;
@@ -47,6 +54,7 @@ export function useReaderBookControls({
     showOverlay();
   }, [
     allowDoubleSpread,
+    activeAutoReadPageRef,
     lastInjectedViewerStateRef,
     pageNumber,
     pageNumberRef,
@@ -60,13 +68,15 @@ export function useReaderBookControls({
   const confirmGoToFirstPage = useCallback(
     (onReset?: () => void) => {
       setReaderDialog({
-        title: resetConfirmation?.title || 'Restart reading?',
-        message: resetConfirmation?.message || 'Do you want to go back to the first page?',
+        title: resetConfirmation?.title || "Restart reading?",
+        message:
+          resetConfirmation?.message ||
+          "Do you want to go back to the first page?",
         buttons: [
-          { text: resetConfirmation?.cancelLabel || 'Cancel', style: 'cancel' },
+          { text: resetConfirmation?.cancelLabel || "Cancel", style: "cancel" },
           {
-            text: resetConfirmation?.confirmLabel || 'Reset',
-            style: 'destructive',
+            text: resetConfirmation?.confirmLabel || "Reset",
+            style: "destructive",
             onPress: () => {
               goToFirstPage();
               onReset?.();
@@ -75,7 +85,7 @@ export function useReaderBookControls({
         ],
       });
     },
-    [goToFirstPage, resetConfirmation, setReaderDialog]
+    [goToFirstPage, resetConfirmation, setReaderDialog],
   );
 
   return { toggleBookSpreadMode, confirmGoToFirstPage };

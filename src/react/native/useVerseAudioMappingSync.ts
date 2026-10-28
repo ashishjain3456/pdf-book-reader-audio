@@ -18,7 +18,10 @@ type PendingAudioSeekTarget = {
 };
 
 type Options = {
-  activateVerseAudioIndex: (index: number, options?: { autoplay?: boolean }) => void;
+  activateVerseAudioIndex: (
+    index: number,
+    options?: { autoplay?: boolean },
+  ) => void;
   activeVerseAudioIndex: number | null;
   activeVerseId: string | null;
   currentVerseAudioUrl: string | null;
@@ -118,8 +121,16 @@ export function useVerseAudioMappingSync({
       if (readerVerseId !== verseId) setReaderVerseId(verseId);
 
       if (viewMode === "book" && verseChanged && pageForVerse) {
+        const isInitialAudioSync = lastAudioVerseWebSyncRef.current === null;
         lastAudioVerseWebSyncRef.current = verseId;
-        showMappedVerse(verseId, { isPlaying: status.playing, animated: true });
+        if (pageForVerse === pageNumber) {
+          syncActiveVerseToWebView(verseId, status.playing, true);
+        } else {
+          showMappedVerse(verseId, {
+            isPlaying: status.playing,
+            animated: !isInitialAudioSync,
+          });
+        }
         return;
       }
       const shouldFollowAudioPage =
@@ -129,7 +140,8 @@ export function useVerseAudioMappingSync({
         pageForVerse &&
         (viewMode === "book" || pageForVerse !== pageNumber)
       ) {
-        const bridgeMethod = viewMode === "book" ? "showMappedVerse" : "goToPage";
+        const bridgeMethod =
+          viewMode === "book" ? "showMappedVerse" : "goToPage";
         const args =
           viewMode === "book"
             ? [pageForVerse, verseId, status.playing]
@@ -158,7 +170,8 @@ export function useVerseAudioMappingSync({
 
     if (activeVerseAudioIndex === null) return;
     const activeItem = playableVerseMappings[activeVerseAudioIndex];
-    if (!activeItem || activeItem.audioAssetUrl !== currentVerseAudioUrl) return;
+    if (!activeItem || activeItem.audioAssetUrl !== currentVerseAudioUrl)
+      return;
     if (currentMs < activeItem.segmentEndMs) return;
     const nextIndex = activeVerseAudioIndex + 1;
     if (nextIndex < playableVerseMappings.length) {

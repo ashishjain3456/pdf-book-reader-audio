@@ -1,7 +1,7 @@
 import type { VerseAudioMapping } from "../types/contracts";
 
 export const AUTO_READ_CONFIG = {
-  millisecondsPerCharacter: 280,
+  millisecondsPerCharacter: 120,
   speedMultiplier: 1,
   minimumPageDurationMs: 3000,
 } as const;

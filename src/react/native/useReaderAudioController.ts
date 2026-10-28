@@ -1,16 +1,13 @@
-import { useRef } from 'react';
-import { useExternalVerseSync } from './useExternalVerseSync';
-import { useReaderVerseSync } from './useReaderVerseSync';
-import { useVerseAudioPlayback } from './useVerseAudioPlayback';
-import type { PlayableVerseAudioMapping } from '../../core/verseAudioMappings';
-import type { useReaderCoreState } from './useReaderCoreState';
-import type {
-  ExternalVerseAudioState,
-  ReaderViewMode,
-} from './types';
+import { useRef } from "react";
+import { useExternalVerseSync } from "./useExternalVerseSync";
+import { useReaderVerseSync } from "./useReaderVerseSync";
+import { useVerseAudioPlayback } from "./useVerseAudioPlayback";
+import type { PlayableVerseAudioMapping } from "../../core/verseAudioMappings";
+import type { useReaderCoreState } from "./useReaderCoreState";
+import type { ExternalVerseAudioState, ReaderViewMode } from "./types";
 
 type Props = {
-  contentMode: 'pdf' | 'verse';
+  contentMode: "pdf" | "verse";
   core: ReturnType<typeof useReaderCoreState>;
   setNativeBookPageNumberState: (page: number) => void;
   setPageNumber: (page: number) => void;
@@ -52,12 +49,13 @@ export function useReaderAudioController({
   viewMode,
   viewerReady,
 }: Props) {
-  const setActiveVerseIdRef = useRef<(update: (current: string | null) => string | null) => void>(
-    () => undefined
-  );
+  const setActiveVerseIdRef = useRef<
+    (update: (current: string | null) => string | null) => void
+  >(() => undefined);
   const { showMappedVerse, syncActiveVerseToWebView } = useReaderVerseSync({
     fullScreenWebViewRef: core.fullScreenWebViewRef,
     getNativeVersePage: (verseId) => getNativeVersePage(verseId) ?? null,
+    lastRenderedBookPageRef: core.lastRenderedBookPageRef,
     pageNumberRef: core.pageNumberRef,
     pendingCompleteScrollVerseIdRef: core.pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef: core.pendingModeSwitchPageRef,
@@ -109,7 +107,8 @@ export function useReaderAudioController({
   useExternalVerseSync({
     activeVerseAudioIndex,
     activeVerseId,
-    externalActiveVerseId: contentMode === 'verse' ? externalActiveVerseId : null,
+    externalActiveVerseId:
+      contentMode === "verse" ? externalActiveVerseId : null,
     externalVerseAudioState,
     getNativeVersePage,
     hasVerseAudio,

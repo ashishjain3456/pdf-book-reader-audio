@@ -257,6 +257,7 @@ export function useReaderInteractionBindings({
       audioState.onExternalAudioToggle?.();
     }
   }, []);
+  const autoReadPageNumberRef = React.useRef<number | null>(null);
   const goToNextPageManually = React.useCallback(() => {
     pauseAudioForManualPageTurn();
     goToNextPage();
@@ -274,6 +275,7 @@ export function useReaderInteractionBindings({
     goToPreviousPage: goToPreviousPageManually,
   });
   const { switchReaderMode } = useReaderViewMode({
+    autoReadPageNumberRef,
     completeVerses,
     contentMode,
     fullScreenWebViewRef: core.fullScreenWebViewRef,
@@ -390,28 +392,29 @@ export function useReaderInteractionBindings({
       ? [readerPageNumber + 1]
       : []),
   ];
-  const visiblePageText = visiblePageNumbers
-    .flatMap((visiblePage) => {
-      const mappedIds =
-        core.verseIdsByPage[visiblePage] ||
-        completeVerses
-          .filter((verse) => core.versePageById[verse.id] === visiblePage)
-          .map((verse) => verse.id);
-      const mappedVerses = mappedIds
-        .map((id) =>
-          completeVerses.find((verse) => String(verse.id) === String(id)),
-        )
-        .filter((verse): verse is (typeof completeVerses)[number] =>
-          Boolean(verse),
+  const visiblePages = visiblePageNumbers.map((visiblePage) => {
+    const mappedIds =
+      core.verseIdsByPage[visiblePage] ||
+      completeVerses
+        .filter((verse) => core.versePageById[verse.id] === visiblePage)
+        .map((verse) => verse.id);
+    const mappedVerses = mappedIds
+      .map((id) =>
+        completeVerses.find((verse) => String(verse.id) === String(id)),
+      )
+      .filter((verse): verse is (typeof completeVerses)[number] =>
+        Boolean(verse),
+      );
+    const visibleVerses = mappedVerses.length
+      ? mappedVerses
+      : [completeVerses[visiblePage - 1]].filter(
+          (verse): verse is (typeof completeVerses)[number] => Boolean(verse),
         );
-      const visibleVerses = mappedVerses.length
-        ? mappedVerses
-        : [completeVerses[visiblePage - 1]].filter(
-            (verse): verse is (typeof completeVerses)[number] => Boolean(verse),
-          );
-      return visibleVerses.map((verse) => verse.contentHtml);
-    })
-    .join(" ");
+    return {
+      pageNumber: visiblePage,
+      text: visibleVerses.map((verse) => verse.contentHtml).join(" "),
+    };
+  });
   const hasAnyAudioSource =
     audioSourceAvailable ??
     Boolean(
@@ -442,12 +445,14 @@ export function useReaderInteractionBindings({
     pageNumber: readerPageNumber,
     pageCount: completeVerses.length,
     pageStep: viewMode === "book" && activeBookSpreadMode === "double" ? 2 : 1,
+    layoutModeKey: `${viewMode}:${activeBookSpreadMode}`,
     resetKey: autoReadResetKey,
-    visiblePageText,
+    visiblePages,
     goToNextPage,
     goToFirstPage,
     subscribeToAppState,
   });
+  autoReadPageNumberRef.current = autoRead.pageNumber;
   const externalTimelineProgress = externalVerseAudioState?.audioAssetUrl
     ? getMappedPageProgress(
         externalVerseAudioMappings,
@@ -501,7 +506,7 @@ export function useReaderInteractionBindings({
         progress: autoRead.progress,
         progressStore: autoRead.progressStore,
         complete: autoRead.completed,
-        pageNumber: readerPageNumber,
+        pageNumber: autoRead.pageNumber,
         verseId: core.readerVerseId,
       }
     : mappedTimelineProgress
@@ -530,6 +535,7 @@ export function useReaderInteractionBindings({
   });
   const bookControls = useReaderBookControls({
     allowDoubleSpread: allowBookDoubleSpread,
+    activeAutoReadPageRef: autoReadPageNumberRef,
     goToFirstPage,
     pageNumber: page.pageNumber,
     pageNumberRef: core.pageNumberRef,

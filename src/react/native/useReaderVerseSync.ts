@@ -1,9 +1,14 @@
-import { useCallback } from 'react';
-import { injectReaderBridgeScript } from './readerWebViewBridge';
+import { useCallback } from "react";
+import { injectReaderBridgeScript } from "./readerWebViewBridge.ts";
 
 type Options = {
-  fullScreenWebViewRef: { current: { injectJavaScript: (script: string) => void } | null };
+  fullScreenWebViewRef: {
+    current: { injectJavaScript: (script: string) => void } | null;
+  };
   getNativeVersePage: (verseId: string) => number | null;
+  lastRenderedBookPageRef: {
+    current: { mode: "book" | "continuous"; page: number } | null;
+  };
   pageNumberRef: { current: number };
   pendingCompleteScrollVerseIdRef: { current: string | null };
   pendingModeSwitchPageRef: { current: number | null };
@@ -16,13 +21,16 @@ type Options = {
   setReaderVerseId: (update: (current: string | null) => string | null) => void;
   useNativeCompleteVerseView: boolean;
   useNativeFullScreenOverlay: boolean;
-  viewMode: 'book' | 'continuous';
-  webViewRef: { current: { injectJavaScript: (script: string) => void } | null };
+  viewMode: "book" | "continuous";
+  webViewRef: {
+    current: { injectJavaScript: (script: string) => void } | null;
+  };
 };
 
 export function useReaderVerseSync({
   fullScreenWebViewRef,
   getNativeVersePage,
+  lastRenderedBookPageRef,
   pageNumberRef,
   pendingCompleteScrollVerseIdRef,
   pendingModeSwitchPageRef,
@@ -38,33 +46,48 @@ export function useReaderVerseSync({
 }: Options) {
   const syncActiveVerseToWebView = useCallback(
     (verseId: string | null, isPlaying = false, shouldScroll = false) => {
-      injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
-        { method: 'setActiveVerse', args: [verseId || '', isPlaying, shouldScroll] },
-      ]);
+      injectReaderBridgeScript(
+        [webViewRef, fullScreenWebViewRef],
+        [
+          {
+            method: "setActiveVerse",
+            args: [verseId || "", isPlaying, shouldScroll],
+          },
+        ],
+      );
     },
-    [fullScreenWebViewRef, webViewRef]
+    [fullScreenWebViewRef, webViewRef],
   );
 
   const showMappedVerse = useCallback(
-    (verseId: string, options?: { isPlaying?: boolean; animated?: boolean }) => {
+    (
+      verseId: string,
+      options?: { isPlaying?: boolean; animated?: boolean },
+    ) => {
       const pageForVerse = getNativeVersePage(verseId);
       if (!pageForVerse) return;
+      if (options?.animated === false && viewMode === "book") {
+        lastRenderedBookPageRef.current = { mode: "book", page: pageForVerse };
+      }
       pageNumberRef.current = pageForVerse;
       setNativeBookPageNumberState(pageForVerse);
       pendingModeSwitchPageRef.current = pageForVerse;
       pendingCompleteScrollVerseIdRef.current = verseId;
       void setPageNumber(pageForVerse);
       setReaderVerseId((current) => (current === verseId ? current : verseId));
-        setActiveVerseIdRef.current((current) => (current === verseId ? current : verseId));
+      setActiveVerseIdRef.current((current) =>
+        current === verseId ? current : verseId,
+      );
 
-      const bridgeMethod = viewMode === 'book' ? 'showMappedVerse' : 'goToPage';
+      const bridgeMethod = viewMode === "book" ? "showMappedVerse" : "goToPage";
       const args =
-        viewMode === 'book'
+        viewMode === "book"
           ? [pageForVerse, verseId, options?.isPlaying ?? false]
           : [pageForVerse];
-      injectReaderBridgeScript([webViewRef, fullScreenWebViewRef], [
-        { method: bridgeMethod, args },
-      ]);
+      injectReaderBridgeScript(
+        [webViewRef, fullScreenWebViewRef],
+        [{ method: bridgeMethod, args }],
+      );
       if (useNativeCompleteVerseView || useNativeFullScreenOverlay) {
         void scrollCompleteToVerse(verseId, options?.animated ?? true);
       }
@@ -73,6 +96,7 @@ export function useReaderVerseSync({
     [
       fullScreenWebViewRef,
       getNativeVersePage,
+      lastRenderedBookPageRef,
       pageNumberRef,
       pendingCompleteScrollVerseIdRef,
       pendingModeSwitchPageRef,
@@ -86,7 +110,7 @@ export function useReaderVerseSync({
       useNativeFullScreenOverlay,
       viewMode,
       webViewRef,
-    ]
+    ],
   );
 
   return { showMappedVerse, syncActiveVerseToWebView };

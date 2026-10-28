@@ -4,8 +4,8 @@ import {
   DEFAULT_ZOOM_LEVEL,
   MAX_ZOOM_LEVEL,
   MIN_ZOOM_LEVEL,
-} from "./constants";
-import { injectReaderBridgeScript } from "./readerWebViewBridge";
+} from "./constants.ts";
+import { injectReaderBridgeScript } from "./readerWebViewBridge.ts";
 import type {
   CompleteReaderVerse,
   ReaderProgrammaticSync,

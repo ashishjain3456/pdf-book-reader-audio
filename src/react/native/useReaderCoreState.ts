@@ -81,11 +81,7 @@ export function useReaderCoreState({
     useState(480);
   const [bookVerseCanZoomIn, setBookVerseCanZoomIn] = useState(true);
   const [bookSpreadMode, setBookSpreadMode] = useState<"single" | "double">(
-    () =>
-      verseLayout?.bookSpreadMode === "double" &&
-      verseLayout?.showSecondPage !== false
-        ? "double"
-        : "single",
+    "single",
   );
 
   const webViewRef = useRef<WebView | null>(null);
