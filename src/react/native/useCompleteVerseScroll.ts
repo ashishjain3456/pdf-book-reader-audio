@@ -50,6 +50,7 @@ type Options = {
   viewMode: ReaderViewMode;
   viewerContentTop: number | null;
   viewerWrapHeight: number;
+  visibleViewportHeight: number;
 };
 
 export function useCompleteVerseScroll({
@@ -85,11 +86,15 @@ export function useCompleteVerseScroll({
   viewMode,
   viewerContentTop,
   viewerWrapHeight,
+  visibleViewportHeight,
 }: Options) {
   const fullScreenCompleteVerseYByIdRef =
     providedFullScreenVerseYByIdRef || completeVerseYByIdRef;
   const fullScreenCompleteScrollRef =
     providedFullScreenCompleteScrollRef || completeScrollRef;
+  const fullScreenScrollOffsetRef = useRef(0);
+  const completeEndSentinelYRef = useRef<number | null>(null);
+  const fullScreenEndSentinelYRef = useRef<number | null>(null);
   const previousVerseFontSizeRef = useRef(verseFontSizePx);
   const previousFullScreenRef = useRef(isVerseFullScreen);
 
@@ -178,6 +183,63 @@ export function useCompleteVerseScroll({
       fullScreenCompleteVerseYByIdRef,
       scrollToVerse,
     ],
+  );
+
+  const isEndSentinelVisible = useCallback(
+    (fullScreen: boolean) => {
+      const sentinelY = fullScreen
+        ? fullScreenEndSentinelYRef.current
+        : completeEndSentinelYRef.current;
+      if (sentinelY === null) return false;
+
+      let viewportTop: number;
+      let viewportHeight: number;
+      if (fullScreen) {
+        viewportTop = fullScreenScrollOffsetRef.current;
+        viewportHeight = visibleViewportHeight;
+      } else if (overlayViewport && viewerContentTop !== null) {
+        const outerOffset = overlayViewport.getScrollOffset();
+        viewportTop =
+          outerOffset +
+          overlayViewport.top -
+          viewerContentTop +
+          completeScrollOffsetRef.current;
+        viewportHeight = overlayViewport.bottom - overlayViewport.top;
+      } else {
+        viewportTop = completeScrollOffsetRef.current;
+        viewportHeight = viewerWrapHeight;
+      }
+
+      return sentinelY >= viewportTop && sentinelY <= viewportTop + viewportHeight;
+    },
+    [
+      completeScrollOffsetRef,
+      fullScreenScrollOffsetRef,
+      overlayViewport,
+      viewerContentTop,
+      viewerWrapHeight,
+      visibleViewportHeight,
+    ],
+  );
+  const setCompleteEndSentinelY = useCallback((y: number) => {
+    completeEndSentinelYRef.current = y;
+  }, []);
+  const setFullScreenEndSentinelY = useCallback((y: number) => {
+    fullScreenEndSentinelYRef.current = y;
+  }, []);
+  const scrollCompleteToVerseIfNeeded = useCallback(
+    (verseId: string | null, animated = false) =>
+      isEndSentinelVisible(false)
+        ? true
+        : scrollCompleteToVerse(verseId, animated),
+    [isEndSentinelVisible, scrollCompleteToVerse],
+  );
+  const scrollFullScreenCompleteToVerseIfNeeded = useCallback(
+    (verseId: string | null, animated = false) =>
+      isEndSentinelVisible(true)
+        ? true
+        : scrollFullScreenCompleteToVerse(verseId, animated),
+    [isEndSentinelVisible, scrollFullScreenCompleteToVerse],
   );
 
   useEffect(() => {
@@ -281,8 +343,10 @@ export function useCompleteVerseScroll({
     [completeVerseYByIdRef, updateAnchorFromOffset],
   );
   const updateFullScreenAnchorFromOffset = useCallback(
-    (offsetY: number) =>
-      updateAnchorFromOffset(offsetY, fullScreenCompleteVerseYByIdRef),
+    (offsetY: number) => {
+      fullScreenScrollOffsetRef.current = offsetY;
+      updateAnchorFromOffset(offsetY, fullScreenCompleteVerseYByIdRef);
+    },
     [fullScreenCompleteVerseYByIdRef, updateAnchorFromOffset],
   );
 
@@ -538,7 +602,11 @@ export function useCompleteVerseScroll({
     handleFullScreenScrollBeginDrag,
     handleFullScreenScrollEndDrag,
     scrollCompleteToVerse,
+    scrollCompleteToVerseIfNeeded,
     scrollFullScreenCompleteToVerse,
+    scrollFullScreenCompleteToVerseIfNeeded,
+    setCompleteEndSentinelY,
+    setFullScreenEndSentinelY,
     updateCompleteAnchorFromOffset,
     updateFullScreenAnchorFromOffset,
   };

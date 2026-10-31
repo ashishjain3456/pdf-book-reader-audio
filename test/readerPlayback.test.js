@@ -131,7 +131,7 @@ test("audio progress follows timeline order, combines consecutive same-page vers
   );
 });
 
-test("same-page mappings continue one run across silence and hold accumulated progress in gaps", () => {
+test("same-verse mappings continue one run across silence and complete before the next verse", () => {
   const mappings = [
     mapping("a", 0, 1000),
     mapping("b", 1000, 2000),
@@ -145,7 +145,7 @@ test("same-page mappings continue one run across silence and hold accumulated pr
   );
   assert.equal(
     getMappedPageProgress(mappings, "chapter.mp3", 2500, getPage)?.progress,
-    2 / 3,
+    1,
   );
 });
 

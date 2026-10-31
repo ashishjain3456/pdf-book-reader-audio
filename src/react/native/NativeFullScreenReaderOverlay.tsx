@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { WebView } from "react-native-webview";
+import { getContinuousProgressIndex } from "../../core/readerPlayback.ts";
 import { CompleteVerseBlock } from "./CompleteVerseBlock";
 import type { NativeBookTurn, NativeBookTurnVisuals } from "./nativeBookTurn";
 import { ReaderModal } from "./ReaderModal";
 import { styles } from "./styles";
-import type { PagePlaybackProgress } from "./PerimeterProgress";
+import {
+  getVersePlaybackProgress,
+  type PagePlaybackProgress,
+} from "./PerimeterProgress";
 import type {
   CompleteReaderVerse,
   ReaderLayoutEvent,
@@ -48,6 +52,7 @@ type Props = {
   onLoadStart: () => void;
   onScrollOffset: (offsetY: number) => void;
   onVerseLayout: (verseId: string, y: number) => void;
+  onEndSentinelLayout: (y: number) => void;
   onRequestClose: () => void;
   pageCount: number;
   playbackProgress?:
@@ -96,6 +101,7 @@ export function NativeFullScreenReaderOverlay({
   onLoadStart,
   onScrollOffset,
   onVerseLayout,
+  onEndSentinelLayout,
   onRequestClose,
   pageCount,
   playbackProgress,
@@ -109,6 +115,15 @@ export function NativeFullScreenReaderOverlay({
   viewMode,
 }: Props) {
   if (!isVisible) return null;
+
+  const playbackVerseIndex = playbackProgress
+    ? getContinuousProgressIndex(
+        playbackProgress.mode,
+        playbackProgress.pageNumber,
+        playbackProgress.verseId,
+        completeVerses.map((verse) => String(verse.id)),
+      )
+    : -1;
 
   return (
     <ReaderModal variant="fullscreen" visible onRequestClose={onRequestClose}>
@@ -226,14 +241,23 @@ export function NativeFullScreenReaderOverlay({
                   fullScreen
                   fontSize={nativeBookVerseFontSizePx}
                   theme={theme}
-                  playbackProgress={
-                    playbackProgress?.pageNumber === index + 1
-                      ? playbackProgress
-                      : null
-                  }
+                  playbackProgress={getVersePlaybackProgress(
+                    playbackProgress,
+                    verse.id,
+                    index + 1,
+                    playbackVerseIndex === index,
+                  )}
                 />
               </View>
             ))}
+            <View
+              collapsable={false}
+              pointerEvents="none"
+              onLayout={(event: ReaderLayoutEvent) =>
+                onEndSentinelLayout(event.nativeEvent.layout.y)
+              }
+              style={{ height: 1, opacity: 0 }}
+            />
           </ScrollView>
         )}
         {controls}

@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useCompleteVerseScroll } from "./useCompleteVerseScroll";
 import { useReaderAudioController } from "./useReaderAudioController";
 import { useReaderControlledSettings } from "./useReaderControlledSettings";
@@ -160,6 +161,7 @@ export function useReaderSession({
     viewMode,
     viewerContentTop: viewport.viewerContentTop,
     viewerWrapHeight: viewport.viewerWrapHeight,
+    visibleViewportHeight: content.visibleViewportHeight,
   });
 
   useReaderControlledSettings({
@@ -173,6 +175,22 @@ export function useReaderSession({
     viewModeRef,
     zoomLevelRef,
   });
+
+  const scrollToCurrentVerse = useCallback(
+    (verseId: string | null, animated = false) => {
+      const scrollToVerse = core.isVerseFullScreen
+        ? scroll.scrollFullScreenCompleteToVerseIfNeeded
+        : scroll.scrollCompleteToVerseIfNeeded;
+      scrollToVerse(verseId, animated);
+    },
+    [
+      core.isVerseFullScreen,
+      scroll.scrollCompleteToVerse,
+      scroll.scrollCompleteToVerseIfNeeded,
+      scroll.scrollFullScreenCompleteToVerse,
+      scroll.scrollFullScreenCompleteToVerseIfNeeded,
+    ],
+  );
 
   const documentSource = useReaderDocumentSource({
     activeBookSpreadMode,
@@ -211,7 +229,7 @@ export function useReaderSession({
     playableVerseMappings,
     readerDocumentId,
     readerVerseId,
-    scrollCompleteToVerse: scroll.scrollCompleteToVerse,
+    scrollCompleteToVerse: scrollToCurrentVerse,
     showOverlay,
     useNativeCompleteVerseView,
     useNativeFullScreenOverlay,

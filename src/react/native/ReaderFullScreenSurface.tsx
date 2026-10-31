@@ -2,6 +2,7 @@ import { FullScreenReaderControls } from "./FullScreenReaderControls";
 import { NativeBookPage } from "./NativeBookPage";
 import { NativeFullScreenReaderOverlay } from "./NativeFullScreenReaderOverlay";
 import { ReaderDialogModal } from "./ReaderDialogModal";
+import { getVersePlaybackProgress } from "./PerimeterProgress";
 import type { useCompleteVerseScroll } from "./useCompleteVerseScroll";
 import type { useReaderAudioController } from "./useReaderAudioController";
 import type { useReaderContentModel } from "./useReaderContentModel";
@@ -211,6 +212,7 @@ export function ReaderFullScreenSurface({
             );
           }
         }}
+        onEndSentinelLayout={scroll.setFullScreenEndSentinelY}
         onScrollContentChange={() => {
           const pendingVerseId = core.pendingCompleteScrollVerseIdRef.current;
           if (!autoAlignCurrentVerse && !pendingVerseId) return;
@@ -244,10 +246,15 @@ export function ReaderFullScreenSurface({
             contentKeyPrefix={key}
             contentOpacity={nativeBookTurnVisuals?.incomingOpacity}
             playbackProgress={
-              interactions.playbackProgress?.pageNumber ===
-              interactions.getNativeBookVersePageNumber(verse)
-                ? interactions.playbackProgress
-                : null
+              getVersePlaybackProgress(
+                interactions.playbackProgress,
+                verse.id,
+                interactions.getNativeBookVersePageNumber(verse),
+                interactions.playbackProgress?.pageNumber ===
+                  interactions.getNativeBookVersePageNumber(verse) ||
+                  String(interactions.playbackProgress?.verseId || "") ===
+                    String(verse.id),
+              )
             }
           />
         )}

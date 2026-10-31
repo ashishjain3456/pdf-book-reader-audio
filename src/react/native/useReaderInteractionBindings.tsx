@@ -198,6 +198,7 @@ export function useReaderInteractionBindings({
   const {
     goToFirstPage,
     goToNextPage,
+    goToNextPageForAutoRead,
     goToPreviousPage,
     syncViewerStateToWebView,
   } = useReaderNavigation({
@@ -207,6 +208,7 @@ export function useReaderInteractionBindings({
     completeVerses,
     contentMode,
     fullScreenWebViewRef: core.fullScreenWebViewRef,
+    isVerseFullScreen: core.isVerseFullScreen,
     nativeBookPageNumber: page.nativeBookPageNumberState,
     pageCount: core.pageCount,
     pageCountRef: core.pageCountRef,
@@ -217,6 +219,10 @@ export function useReaderInteractionBindings({
     programmaticViewerSyncRef: core.programmaticViewerSyncRef,
     readerVerseId: core.readerVerseId,
     scrollCompleteToVerse: scroll.scrollCompleteToVerse,
+    scrollCompleteToVerseIfNeeded: scroll.scrollCompleteToVerseIfNeeded,
+    scrollFullScreenCompleteToVerse: scroll.scrollFullScreenCompleteToVerse,
+    scrollFullScreenCompleteToVerseIfNeeded:
+      scroll.scrollFullScreenCompleteToVerseIfNeeded,
     setActiveVerseId: audio.setActiveVerseId,
     setNativeBookPageNumberState: page.setNativeBookPageNumberState,
     setPageNumber: page.setPageNumber,
@@ -448,7 +454,7 @@ export function useReaderInteractionBindings({
     layoutModeKey: `${viewMode}:${activeBookSpreadMode}`,
     resetKey: autoReadResetKey,
     visiblePages,
-    goToNextPage,
+    goToNextPage: goToNextPageForAutoRead,
     goToFirstPage,
     subscribeToAppState,
   });
@@ -473,6 +479,39 @@ export function useReaderInteractionBindings({
   const mappedTimelineProgress = externalVerseAudioState?.audioAssetUrl
     ? externalTimelineProgress
     : internalTimelineProgress;
+  const completedAudioVerseIds = React.useMemo(() => {
+    const usesExternalAudio = Boolean(externalVerseAudioState?.audioAssetUrl);
+    const audioAssetUrl = usesExternalAudio
+      ? externalVerseAudioState?.audioAssetUrl
+      : activeVerseAudio?.audioAssetUrl;
+    if (!audioAssetUrl || !mappedTimelineProgress) return [];
+    const currentTimeMs = usesExternalAudio
+      ? Math.max(0, Number(externalVerseAudioState?.currentTimeMs) || 0)
+      : Math.max(0, Number(audio.verseAudioStatus.currentTime) || 0) * 1000;
+    const mappings = usesExternalAudio
+      ? externalVerseAudioMappings
+      : playableVerseMappings;
+    const lastEndByVerse = new Map<string, number>();
+    for (const mapping of mappings) {
+      if (mapping.audioAssetUrl !== audioAssetUrl) continue;
+      const verseId = String(mapping.verseId);
+      lastEndByVerse.set(
+        verseId,
+        Math.max(lastEndByVerse.get(verseId) || 0, mapping.segmentEndMs),
+      );
+    }
+    return Array.from(lastEndByVerse)
+      .filter(([, endMs]) => endMs <= currentTimeMs)
+      .map(([verseId]) => verseId);
+  }, [
+    activeVerseAudio?.audioAssetUrl,
+    audio.verseAudioStatus.currentTime,
+    externalVerseAudioMappings,
+    externalVerseAudioState?.audioAssetUrl,
+    externalVerseAudioState?.currentTimeMs,
+    mappedTimelineProgress,
+    playableVerseMappings,
+  ]);
   const toggleAutoRead = React.useCallback(() => {
     const shouldStart = !autoReadPlaying;
     if (shouldStart && contentMode === "verse" && viewMode === "continuous") {
@@ -515,6 +554,10 @@ export function useReaderInteractionBindings({
           progress: mappedTimelineProgress.progress,
           complete: false,
           pageNumber: mappedTimelineProgress.pageNumber,
+          verseId: mappedTimelineProgress.mapping
+            ? String(mappedTimelineProgress.mapping.verseId)
+            : null,
+          completedVerseIds: completedAudioVerseIds,
         }
       : null;
   const mappedVerseNavigation = useMappedVerseNavigation({

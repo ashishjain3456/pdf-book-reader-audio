@@ -139,6 +139,8 @@ export const bookStyles = StyleSheet.create({
   nativeBookVerseText: {
     color: "#111827",
     textAlign: "center",
+    textAlignVertical: "center",
+    alignSelf: "center",
     width: "100%",
   },
 });

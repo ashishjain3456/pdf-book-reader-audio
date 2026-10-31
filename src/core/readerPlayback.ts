@@ -31,7 +31,7 @@ export function getContinuousProgressIndex(
   const validPageIndex = pageIndex < verseIds.length ? pageIndex : -1;
   const verseIndex = verseId ? verseIds.indexOf(verseId) : -1;
   if (mode === "auto-read")
-    return validPageIndex >= 0 ? validPageIndex : verseIndex;
+    return verseIndex >= 0 ? verseIndex : validPageIndex;
   return verseIndex >= 0 ? verseIndex : validPageIndex;
 }
 
@@ -151,9 +151,9 @@ function normalizeTimeline(
 
 /**
  * Resolves page and progress from audio timestamp order. Only adjacent mapped
- * intervals that touch within one millisecond and belong to the same page are
- * treated as one visit. A gap holds the previous visit at 100% until the next
- * mapped interval begins.
+ * intervals that touch within one millisecond and belong to the same verse
+ * and page are treated as one visit. A gap holds the previous visit at 100%
+ * until the next mapped interval begins.
  */
 export function getMappedPageProgress(
   mappings: ReaderPlaybackMapping[],
@@ -187,20 +187,34 @@ export function getMappedPageProgress(
   }
 
   const mapping = timeline[index];
-  const pageNumber = getPageForVerse(mapping.verseId) ?? null;
-  if (!pageNumber) return { pageNumber: null, progress: 0, mapping };
+  const resolvedPageNumber = Number(getPageForVerse(mapping.verseId));
+  const pageNumber =
+    Number.isInteger(resolvedPageNumber) && resolvedPageNumber > 0
+      ? resolvedPageNumber
+      : null;
 
   let first = index;
   while (first > 0) {
     const previous = timeline[first - 1];
-    if ((getPageForVerse(previous.verseId) ?? null) !== pageNumber) break;
+    if (
+      previous.verseId !== mapping.verseId ||
+      (pageNumber !== null &&
+        Number(getPageForVerse(previous.verseId)) !== pageNumber)
+    ) {
+      break;
+    }
     first -= 1;
   }
 
   let last = index;
   while (last + 1 < timeline.length) {
     const next = timeline[last + 1];
-    if ((getPageForVerse(next.verseId) ?? null) !== pageNumber) break;
+    if (
+      next.verseId !== mapping.verseId ||
+      (pageNumber !== null && Number(getPageForVerse(next.verseId)) !== pageNumber)
+    ) {
+      break;
+    }
     last += 1;
   }
 

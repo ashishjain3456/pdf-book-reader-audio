@@ -9,7 +9,10 @@ import type {
   ReaderScrollViewRef,
   ReaderTheme,
 } from './types';
-import type { PagePlaybackProgress } from './PerimeterProgress';
+import {
+  getVersePlaybackProgress,
+  type PagePlaybackProgress,
+} from './PerimeterProgress';
 
 type Props = {
   activeVerseId: string | null;
@@ -25,6 +28,7 @@ type Props = {
   fontSize: number;
   highlightCurrentVerse: boolean;
   isEmbeddedLandscape: boolean;
+  onEndSentinelLayout: (y: number) => void;
   onMomentumScrollEnd: (event: ReaderScrollEvent) => void;
   onScrollBeginDrag: () => void;
   onScrollEndDrag: (event: ReaderScrollEvent) => void;
@@ -51,6 +55,7 @@ export function NativeContinuousVerseView({
   fontSize,
   highlightCurrentVerse,
   isEmbeddedLandscape,
+  onEndSentinelLayout,
   onMomentumScrollEnd,
   onTouchStart,
   onScrollBeginDrag,
@@ -151,13 +156,24 @@ export function NativeContinuousVerseView({
               fullScreen={false}
               fontSize={fontSize}
               theme={theme}
-              playbackProgress={
-                progressIndex === index ? playbackProgress : null
-              }
+              playbackProgress={getVersePlaybackProgress(
+                playbackProgress,
+                verse.id,
+                index + 1,
+                progressIndex === index,
+              )}
             />
           </View>
         );
       })}
+      <View
+        collapsable={false}
+        pointerEvents="none"
+        onLayout={(event: ReaderLayoutEvent) =>
+          onEndSentinelLayout(event.nativeEvent.layout.y)
+        }
+        style={{ height: 1, opacity: 0 }}
+      />
     </ScrollView>
   );
 }

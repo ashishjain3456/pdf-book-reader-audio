@@ -194,7 +194,6 @@ export function useAutoReadPlayback({
       setProgress(0);
       setCompleted(false);
       callbacksRef.current.onCompleteChange?.(false);
-      if (isPlaying) callbacksRef.current.onPlaybackChange?.(false);
       return;
     }
     if (previous.pageNumber !== pageNumber) {
@@ -214,9 +213,6 @@ export function useAutoReadPlayback({
       setProgress(0);
       setCompleted(false);
       callbacksRef.current.onCompleteChange?.(false);
-      if (!isExpectedAutoTurn && isPlaying) {
-        callbacksRef.current.onPlaybackChange?.(false);
-      }
     }
   }, [
     externalClockMs,

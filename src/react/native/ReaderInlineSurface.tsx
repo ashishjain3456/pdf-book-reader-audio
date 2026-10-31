@@ -284,6 +284,7 @@ export function ReaderInlineSurface({
               highlightCurrentVerse={highlightCurrentVerse}
               isEmbeddedLandscape={isEmbeddedLandscape}
               onMomentumScrollEnd={handleCompleteMomentumScrollEnd}
+              onEndSentinelLayout={scroll.setCompleteEndSentinelY}
               onTouchStart={showOverlay}
               onScrollBeginDrag={handleCompleteScrollBeginDrag}
               onScrollEndDrag={handleCompleteScrollEndDrag}

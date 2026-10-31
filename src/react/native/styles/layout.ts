@@ -66,7 +66,8 @@ export const layoutStyles = StyleSheet.create({
   nativeFullScreenVerseBlock: {
     paddingVertical: 30,
     paddingHorizontal: 28,
-    paddingRight: 58,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#e7e5e4",
@@ -97,6 +98,8 @@ export const layoutStyles = StyleSheet.create({
     color: "#111827",
     fontWeight: "800",
     textAlign: "center",
+    textAlignVertical: "center",
+    alignSelf: "center",
     flexShrink: 1,
     width: "100%",
   },

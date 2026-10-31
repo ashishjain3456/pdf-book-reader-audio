@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, View } from "react-native";
+import { Animated, Easing, Text, View } from "react-native";
 import type { PlaybackMode, ReaderAnimatedValue, ReaderTheme } from "./types";
 
 type NativeAnimatedValue = InstanceType<
@@ -10,12 +10,38 @@ export type PagePlaybackProgress = {
   mode: PlaybackMode;
   progress: number;
   complete: boolean;
+  pageNumber?: number | null;
   verseId?: string | null;
+  completedVerseIds?: string[];
   progressStore?: {
     subscribe: (listener: () => void) => () => void;
     getSnapshot: () => number;
   };
 };
+
+export function getVersePlaybackProgress(
+  playback: PagePlaybackProgress | null | undefined,
+  verseId: string | number,
+  pageNumber: number,
+  isActive: boolean,
+): PagePlaybackProgress | null {
+  if (!playback) return null;
+  const normalizedVerseId = String(verseId);
+  if (
+    playback.mode === "audio" &&
+    playback.completedVerseIds?.includes(normalizedVerseId)
+  ) {
+    return {
+      ...playback,
+      progress: 1,
+      complete: true,
+      pageNumber,
+      verseId: normalizedVerseId,
+      progressStore: undefined,
+    };
+  }
+  return isActive ? playback : null;
+}
 
 // Native line segments keep this overlay independent of SVG/native dependencies.
 // Short chords approximate the rounded border while the native driver updates
@@ -26,7 +52,7 @@ export function PerimeterProgress({
   radius,
   inset = 0,
   pageNumberBounds,
-  pageNumberGap = 2,
+  pageNumberGap = 10,
   containerSize,
 }: {
   playback: PagePlaybackProgress;
@@ -70,20 +96,10 @@ export function PerimeterProgress({
         0,
         Math.min(1, store?.getSnapshot() ?? fallbackProgress ?? 0),
       );
-      if (next < lastProgressRef.current) {
-        animatedProgress.setValue(next);
-      } else {
-        Animated.timing(animatedProgress, {
-          toValue: next,
-          duration: 200,
-          easing: Easing.cubic,
-          useNativeDriver: true,
-        }).start(() => {});
-      }
       lastProgressRef.current = next;
 
       const now = Date.now();
-      if (now - lastAccessibilityUpdate >= 1000) {
+      if (now - lastAccessibilityUpdate >= 250 || next === 0 || next === 1) {
         lastAccessibilityUpdate = now;
         setAccessibilityProgress(next);
       }
@@ -164,6 +180,32 @@ export function PerimeterProgress({
   }, [inset, measuredSize, pageNumberBounds, pageNumberGap, radius]);
   const total = segments.reduce((sum, segment) => sum + segment.length, 0);
   const color = playback.mode === "audio" ? theme.accent : theme.autoReadAccent;
+  const symbolColors = [
+    color,
+    theme.accentBlue,
+    theme.accentRed,
+    theme.accentGreen,
+    theme.accentIndigo,
+  ];
+  const progressDistance = accessibilityProgress * total;
+  const progressSymbols = useMemo(() => {
+    if (!total || progressDistance <= 0) return [];
+    const spacing = 17;
+    const symbolCount = Math.floor(progressDistance / spacing) + 1;
+    return Array.from({ length: symbolCount }, (_, index) => {
+      const distance = Math.min(index * spacing, progressDistance);
+      const segment =
+        segments.find(
+          (candidate) => distance <= candidate.offset + candidate.length,
+        ) || segments[segments.length - 1];
+      const segmentDistance = Math.max(0, distance - segment.offset);
+      return {
+        key: index,
+        x: segment.start.x + Math.cos(segment.angle) * segmentDistance,
+        y: segment.start.y + Math.sin(segment.angle) * segmentDistance,
+      };
+    });
+  }, [progressDistance, segments, total]);
 
   return (
     <View
@@ -200,14 +242,23 @@ export function PerimeterProgress({
         zIndex: 4,
       }}
     >
-      {segments.map((segment, index) => (
-        <ProgressSegment
-          key={index}
-          segment={segment}
-          total={total}
-          progress={animatedProgress}
-          color={color}
-        />
+      {progressSymbols.map((symbol) => (
+        <Text
+          key={symbol.key}
+          accessible={false}
+          style={{
+            position: "absolute",
+            left: symbol.x - 8,
+            top: symbol.y - 9,
+            color: symbolColors[symbol.key % symbolColors.length],
+            fontSize: 14,
+            lineHeight: 18,
+            fontWeight: "700",
+            includeFontPadding: false,
+          }}
+        >
+          卐
+        </Text>
       ))}
     </View>
   );

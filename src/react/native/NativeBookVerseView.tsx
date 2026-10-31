@@ -8,7 +8,10 @@ import type {
   ReaderLayoutEvent,
   ReaderTheme,
 } from "./types";
-import type { PagePlaybackProgress } from "./PerimeterProgress";
+import {
+  getVersePlaybackProgress,
+  type PagePlaybackProgress,
+} from "./PerimeterProgress";
 
 type Props = {
   activeBookSpreadMode: "single" | "double";
@@ -94,9 +97,14 @@ export function NativeBookVerseView({
               contentKeyPrefix={`book-${verse.id}`}
               contentOpacity={nativeBookTurnVisuals?.incomingOpacity}
               playbackProgress={
-                playbackProgress?.pageNumber === getPageNumber(verse)
-                  ? playbackProgress
-                  : null
+                getVersePlaybackProgress(
+                  playbackProgress,
+                  verse.id,
+                  getPageNumber(verse),
+                  playbackProgress?.pageNumber === getPageNumber(verse) ||
+                    String(playbackProgress?.verseId || "") ===
+                      String(verse.id),
+                )
               }
             />
           ))}

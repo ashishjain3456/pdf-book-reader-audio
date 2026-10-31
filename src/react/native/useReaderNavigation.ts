@@ -21,6 +21,7 @@ type Options = {
   completeVerses: CompleteReaderVerse[];
   contentMode: "pdf" | "verse";
   fullScreenWebViewRef: ReaderWebViewRef;
+  isVerseFullScreen: boolean;
   nativeBookPageNumber: number;
   pageCount: number;
   pageCountRef: MutableRefObject<number>;
@@ -31,6 +32,18 @@ type Options = {
   programmaticViewerSyncRef: MutableRefObject<ReaderProgrammaticSync | null>;
   readerVerseId: string | null;
   scrollCompleteToVerse: (
+    verseId: string | null,
+    animated?: boolean,
+  ) => boolean;
+  scrollCompleteToVerseIfNeeded: (
+    verseId: string | null,
+    animated?: boolean,
+  ) => boolean;
+  scrollFullScreenCompleteToVerse: (
+    verseId: string | null,
+    animated?: boolean,
+  ) => boolean;
+  scrollFullScreenCompleteToVerseIfNeeded: (
     verseId: string | null,
     animated?: boolean,
   ) => boolean;
@@ -64,6 +77,7 @@ export function useReaderNavigation(options: Options) {
     completeVerses,
     contentMode,
     fullScreenWebViewRef,
+    isVerseFullScreen,
     nativeBookPageNumber,
     pageCount,
     pageCountRef,
@@ -74,6 +88,9 @@ export function useReaderNavigation(options: Options) {
     programmaticViewerSyncRef,
     readerVerseId,
     scrollCompleteToVerse,
+    scrollCompleteToVerseIfNeeded,
+    scrollFullScreenCompleteToVerse,
+    scrollFullScreenCompleteToVerseIfNeeded,
     setActiveVerseId,
     setNativeBookPageNumberState,
     setPageNumber,
@@ -139,7 +156,7 @@ export function useReaderNavigation(options: Options) {
   );
 
   const navigatePage = useCallback(
-    (direction: "next" | "prev") => {
+    (direction: "next" | "prev", skipIfEndVisible = false) => {
       const currentPage =
         contentMode === "verse" && viewMode === "book"
           ? nativeBookPageNumber || pageNumber
@@ -173,7 +190,15 @@ export function useReaderNavigation(options: Options) {
             setReaderVerseId((current) =>
               current === targetVerseId ? current : targetVerseId,
             );
-            scrollCompleteToVerse(targetVerseId, true);
+            const scrollToVerse =
+              isVerseFullScreen
+                ? skipIfEndVisible && direction === "next"
+                  ? scrollFullScreenCompleteToVerseIfNeeded
+                  : scrollFullScreenCompleteToVerse
+                : skipIfEndVisible && direction === "next"
+                  ? scrollCompleteToVerseIfNeeded
+                  : scrollCompleteToVerse;
+            scrollToVerse(targetVerseId, true);
           }
         }
       }
@@ -184,6 +209,7 @@ export function useReaderNavigation(options: Options) {
       contentMode,
       completeScrollRef,
       completeVerses,
+      isVerseFullScreen,
       navigateNativeVerseBookPage,
       nativeBookPageNumber,
       pageCount,
@@ -195,6 +221,9 @@ export function useReaderNavigation(options: Options) {
       setPageNumber,
       setReaderVerseId,
       scrollCompleteToVerse,
+      scrollCompleteToVerseIfNeeded,
+      scrollFullScreenCompleteToVerse,
+      scrollFullScreenCompleteToVerseIfNeeded,
       showOverlay,
       useFullScreenBookWebView,
       viewMode,
@@ -206,6 +235,10 @@ export function useReaderNavigation(options: Options) {
     [navigatePage],
   );
   const goToNextPage = useCallback(() => navigatePage("next"), [navigatePage]);
+  const goToNextPageForAutoRead = useCallback(
+    () => navigatePage("next", true),
+    [navigatePage],
+  );
 
   const goToFirstPage = useCallback(() => {
     const firstVerseId =
@@ -220,7 +253,10 @@ export function useReaderNavigation(options: Options) {
     if (viewMode === "continuous") {
       pendingCompleteScrollVerseIdRef.current = firstVerseId;
       completeRestoreGuardUntilRef.current = Date.now() + 700;
-      if (!scrollCompleteToVerse(firstVerseId, true)) {
+      const scrollToVerse = isVerseFullScreen
+        ? scrollFullScreenCompleteToVerse
+        : scrollCompleteToVerse;
+      if (!scrollToVerse(firstVerseId, true) && !isVerseFullScreen) {
         completeScrollRef.current?.scrollTo({ y: 0, animated: true });
       }
       injectReaderBridgeScript(
@@ -237,10 +273,12 @@ export function useReaderNavigation(options: Options) {
     completeScrollRef,
     completeVerses,
     fullScreenWebViewRef,
+    isVerseFullScreen,
     pageNumberRef,
     pendingCompleteScrollVerseIdRef,
     pendingModeSwitchPageRef,
     scrollCompleteToVerse,
+    scrollFullScreenCompleteToVerse,
     setNativeBookPageNumberState,
     setPageNumber,
     setReaderVerseId,
@@ -295,6 +333,7 @@ export function useReaderNavigation(options: Options) {
   return {
     goToFirstPage,
     goToNextPage,
+    goToNextPageForAutoRead,
     goToPreviousPage,
     syncViewerStateToWebView,
   };
