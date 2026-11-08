@@ -67,8 +67,14 @@ export function useAutoReadPlayback({
     [progressStore],
   );
   const [completed, setCompleted] = useState(false);
+  const [completedPageNumbers, setCompletedPageNumbers] = useState<number[]>([]);
+  const completedPageNumbersRef = useRef(new Set<number>());
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const currentPageIndexRef = useRef(0);
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+  const externalClockRef = useRef(Number(externalClockMs) || 0);
+  externalClockRef.current = Number(externalClockMs) || 0;
   const elapsedBeforeStartRef = useRef(0);
   const startedAtRef = useRef<number | null>(null);
   const pendingAutoPageRef = useRef<number | null>(null);
@@ -99,14 +105,12 @@ export function useAutoReadPlayback({
     }))
     .filter((page) => page.durationMs > 0);
   const currentReadablePage = readablePages[currentPageIndex] || null;
+  const activeDurationMsRef = useRef(currentReadablePage?.durationMs || 0);
   const activePageNumberRef = useRef(
     currentReadablePage?.pageNumber ?? pageNumber,
   );
   const activeLayoutModeKeyRef = useRef(layoutModeKey);
-  if (activeLayoutModeKeyRef.current === layoutModeKey) {
-    activePageNumberRef.current = currentReadablePage?.pageNumber ?? pageNumber;
-  }
-  const durationMs = currentReadablePage?.durationMs || 0;
+  const durationMs = activeDurationMsRef.current;
   const callbacksRef = useRef({
     onPlaybackChange,
     onCompleteChange,
@@ -121,6 +125,22 @@ export function useAutoReadPlayback({
     goToFirstPage,
     subscribeToAppState,
   };
+  const resetProgress = useCallback(() => {
+    completedPageNumbersRef.current.clear();
+    setCompletedPageNumbers([]);
+    currentPageIndexRef.current = 0;
+    setCurrentPageIndex(0);
+    activePageNumberRef.current = readablePages[0]?.pageNumber ?? pageNumber;
+    activeDurationMsRef.current = readablePages[0]?.durationMs || 0;
+    elapsedBeforeStartRef.current = 0;
+    startedAtRef.current = isPlayingRef.current ? Date.now() : null;
+    pendingAutoPageRef.current = null;
+    externalClockBaseRef.current = externalClockRef.current;
+    turnRequestedRef.current = false;
+    setProgress(0);
+    setCompleted(false);
+    callbacksRef.current.onCompleteChange?.(false);
+  }, [pageNumber, readablePages, setProgress]);
   useEffect(() => {
     const previous = pageSnapshotRef.current;
     const isExpectedAutoTurn = pendingAutoPageRef.current === pageNumber;
@@ -134,10 +154,13 @@ export function useAutoReadPlayback({
       activeLayoutModeKeyRef.current = layoutModeKey;
       activePageNumberRef.current =
         currentReadablePage?.pageNumber ?? pageNumber;
+      activeDurationMsRef.current = currentReadablePage?.durationMs || 0;
       pendingAutoPageRef.current = null;
       elapsedBeforeStartRef.current = 0;
       currentPageIndexRef.current = 0;
       setCurrentPageIndex(0);
+      completedPageNumbersRef.current.clear();
+      setCompletedPageNumbers([]);
       startedAtRef.current = isPlaying ? Date.now() : null;
       externalClockBaseRef.current = Number(externalClockMs) || 0;
       turnRequestedRef.current = false;
@@ -163,6 +186,8 @@ export function useAutoReadPlayback({
         currentPageIndexRef.current = remappedPageIndex;
         activePageNumberRef.current =
           readablePages[remappedPageIndex].pageNumber;
+        activeDurationMsRef.current =
+          readablePages[remappedPageIndex].durationMs;
         setCurrentPageIndex(remappedPageIndex);
         turnRequestedRef.current = false;
         const elapsed =
@@ -182,8 +207,10 @@ export function useAutoReadPlayback({
         layoutModeKey,
       };
       activeLayoutModeKeyRef.current = layoutModeKey;
-      activePageNumberRef.current =
-        currentReadablePage?.pageNumber ?? pageNumber;
+      activePageNumberRef.current = pageNumber;
+      activeDurationMsRef.current =
+        readablePages.find((page) => page.pageNumber === pageNumber)
+          ?.durationMs || 0;
       pendingAutoPageRef.current = null;
       elapsedBeforeStartRef.current = 0;
       currentPageIndexRef.current = 0;
@@ -203,10 +230,18 @@ export function useAutoReadPlayback({
         pageLayoutKey,
         layoutModeKey,
       };
+      // Manual scrolling changes what is visible, not the verse being read.
+      // Playback completion still owns automatic page turns via the pending
+      // page marker below.
+      if (isPlaying && !isExpectedAutoTurn) return;
       pendingAutoPageRef.current = null;
       elapsedBeforeStartRef.current = 0;
       currentPageIndexRef.current = 0;
       setCurrentPageIndex(0);
+      activePageNumberRef.current = pageNumber;
+      activeDurationMsRef.current =
+        readablePages.find((page) => page.pageNumber === pageNumber)
+          ?.durationMs || 0;
       startedAtRef.current = isPlaying ? Date.now() : null;
       externalClockBaseRef.current = Number(externalClockMs) || 0;
       turnRequestedRef.current = false;
@@ -235,6 +270,8 @@ export function useAutoReadPlayback({
       elapsedBeforeStartRef.current = 0;
       currentPageIndexRef.current = 0;
       setCurrentPageIndex(0);
+      activePageNumberRef.current = readablePages[0]?.pageNumber ?? pageNumber;
+      activeDurationMsRef.current = readablePages[0]?.durationMs || 0;
       startedAtRef.current = Date.now();
       externalClockBaseRef.current = Number(externalClockMs) || 0;
       turnRequestedRef.current = false;
@@ -243,23 +280,34 @@ export function useAutoReadPlayback({
       callbacksRef.current.onCompleteChange?.(false);
       callbacksRef.current.goToFirstPage();
     }
-  }, [allowed, completed, externalClockMs, isPlaying]);
+  }, [allowed, completed, externalClockMs, isPlaying, pageNumber, readablePages]);
 
   const applyElapsed = (elapsed: number) => {
     const pageIndex = currentPageIndexRef.current;
-    const currentPage = readablePages[pageIndex];
-    const currentDurationMs = currentPage?.durationMs || 0;
+    const currentDurationMs = activeDurationMsRef.current;
     if (!currentDurationMs) return;
     const nextProgress = Math.max(0, Math.min(1, elapsed / currentDurationMs));
     if (elapsed < currentDurationMs) {
       setProgress(nextProgress);
       return;
     }
+
+    const completedPageNumber = activePageNumberRef.current || pageNumber;
+    if (
+      completedPageNumber > 0 &&
+      !completedPageNumbersRef.current.has(completedPageNumber)
+    ) {
+      completedPageNumbersRef.current.add(completedPageNumber);
+      setCompletedPageNumbers(Array.from(completedPageNumbersRef.current));
+    }
+
     if (turnRequestedRef.current) return;
 
     if (pageIndex + 1 < readablePages.length) {
       currentPageIndexRef.current = pageIndex + 1;
       setCurrentPageIndex(pageIndex + 1);
+      activePageNumberRef.current = readablePages[pageIndex + 1].pageNumber;
+      activeDurationMsRef.current = readablePages[pageIndex + 1].durationMs;
       elapsedBeforeStartRef.current = 0;
       startedAtRef.current = Date.now();
       externalClockBaseRef.current = Number(externalClockMs) || 0;
@@ -333,6 +381,8 @@ export function useAutoReadPlayback({
 
   return {
     completed,
+    completedPageNumbers,
+    resetProgress,
     get progress() {
       return progressStore.snapshot;
     },

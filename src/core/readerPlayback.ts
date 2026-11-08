@@ -30,8 +30,7 @@ export function getContinuousProgressIndex(
       : -1;
   const validPageIndex = pageIndex < verseIds.length ? pageIndex : -1;
   const verseIndex = verseId ? verseIds.indexOf(verseId) : -1;
-  if (mode === "auto-read")
-    return verseIndex >= 0 ? verseIndex : validPageIndex;
+  if (mode === "auto-read") return validPageIndex;
   return verseIndex >= 0 ? verseIndex : validPageIndex;
 }
 

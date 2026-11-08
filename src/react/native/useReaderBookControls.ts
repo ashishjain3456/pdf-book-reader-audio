@@ -9,6 +9,7 @@ type Options = {
   pageNumberRef: { current: number };
   pendingModeSwitchPageRef: { current: number | null };
   resetConfirmation?: ReaderResetConfirmation;
+  resetPlaybackProgress: () => void;
   setBookSpreadMode: (
     update: (current: "single" | "double") => "single" | "double",
   ) => void;
@@ -27,6 +28,7 @@ export function useReaderBookControls({
   pageNumberRef,
   pendingModeSwitchPageRef,
   resetConfirmation,
+  resetPlaybackProgress,
   setBookSpreadMode,
   setBookVerseCanZoomIn,
   setPageNumber,
@@ -79,13 +81,14 @@ export function useReaderBookControls({
             style: "destructive",
             onPress: () => {
               goToFirstPage();
+              resetPlaybackProgress();
               onReset?.();
             },
           },
         ],
       });
     },
-    [goToFirstPage, resetConfirmation, setReaderDialog],
+    [goToFirstPage, resetConfirmation, resetPlaybackProgress, setReaderDialog],
   );
 
   return { toggleBookSpreadMode, confirmGoToFirstPage };

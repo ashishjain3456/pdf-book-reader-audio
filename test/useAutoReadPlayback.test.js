@@ -686,7 +686,7 @@ test("manual page changes and app background pause auto-read; final page complet
     }),
   );
   assert.equal(playbackChanges.at(-1), false);
-  assert.equal(result.current.progress, 0);
+  assert.equal(result.current.progress, 250 / 3000);
   act(() => appStateListener("background"));
   assert.equal(playbackChanges.at(-1), false);
 

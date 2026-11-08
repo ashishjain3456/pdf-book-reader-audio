@@ -27,10 +27,8 @@ export function getVersePlaybackProgress(
 ): PagePlaybackProgress | null {
   if (!playback) return null;
   const normalizedVerseId = String(verseId);
-  if (
-    playback.mode === "audio" &&
-    playback.completedVerseIds?.includes(normalizedVerseId)
-  ) {
+  if (playback.mode === "auto-read" && isActive) return playback;
+  if (playback.completedVerseIds?.includes(normalizedVerseId)) {
     return {
       ...playback,
       progress: 1,

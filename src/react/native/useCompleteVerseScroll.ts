@@ -131,7 +131,10 @@ export function useCompleteVerseScroll({
           return false;
         }
         scrollView.scrollTo({
-          y: Math.max(0, y - 12),
+          // Keep the target at the viewport start. A negative inset here
+          // leaves the previous verse partially visible and can make it look
+          // as though playback did not follow the current verse.
+          y: Math.max(0, y),
           animated: withAnimation,
         });
         return true;

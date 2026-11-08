@@ -459,6 +459,31 @@ export function useReaderInteractionBindings({
     subscribeToAppState,
   });
   autoReadPageNumberRef.current = autoRead.pageNumber;
+  const completedAutoReadVerseIds = React.useMemo(() => {
+    const completedIds = new Set<string>();
+    for (const completedPageNumber of autoRead.completedPageNumbers) {
+      const mappedIds =
+        core.verseIdsByPage[completedPageNumber] ||
+        completeVerses
+          .filter(
+            (verse) =>
+              core.versePageById[verse.id] === completedPageNumber,
+          )
+          .map((verse) => verse.id);
+      const verseIds = mappedIds.length
+        ? mappedIds
+        : [completeVerses[completedPageNumber - 1]?.id].filter(
+            (verseId): verseId is string => Boolean(verseId),
+          );
+      verseIds.forEach((verseId) => completedIds.add(String(verseId)));
+    }
+    return Array.from(completedIds);
+  }, [
+    autoRead.completedPageNumbers,
+    completeVerses,
+    core.verseIdsByPage,
+    core.versePageById,
+  ]);
   const externalTimelineProgress = externalVerseAudioState?.audioAssetUrl
     ? getMappedPageProgress(
         externalVerseAudioMappings,
@@ -479,39 +504,109 @@ export function useReaderInteractionBindings({
   const mappedTimelineProgress = externalVerseAudioState?.audioAssetUrl
     ? externalTimelineProgress
     : internalTimelineProgress;
-  const completedAudioVerseIds = React.useMemo(() => {
-    const usesExternalAudio = Boolean(externalVerseAudioState?.audioAssetUrl);
-    const audioAssetUrl = usesExternalAudio
-      ? externalVerseAudioState?.audioAssetUrl
-      : activeVerseAudio?.audioAssetUrl;
-    if (!audioAssetUrl || !mappedTimelineProgress) return [];
-    const currentTimeMs = usesExternalAudio
-      ? Math.max(0, Number(externalVerseAudioState?.currentTimeMs) || 0)
-      : Math.max(0, Number(audio.verseAudioStatus.currentTime) || 0) * 1000;
-    const mappings = usesExternalAudio
-      ? externalVerseAudioMappings
-      : playableVerseMappings;
-    const lastEndByVerse = new Map<string, number>();
-    for (const mapping of mappings) {
-      if (mapping.audioAssetUrl !== audioAssetUrl) continue;
+  const usesExternalAudio = Boolean(externalVerseAudioState?.audioAssetUrl);
+  const progressAudioAssetUrl = usesExternalAudio
+    ? externalVerseAudioState?.audioAssetUrl || null
+    : activeVerseAudio?.audioAssetUrl || null;
+  const progressMappings = usesExternalAudio
+    ? externalVerseAudioMappings
+    : playableVerseMappings;
+  const progressTimeMs = usesExternalAudio
+    ? Math.max(0, Number(externalVerseAudioState?.currentTimeMs) || 0)
+    : Math.max(0, Number(audio.verseAudioStatus.currentTime) || 0) * 1000;
+  const progressSourceKey = progressAudioAssetUrl
+    ? JSON.stringify([readerDocumentId, progressAudioAssetUrl])
+    : null;
+  const lastEndByVerse = React.useMemo(() => {
+    const lastEnd = new Map<string, number>();
+    if (!progressAudioAssetUrl) return lastEnd;
+    for (const mapping of progressMappings) {
+      if (mapping.audioAssetUrl !== progressAudioAssetUrl) continue;
       const verseId = String(mapping.verseId);
-      lastEndByVerse.set(
+      lastEnd.set(
         verseId,
-        Math.max(lastEndByVerse.get(verseId) || 0, mapping.segmentEndMs),
+        Math.max(lastEnd.get(verseId) || 0, mapping.segmentEndMs),
       );
     }
-    return Array.from(lastEndByVerse)
-      .filter(([, endMs]) => endMs <= currentTimeMs)
-      .map(([verseId]) => verseId);
+    return lastEnd;
+  }, [progressAudioAssetUrl, progressMappings]);
+  const [completedAudioVerseIdsBySource, setCompletedAudioVerseIdsBySource] =
+    React.useState<Record<string, string[]>>({});
+  const [progressResetRevision, setProgressResetRevision] = React.useState(0);
+  const pendingProgressResetRef = React.useRef<{
+    sourceKey: string;
+    previousTimeMs: number;
+  } | null>(null);
+  const pendingProgressReset = pendingProgressResetRef.current;
+  const isAwaitingProgressResetSeek = Boolean(
+    pendingProgressReset?.sourceKey === progressSourceKey &&
+      progressTimeMs >= pendingProgressReset.previousTimeMs,
+  );
+  const completedAtCurrentTime = React.useMemo(
+    () => {
+      if (isAwaitingProgressResetSeek) return [];
+      return Array.from(lastEndByVerse)
+        .filter(([, endMs]) => endMs <= progressTimeMs)
+        .map(([verseId]) => verseId);
+    },
+    [
+      isAwaitingProgressResetSeek,
+      lastEndByVerse,
+      progressResetRevision,
+      progressTimeMs,
+    ],
+  );
+  React.useEffect(() => {
+    const pendingReset = pendingProgressResetRef.current;
+    if (
+      pendingReset?.sourceKey === progressSourceKey &&
+      progressTimeMs < pendingReset.previousTimeMs
+    ) {
+      pendingProgressResetRef.current = null;
+    }
+  }, [progressSourceKey, progressTimeMs]);
+  React.useEffect(() => {
+    if (!progressSourceKey || completedAtCurrentTime.length === 0) return;
+    setCompletedAudioVerseIdsBySource((previous) => {
+      const existing = previous[progressSourceKey] || [];
+      const completed = new Set(existing);
+      completedAtCurrentTime.forEach((verseId) => completed.add(verseId));
+      if (completed.size === existing.length) return previous;
+      return {
+        ...previous,
+        [progressSourceKey]: Array.from(completed),
+      };
+    });
+  }, [completedAtCurrentTime, progressSourceKey]);
+  const completedAudioVerseIds = React.useMemo(() => {
+    if (!progressSourceKey) return [];
+    const completed = new Set(
+      completedAudioVerseIdsBySource[progressSourceKey] || [],
+    );
+    completedAtCurrentTime.forEach((verseId) => completed.add(verseId));
+    return Array.from(completed).filter((verseId) =>
+      lastEndByVerse.has(verseId),
+    );
   }, [
-    activeVerseAudio?.audioAssetUrl,
-    audio.verseAudioStatus.currentTime,
-    externalVerseAudioMappings,
-    externalVerseAudioState?.audioAssetUrl,
-    externalVerseAudioState?.currentTimeMs,
-    mappedTimelineProgress,
-    playableVerseMappings,
+    completedAtCurrentTime,
+    completedAudioVerseIdsBySource,
+    lastEndByVerse,
+    progressSourceKey,
   ]);
+  const resetPlaybackProgress = React.useCallback(() => {
+    if (progressSourceKey && progressTimeMs > 0) {
+      pendingProgressResetRef.current = {
+        sourceKey: progressSourceKey,
+        previousTimeMs: progressTimeMs,
+      };
+    }
+    setProgressResetRevision((revision) => revision + 1);
+    setCompletedAudioVerseIdsBySource({});
+    autoRead.resetProgress();
+  }, [autoRead.resetProgress, progressSourceKey, progressTimeMs]);
+  const displayedMappedTimelineProgress = isAwaitingProgressResetSeek
+    ? null
+    : mappedTimelineProgress;
   const toggleAutoRead = React.useCallback(() => {
     const shouldStart = !autoReadPlaying;
     if (shouldStart && contentMode === "verse" && viewMode === "continuous") {
@@ -547,15 +642,16 @@ export function useReaderInteractionBindings({
         complete: autoRead.completed,
         pageNumber: autoRead.pageNumber,
         verseId: core.readerVerseId,
+        completedVerseIds: completedAutoReadVerseIds,
       }
-    : mappedTimelineProgress
+    : displayedMappedTimelineProgress || completedAudioVerseIds.length > 0
       ? {
           mode: "audio" as const,
-          progress: mappedTimelineProgress.progress,
+          progress: displayedMappedTimelineProgress?.progress || 0,
           complete: false,
-          pageNumber: mappedTimelineProgress.pageNumber,
-          verseId: mappedTimelineProgress.mapping
-            ? String(mappedTimelineProgress.mapping.verseId)
+          pageNumber: displayedMappedTimelineProgress?.pageNumber ?? null,
+          verseId: displayedMappedTimelineProgress?.mapping
+            ? String(displayedMappedTimelineProgress.mapping.verseId)
             : null,
           completedVerseIds: completedAudioVerseIds,
         }
@@ -584,6 +680,7 @@ export function useReaderInteractionBindings({
     pageNumberRef: core.pageNumberRef,
     pendingModeSwitchPageRef: core.pendingModeSwitchPageRef,
     resetConfirmation,
+    resetPlaybackProgress,
     setBookSpreadMode: core.setBookSpreadMode,
     setBookVerseCanZoomIn: core.setBookVerseCanZoomIn,
     setPageNumber: page.setPageNumber,

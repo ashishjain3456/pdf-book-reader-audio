@@ -96,7 +96,7 @@ test("keeps a restored verse pending until the scroll view ref is attached", asy
     scrollTo: (options) => scrollCalls.push(options),
   };
   assert.equal(hook.result.scrollCompleteToVerse("verse-5", false), true);
-  assert.deepEqual(scrollCalls, [{ y: 488, animated: false }]);
+  assert.deepEqual(scrollCalls, [{ y: 500, animated: false }]);
   await hook.unmount();
 });
 
@@ -161,7 +161,7 @@ test("restores the current verse to the inline list after fullscreen closes", as
     hook.result.scrollFullScreenCompleteToVerse(targetVerseId),
     true,
   );
-  assert.deepEqual(fullScreenScrollCalls, [{ y: 888, animated: false }]);
+  assert.deepEqual(fullScreenScrollCalls, [{ y: 900, animated: false }]);
   assert.deepEqual(inlineScrollCalls, []);
   await act(async () => {
     hook.result.handleFullScreenScrollEndDrag({
@@ -173,7 +173,7 @@ test("restores the current verse to the inline list after fullscreen closes", as
   await hook.rerender({ ...props, isVerseFullScreen: false });
   await new Promise((resolve) => setTimeout(resolve, 100));
 
-  assert.deepEqual(inlineScrollCalls, [{ y: 2388, animated: false }]);
+  assert.deepEqual(inlineScrollCalls, [{ y: 2400, animated: false }]);
   await hook.unmount();
 });
 
@@ -221,7 +221,7 @@ test("animated verse navigation does not get canceled by a delayed snap", async 
   });
   await new Promise((resolve) => setTimeout(resolve, 150));
 
-  assert.deepEqual(scrollCalls, [{ y: 88, animated: true }]);
+  assert.deepEqual(scrollCalls, [{ y: 100, animated: true }]);
   await hook.unmount();
 });
 
@@ -322,7 +322,7 @@ test("waits for verse reflow before restoring the scroll position after zoom", a
   // The verse's onLayout event records the post-zoom Y before retrying scroll.
   verseYByIdRef.current.verse = 360;
   assert.equal(hook.result.scrollCompleteToVerse("verse", false), true);
-  assert.deepEqual(scrollCalls, [{ y: 348, animated: false }]);
+  assert.deepEqual(scrollCalls, [{ y: 360, animated: false }]);
   await hook.unmount();
 });
 
